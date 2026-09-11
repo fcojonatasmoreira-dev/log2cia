@@ -1,165 +1,142 @@
-import React, { useState } from "react";
-import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  Shield,
-  LayoutDashboard,
-  Repeat,
-  PackageSearch,
-  Users,
-  ShieldCheck,
-  Menu,
-  X,
-  LogOut,
-  Search,
-} from "lucide-react";
+import { useState, useEffect } from "react";
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
-import { useSessionTimeout } from "../../hooks/useSessionTimeout";
 
 export default function AppLayout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const location = useLocation();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const navigation = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard },
-    { name: "Cautelas", href: "/cautelas", icon: Repeat },
-    { name: "Acervo / Inventário", href: "/inventario", icon: PackageSearch },
-    { name: "Policiais", href: "/policiais", icon: Users },
-    { name: "Painel Master", href: "/master", icon: ShieldCheck },
-  ];
+  const [isMaster, setIsMaster] = useState(false);
 
-  useSessionTimeout();
+  useEffect(() => {
+    async function checarPerfilMaster() {
+      try {
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession();
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = "/";
-  };
+        if (sessionError || !sessionData?.session?.user) {
+          return;
+        }
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    const query = searchTerm.trim();
-    if (!query) return;
+        const userId = sessionData.session.user.id;
 
-    // Se a busca for estritamente numérica (ex: matrícula 30867955), envia para Policiais
-    const isNumericOrMatricula = /^\d+$/.test(query);
+        // Consulta filtrada estritamente na coluna existente 'role'
+        const { data: perfil, error: perfilError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", userId)
+          .maybeSingle();
 
-    if (isNumericOrMatricula) {
-      navigate(`/policiais?search=${encodeURIComponent(query)}`);
-    } else {
-      navigate(`/inventario?search=${encodeURIComponent(query)}`);
+        if (perfilError) {
+          console.error(
+            "Erro ao buscar perfil do usuário:",
+            perfilError.message,
+          );
+          return;
+        }
+
+        if (perfil) {
+          const roleVal = String(perfil.role || "").toLowerCase();
+          if (roleVal.includes("master") || roleVal.includes("p4")) {
+            setIsMaster(true);
+          }
+        }
+      } catch (err) {
+        console.error("Erro na checagem do perfil master:", err);
+      }
     }
+
+    checarPerfilMaster();
+  }, []);
+
+  const getLinkClass = (path) => {
+    const isActive = location.pathname === path;
+    return `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+      isActive
+        ? "bg-blue-600 text-white font-bold shadow"
+        : "text-slate-300 hover:bg-slate-800 hover:text-white"
+    }`;
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex font-sans">
-      {/* Sidebar Mobile Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-slate-900/60 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar Principal */}
-      <aside
-        className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transform transition-transform duration-200 ease-in-out
-        ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
-      `}
-      >
-        <div className="flex flex-col h-full">
-          <div className="p-5 flex items-center justify-between border-b border-slate-800">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-600 rounded-lg">
-                <Shield className="w-6 h-6 text-white" />
-              </div>
-              <span className="font-extrabold text-xl tracking-wider">
-                Log2CIA
-              </span>
+    <div className="flex min-h-screen bg-gray-100">
+      {/* Sidebar Lateral */}
+      <aside className="w-64 bg-slate-900 text-white flex flex-col justify-between p-4 shrink-0">
+        <div className="space-y-6">
+          {/* Header da Sidebar */}
+          <div className="flex items-center gap-3 px-2 py-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow">
+              🛡️
             </div>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="lg:hidden text-slate-400 hover:text-white"
-            >
-              <X className="w-6 h-6" />
-            </button>
+            <span className="font-bold text-lg text-white tracking-wide">
+              Log2CIA
+            </span>
           </div>
 
-          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-            {navigation.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.href;
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`
-                    flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
-                    ${
-                      isActive
-                        ? "bg-blue-600 text-white shadow-md shadow-blue-600/30"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                    }
-                  `}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span>{item.name}</span>
-                </Link>
-              );
-            })}
+          {/* Links do Menu */}
+          <nav className="space-y-1">
+            <button
+              onClick={() => navigate("/dashboard")}
+              className={`w-full ${getLinkClass("/dashboard")}`}
+            >
+              <span>📊</span> Dashboard
+            </button>
+
+            <button
+              onClick={() => navigate("/cautelas")}
+              className={`w-full ${getLinkClass("/cautelas")}`}
+            >
+              <span>🔄</span> Cautelas
+            </button>
+
+            <button
+              onClick={() => navigate("/inventario")}
+              className={`w-full ${getLinkClass("/inventario")}`}
+            >
+              <span>📦</span> Acervo / Inventário
+            </button>
+
+            <button
+              onClick={() => navigate("/policiais")}
+              className={`w-full ${getLinkClass("/policiais")}`}
+            >
+              <span>👥</span> Policiais
+            </button>
+
+            {/* PAINEL MASTER EXCLUSIVO */}
+            {isMaster && (
+              <button
+                onClick={() => navigate("/painel-master")}
+                className={`w-full mt-4 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all border border-amber-500/30 ${
+                  location.pathname === "/painel-master"
+                    ? "bg-amber-500 text-slate-950 shadow"
+                    : "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20"
+                }`}
+              >
+                <span>🛡️</span> Painel Master
+              </button>
+            )}
           </nav>
+        </div>
+
+        {/* Rodapé da Sidebar */}
+        <div className="border-t border-slate-800 pt-3">
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              navigate("/login");
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-all"
+          >
+            <span>🚪</span> Sair
+          </button>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top Header */}
-        <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-            <h2 className="text-lg font-bold text-slate-800 capitalize hidden sm:block">
-              {navigation.find((n) => n.href === location.pathname)?.name ||
-                "Log2CIA"}
-            </h2>
-          </div>
-
-          {/* Barra de Pesquisa Global */}
-          <form
-            onSubmit={handleSearchSubmit}
-            className="flex-1 max-w-md relative"
-          >
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Busca rápida por Nº de Série, Patrimônio ou Matrícula..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs bg-slate-100 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
-            />
-          </form>
-
-          {/* Botão Sair */}
-          <button
-            onClick={handleLogout}
-            className="flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline">Sair</span>
-          </button>
-        </header>
-
-        {/* Dynamic Page Content */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50">
-          <Outlet />
-        </main>
-      </div>
+      {/* Conteúdo Principal */}
+      <main className="flex-1 p-6 overflow-y-auto">
+        <Outlet />
+      </main>
     </div>
   );
 }

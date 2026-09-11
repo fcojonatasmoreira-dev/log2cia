@@ -11,7 +11,7 @@ import Dashboard from "../pages/Dashboard";
 import Cautelas from "../pages/Cautelas";
 import Inventario from "../pages/Inventario";
 import Policiais from "../pages/Policiais";
-import PainelMaster from "../pages/PainelMaster"; // 1. IMPORTAR AQUI
+import PainelMaster from "../pages/PainelMaster";
 import Login from "../pages/Login";
 import Onboarding from "../pages/Onboarding";
 
@@ -126,13 +126,11 @@ export default function AppRoutes() {
     );
   }
 
-  // Trecho de verificação do prazo dentro de AppRoutes.jsx
   const dataExpiracao = profile?.prazo_expiracao
     ? new Date(profile.prazo_expiracao)
     : null;
   const isExpirado = dataExpiracao && new Date() > dataExpiracao;
 
-  // Se o prazo de 7 dias expirou sem completar o cadastro
   if (isExpirado && profile?.status_aprovacao === "pendente_completar") {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
@@ -166,14 +164,14 @@ export default function AppRoutes() {
           <Route path="inventario" element={<Inventario />} />
           <Route path="policiais" element={<Policiais />} />
 
-          {/* Novas Rotas de Cautela */}
-          <Route path="/cautelas/nova" element={<NovaCautela />} />
-          <Route path="/minhas-cautelas" element={<MinhasCautelas />} />
-          <Route path="/devolucao" element={<Devolucao />} />
+          {/* Rotas de Cautela */}
+          <Route path="cautelas/nova" element={<NovaCautela />} />
+          <Route path="minhas-cautelas" element={<MinhasCautelas />} />
+          <Route path="devolucao" element={<Devolucao />} />
 
-          {/* 2. ADICIONAR A ROTA AQUI ABAIXO */}
+          {/* ROTA AJUSTADA PARA BATER COM O APPLAYOUT */}
           <Route
-            path="master"
+            path="painel-master"
             element={isMaster ? <PainelMaster /> : <Navigate to="/" replace />}
           />
         </Route>
