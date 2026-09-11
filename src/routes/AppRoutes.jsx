@@ -2,6 +2,10 @@ import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 
+import NovaCautela from "../pages/NovaCautela";
+import MinhasCautelas from "../pages/MinhasCautelas";
+import Devolucao from "../pages/Devolucao";
+
 import AppLayout from "../components/layout/AppLayout";
 import Dashboard from "../pages/Dashboard";
 import Cautelas from "../pages/Cautelas";
@@ -161,6 +165,11 @@ export default function AppRoutes() {
           <Route path="cautelas" element={<Cautelas />} />
           <Route path="inventario" element={<Inventario />} />
           <Route path="policiais" element={<Policiais />} />
+
+          {/* Novas Rotas de Cautela */}
+          <Route path="/cautelas/nova" element={<NovaCautela />} />
+          <Route path="/minhas-cautelas" element={<MinhasCautelas />} />
+          <Route path="/devolucao" element={<Devolucao />} />
 
           {/* 2. ADICIONAR A ROTA AQUI ABAIXO */}
           <Route
