@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 
 export default function Cautelas() {
-  const navigate = useNavigate(); // Instância obrigatória para o clique funcionar
+  const navigate = useNavigate();
 
   const [cautelas, setCautelas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,10 +20,11 @@ export default function Cautelas() {
         .select(
           `
           id, status, data_cautela,
-          policial:profiles!policial_id ( nome_guerra, posto_graduacao, matricula ),
+          policial:policiais!policial_id ( nome_guerra, posto_graduacao, matricula ),
           cautela_itens (
+            id,
             quantidade_municao, tipo_municao, quantidade_carregadores,
-            equipamento:equipamentos ( tipo, modelo, numero_serie )
+            equipamento:equipamentos ( tipo, modelo_descricao, num_serie )
           )
         `,
         )
@@ -53,7 +54,7 @@ export default function Cautelas() {
         <button
           type="button"
           onClick={() => navigate("/cautelas/nova")}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg shadow transition-all"
+          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg shadow transition-all text-xs"
         >
           + Nova Cautela
         </button>
@@ -83,30 +84,86 @@ export default function Cautelas() {
                 </tr>
               ) : (
                 cautelas.map((c) => {
-                  const item = c.cautela_itens?.[0] || {};
-                  const eq = item.equipamento || {};
                   const pol = c.policial || {};
 
                   return (
-                    <tr key={c.id} className="hover:bg-slate-50/80">
+                    <tr
+                      key={c.id}
+                      className="hover:bg-slate-50/80 transition-colors"
+                    >
+                      {/* Policial */}
                       <td className="p-3">
                         <span className="font-bold text-slate-800 block">
-                          {pol.posto_graduacao} {pol.nome_guerra}
+                          {pol.posto_graduacao} {pol.nome_guerra || "N/I"}
                         </span>
                         <span className="text-xs text-slate-500">
-                          RE: {pol.matricula || "N/I"}
+                          Matrícula: {pol.matricula || "N/I"}
                         </span>
                       </td>
-                      <td className="p-3">
-                        <span className="inline-block bg-slate-100 px-2 py-1 rounded text-xs text-slate-700 font-medium">
-                          {eq.tipo} {eq.modelo} ({eq.numero_serie})
-                        </span>
+
+                      {/* Itens Cautelados */}
+                      <td className="p-3 space-y-1.5">
+                        {c.cautela_itens && c.cautela_itens.length > 0 ? (
+                          c.cautela_itens.map((ci) => {
+                            const eq = ci.equipamento || {};
+                            const tipo = eq.tipo
+                              ? eq.tipo.toUpperCase()
+                              : "EQUIPAMENTO";
+                            const modelo = eq.modelo_descricao || "N/I";
+                            const serie = eq.num_serie || "N/I";
+
+                            return (
+                              <div
+                                key={ci.id}
+                                className="bg-slate-50 p-2 rounded-lg border border-slate-100"
+                              >
+                                <div className="font-bold text-slate-800 text-xs">
+                                  {tipo} - {modelo}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-mono">
+                                  Série:{" "}
+                                  <span className="font-bold text-slate-700">
+                                    {serie}
+                                  </span>
+                                </div>
+                                {(ci.quantidade_carregadores > 0 ||
+                                  ci.quantidade_municao > 0) && (
+                                  <div className="text-[10px] text-slate-500 mt-0.5">
+                                    {ci.quantidade_carregadores > 0 && (
+                                      <span>
+                                        Carregadores:{" "}
+                                        <strong>
+                                          {ci.quantidade_carregadores}
+                                        </strong>{" "}
+                                      </span>
+                                    )}
+                                    {ci.quantidade_municao > 0 && (
+                                      <span>
+                                        | Munição:{" "}
+                                        <strong>{ci.quantidade_municao}</strong>{" "}
+                                        ({ci.tipo_municao || "N/I"})
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <span className="text-slate-400 text-xs italic">
+                            Sem itens vinculados
+                          </span>
+                        )}
                       </td>
-                      <td className="p-3 text-slate-600 text-xs">
+
+                      {/* Data / Hora Saída */}
+                      <td className="p-3 text-slate-600 text-xs font-medium">
                         {c.data_cautela
                           ? new Date(c.data_cautela).toLocaleString("pt-BR")
                           : "N/A"}
                       </td>
+
+                      {/* Status */}
                       <td className="p-3">
                         <span
                           className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
