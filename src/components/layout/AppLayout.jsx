@@ -13,6 +13,7 @@ import {
   Search,
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
+import { useSessionTimeout } from "../../hooks/useSessionTimeout";
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -27,6 +28,8 @@ export default function AppLayout() {
     { name: "Policiais", href: "/policiais", icon: Users },
     { name: "Painel Master", href: "/master", icon: ShieldCheck },
   ];
+
+  useSessionTimeout();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
