@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
+import { Html5QrcodeScanner } from "html5-qrcode";
 
 export default function NovaCautela() {
   const navigate = useNavigate();
@@ -23,6 +24,42 @@ export default function NovaCautela() {
     carregarPoliciais();
   }, []);
 
+  // Inicializa e limpa o scanner de QR Code dinamicamente
+  useEffect(() => {
+    let scanner = null;
+
+    if (modoDigitacao === "camera") {
+      // Pequeno delay para garantir que a div "reader" já foi renderizada no DOM
+      const timer = setTimeout(() => {
+        scanner = new Html5QrcodeScanner(
+          "reader",
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          false,
+        );
+
+        scanner.render(
+          async (decodedText) => {
+            // Sucesso na leitura do QR Code (decodedText contém o UUID do equipamento)
+            scanner.clear();
+            await buscarArmaPorId(decodedText);
+          },
+          (errorMessage) => {
+            // Erros de varredura quadro a quadro podem ser ignorados silenciosamente
+          },
+        );
+      }, 100);
+
+      return () => {
+        clearTimeout(timer);
+        if (scanner) {
+          scanner
+            .clear()
+            .catch((err) => console.error("Erro ao limpar scanner:", err));
+        }
+      };
+    }
+  }, [modoDigitacao]);
+
   async function carregarPoliciais() {
     try {
       const { data, error } = await supabase
@@ -34,6 +71,35 @@ export default function NovaCautela() {
       if (data) setPoliciais(data);
     } catch (err) {
       console.error("Erro ao carregar policiais:", err.message);
+    }
+  }
+
+  // Busca o armamento diretamente pelo ID lido no QR Code
+  async function buscarArmaPorId(idArma) {
+    setCarregando(true);
+    setMensagemErro("");
+    setArmaEncontrada(null);
+
+    try {
+      const { data, error } = await supabase
+        .from("equipamentos")
+        .select("*")
+        .eq("id", idArma)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) {
+        setMensagemErro("Armamento não encontrado pelo QR Code lido!");
+        return;
+      }
+
+      validarEAtribuirArma(data);
+    } catch (err) {
+      console.error("Erro ao buscar armamento por QR Code:", err.message);
+      setMensagemErro("Erro na leitura do QR Code: " + err.message);
+    } finally {
+      setCarregando(false);
     }
   }
 
@@ -51,7 +117,6 @@ export default function NovaCautela() {
     setArmaEncontrada(null);
 
     try {
-      // Busca limpa sequencial por campos de texto
       let { data, error } = await supabase
         .from("equipamentos")
         .select("*")
@@ -88,22 +153,25 @@ export default function NovaCautela() {
         return;
       }
 
-      // TRAVA RIGOROSA: Impede cautela se não estiver disponível
-      const st = String(data.status || "").toLowerCase();
-      if (st !== "disponivel") {
-        setMensagemErro(
-          `BLOQUEIO BÉLICO: O armamento série ${data.num_serie} consta como "${data.status.toUpperCase()}" e NÃO pode ser cautelado novamente!`,
-        );
-        return;
-      }
-
-      setArmaEncontrada(data);
+      validarEAtribuirArma(data);
     } catch (err) {
       console.error("Erro ao buscar armamento:", err.message);
       setMensagemErro("Erro na busca: " + err.message);
     } finally {
       setCarregando(false);
     }
+  };
+
+  const validarEAtribuirArma = (data) => {
+    const st = String(data.status || "").toLowerCase();
+    if (st !== "disponivel") {
+      setMensagemErro(
+        `BLOQUEIO BÉLICO: O armamento série ${data.num_serie} consta como "${data.status.toUpperCase()}" e NÃO pode ser cautelado novamente!`,
+      );
+      return;
+    }
+    setArmaEncontrada(data);
+    setModoDigitacao("manual"); // Retorna para a tela de visualização da arma encontrada
   };
 
   const handleFinalizarCautela = async (e) => {
@@ -123,7 +191,6 @@ export default function NovaCautela() {
     setMensagemErro("");
 
     try {
-      // 1. Re-checa no banco antes de gravar para evitar race-condition
       const { data: armaAtual } = await supabase
         .from("equipamentos")
         .select("status")
@@ -139,7 +206,6 @@ export default function NovaCautela() {
         );
       }
 
-      // 2. Insere a cautela pai
       const { data: novaCautela, error: errCautela } = await supabase
         .from("cautelas")
         .insert([
@@ -154,7 +220,6 @@ export default function NovaCautela() {
 
       if (errCautela) throw errCautela;
 
-      // 3. Insere os itens da cautela
       const { error: errItem } = await supabase.from("cautela_itens").insert([
         {
           cautela_id: novaCautela.id,
@@ -166,12 +231,10 @@ export default function NovaCautela() {
       ]);
 
       if (errItem) {
-        // Rollback automático: exclui o registro pai em caso de erro nos itens
         await supabase.from("cautelas").delete().eq("id", novaCautela.id);
         throw errItem;
       }
 
-      // 4. Mudar status do equipamento para "cautelado"
       const { error: errUpdate } = await supabase
         .from("equipamentos")
         .update({ status: "cautelado" })
@@ -263,10 +326,14 @@ export default function NovaCautela() {
             </button>
           </form>
         ) : (
-          <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300">
-            <span className="text-3xl block mb-2">📸</span>
-            <p className="text-xs text-slate-600 font-medium">
-              Aproxime o QR Code do armamento da câmera para leitura.
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-300">
+            <div
+              id="reader"
+              className="w-full overflow-hidden rounded-lg"
+            ></div>
+            <p className="text-[11px] text-slate-500 text-center mt-2">
+              Posicione o QR Code da etiqueta impressa no interior da moldura da
+              câmera.
             </p>
           </div>
         )}
