@@ -1,6 +1,6 @@
 import { supabase } from "../lib/supabaseClient";
 
-// Buscar todos os cadastros pendentes de análise
+// 1. Buscar cadastros pendentes de análise no Painel Master
 export async function getPerfisPendentes() {
   const { data, error } = await supabase
     .from("profiles")
@@ -9,83 +9,57 @@ export async function getPerfisPendentes() {
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
-  return data;
+  return data || [];
 }
 
-// Gerar URL assinada/temporária para visualizar arquivos no Storage Privado
+// 2. Gerar URL temporária assinada para visualizar Selfie e Funcional
 export async function getDocumentoUrl(filePath) {
   if (!filePath) return null;
+
   const { data, error } = await supabase.storage
     .from("documentos-seguranca")
-    .createSignedUrl(filePath, 300); // URL válida por 5 minutos
+    .createSignedUrl(filePath, 3600);
 
-  if (error) throw new Error(error.message);
-  return data.signedUrl;
+  if (error) {
+    const resAlt = await supabase.storage
+      .from("documentos_operadores")
+      .createSignedUrl(filePath, 3600);
+    if (resAlt.error) throw new Error(error.message);
+    return resAlt.data?.signedUrl || null;
+  }
+
+  return data?.signedUrl || null;
 }
 
-// Aprovar ou Rejeitar Credenciamento
-export async function homologarUsuario(
-  profileId,
-  novoStatus,
-  roleAtribuida = "armeiro",
-) {
-  const { data, error } = await supabase
+// 3. Homologar usuário (Aprovar ou Rejeitar)
+export async function homologarUsuario(userId, status, roleAtribuida) {
+  const { error } = await supabase
     .from("profiles")
     .update({
-      status_aprovacao: novoStatus,
-      role: novoStatus === "aprovado" ? roleAtribuida : "pendente",
+      status_aprovacao: status,
+      role: roleAtribuida,
+      homologado_em: new Date().toISOString(),
     })
-    .eq("id", profileId)
+    .eq("id", userId);
+
+  if (error) throw error;
+}
+
+// 4. Pré-cadastrar operador na tabela 'pre_cadastros' (sem violação da FK id)
+export async function preCadastrarOperador({ email, nome, roleAtribuida }) {
+  const emailLimpo = email.trim().toLowerCase();
+
+  const { data, error } = await supabase
+    .from("pre_cadastros")
+    .insert([
+      {
+        email: emailLimpo,
+        nome: nome,
+        role: roleAtribuida,
+      },
+    ])
     .select();
 
   if (error) throw new Error(error.message);
-  return data[0];
-}
-
-// Criar ou atualizar pré-cadastro diretamente pelo Master
-export async function preCadastrarOperador({ email, nome, roleAtribuida }) {
-  const prazoExpiracao = new Date();
-  prazoExpiracao.setDate(prazoExpiracao.getDate() + 7);
-
-  // 1. Tenta buscar um perfil existente com esse e-mail
-  const { data: existingProfiles, error: fetchError } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("email", email);
-
-  if (fetchError) throw new Error(fetchError.message);
-
-  if (existingProfiles && existingProfiles.length > 0) {
-    // 2. Se já existir registro, atualiza as permissões e o prazo de 7 dias
-    const { data, error } = await supabase
-      .from("profiles")
-      .update({
-        nome,
-        role: roleAtribuida,
-        status_aprovacao: "pendente_completar",
-        prazo_expiracao: prazoExpiracao.toISOString(),
-      })
-      .eq("id", existingProfiles[0].id)
-      .select();
-
-    if (error) throw new Error(error.message);
-    return data[0];
-  } else {
-    // 3. Se não existir, insere o pré-cadastro
-    const { data, error } = await supabase
-      .from("profiles")
-      .insert([
-        {
-          email,
-          nome,
-          role: roleAtribuida,
-          status_aprovacao: "pendente_completar",
-          prazo_expiracao: prazoExpiracao.toISOString(),
-        },
-      ])
-      .select();
-
-    if (error) throw new Error(error.message);
-    return data[0];
-  }
+  return data;
 }

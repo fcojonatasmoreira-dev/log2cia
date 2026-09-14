@@ -32,6 +32,7 @@ export default function PainelMaster() {
     nome: "",
     role: "armeiro",
   });
+  const [submittingPre, setSubmittingPre] = useState(false);
 
   const loadPendentes = async () => {
     try {
@@ -81,6 +82,7 @@ export default function PainelMaster() {
 
   const handlePreCadastroSubmit = async (e) => {
     e.preventDefault();
+    setSubmittingPre(true);
     try {
       await preCadastrarOperador({
         email: preForm.email,
@@ -95,6 +97,8 @@ export default function PainelMaster() {
       loadPendentes();
     } catch (err) {
       alert(`Erro ao pré-cadastrar: ${err.message}`);
+    } finally {
+      setSubmittingPre(false);
     }
   };
 
@@ -326,7 +330,7 @@ export default function PainelMaster() {
         </div>
       </div>
 
-      {/* MODAL DE PRÉ-CADASTRO DE OPERADOR (INSERIDA AQUI NO FINAL DO JSX) */}
+      {/* MODAL DE PRÉ-CADASTRO DE OPERADOR */}
       {isModalPreOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 font-sans">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
@@ -401,9 +405,12 @@ export default function PainelMaster() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-md"
+                  disabled={submittingPre}
+                  className="px-4 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-md disabled:opacity-50"
                 >
-                  Conceder Acesso (Prazo 7 Dias)
+                  {submittingPre
+                    ? "Salvando..."
+                    : "Conceder Acesso (Prazo 7 Dias)"}
                 </button>
               </div>
             </form>

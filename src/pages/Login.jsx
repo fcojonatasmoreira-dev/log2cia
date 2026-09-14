@@ -8,13 +8,20 @@ export default function Login() {
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
+
+      // Em ambiente local de desenvolvimento, ativamos um flag seguro de teste
+      if (import.meta.env.DEV) {
+        localStorage.setItem("LOG2CIA_DEV_BYPASS", "true");
+      } else {
+        localStorage.removeItem("LOG2CIA_DEV_BYPASS");
+      }
+
       await signInWithGoogle();
     } catch (err) {
       alert(`Erro na autenticação: ${err.message}`);
       setLoading(false);
     }
   };
-
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans relative overflow-hidden">
       {/* Background Decorativo */}

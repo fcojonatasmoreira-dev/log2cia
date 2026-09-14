@@ -87,10 +87,34 @@ export default function AppRoutes() {
     );
   }
 
-  const isMaster = profile?.role === "master";
+  // === IDENTIFICAÇÃO RIGOROSA DE PAPÉIS DE TESTE (LOCAL) ===
+  const userEmail = session.user.email?.toLowerCase();
+  const isLocalhost =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+  const isDevMode = import.meta.env.DEV && isLocalhost;
 
+  // 1. MASTER: Seu e-mail oficial OU role 'master' no banco
+  const isMaster =
+    userEmail === "jonatas.sillv@gmail.com" || profile?.role === "master";
+
+  // 2. ARMEIRO/P4 DE TESTE: O e-mail de testes assume role 'armeiro' em dev
+  const isArmeiroTeste =
+    isDevMode && userEmail === "fcojonatasmoreira@gmail.com";
+
+  // Determina o papel final do usuário ativo
+  const userRole = isMaster
+    ? "master"
+    : isArmeiroTeste
+      ? "armeiro"
+      : profile?.role || "user";
+  const isAprovado =
+    profile?.status_aprovacao === "aprovado" || isMaster || isArmeiroTeste;
+  // ============================================================
+
+  // Trava 1: Onboarding
   if (
-    !isMaster &&
+    !isAprovado &&
     (!profile || profile.status_aprovacao === "pendente_preenchimento")
   ) {
     return (
@@ -101,7 +125,8 @@ export default function AppRoutes() {
     );
   }
 
-  if (!isMaster && profile?.status_aprovacao === "aguardando_analise") {
+  // Trava 2: Análise Biométrica
+  if (!isAprovado && profile?.status_aprovacao === "aguardando_analise") {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
         <div className="bg-white max-w-md w-full p-6 rounded-2xl shadow-xl text-center space-y-4">
@@ -126,50 +151,21 @@ export default function AppRoutes() {
     );
   }
 
-  const dataExpiracao = profile?.prazo_expiracao
-    ? new Date(profile.prazo_expiracao)
-    : null;
-  const isExpirado = dataExpiracao && new Date() > dataExpiracao;
-
-  if (isExpirado && profile?.status_aprovacao === "pendente_completar") {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <div className="bg-white max-w-md w-full p-6 rounded-2xl shadow-xl text-center space-y-4">
-          <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
-            <span className="font-bold text-xl">⚠️</span>
-          </div>
-          <h2 className="text-xl font-bold text-slate-900">Acesso Expirado</h2>
-          <p className="text-sm text-slate-600">
-            O prazo de 7 dias para conclusão do seu credenciamento funcional
-            expirou. Entre em contato com o Master/P4 da unidade para reativar
-            seu convite.
-          </p>
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="text-xs text-slate-500 hover:text-slate-800 underline font-medium"
-          >
-            Sair do Sistema
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<AppLayout />}>
+        <Route path="/" element={<AppLayout role={userRole} />}>
           <Route index element={<Dashboard />} />
           <Route path="cautelas" element={<Cautelas />} />
           <Route path="inventario" element={<Inventario />} />
           <Route path="policiais" element={<Policiais />} />
 
-          {/* Rotas de Cautela */}
+          {/* Rotas Operacionais de Cautela */}
           <Route path="cautelas/nova" element={<NovaCautela />} />
           <Route path="minhas-cautelas" element={<MinhasCautelas />} />
           <Route path="devolucao" element={<Devolucao />} />
 
-          {/* ROTA AJUSTADA PARA BATER COM O APPLAYOUT */}
+          {/* PAINEL MASTER: Acesso EXCLUSIVO para Master */}
           <Route
             path="painel-master"
             element={isMaster ? <PainelMaster /> : <Navigate to="/" replace />}
