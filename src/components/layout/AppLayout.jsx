@@ -1,53 +1,41 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "../../lib/supabaseClient";
 
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [isMaster, setIsMaster] = useState(false);
+  const [usuario, setUsuario] = useState(null);
   const [sidebarAberta, setSidebarAberta] = useState(false);
 
-  useEffect(() => {
-    async function checarPerfilMaster() {
-      try {
-        const { data: sessionData, error: sessionError } =
-          await supabase.auth.getSession();
-
-        if (sessionError || !sessionData?.session?.user) {
-          return;
-        }
-
-        const userId = sessionData.session.user.id;
-
-        const { data: perfil, error: perfilError } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", userId)
-          .maybeSingle();
-
-        if (perfilError) {
-          console.error(
-            "Erro ao buscar perfil do usuário:",
-            perfilError.message,
-          );
-          return;
-        }
-
-        if (perfil) {
-          const roleVal = String(perfil.role || "").toLowerCase();
-          if (roleVal.includes("master") || roleVal.includes("p4")) {
-            setIsMaster(true);
-          }
-        }
-      } catch (err) {
-        console.error("Erro na checagem do perfil master:", err);
+  const carregarUsuario = () => {
+    try {
+      const usuarioSalvo = localStorage.getItem("log2cia_user");
+      if (usuarioSalvo) {
+        setUsuario(JSON.parse(usuarioSalvo));
       }
+    } catch (e) {
+      console.error("Erro ao ler dados do usuário:", e);
     }
+  };
 
-    checarPerfilMaster();
+  useEffect(() => {
+    carregarUsuario();
+
+    // Ouve atualizações de perfil em tempo real
+    window.addEventListener("storage", carregarUsuario);
+    window.addEventListener("usuarioAtualizado", carregarUsuario);
+
+    return () => {
+      window.removeEventListener("storage", carregarUsuario);
+      window.removeEventListener("usuarioAtualizado", carregarUsuario);
+    };
   }, []);
+
+  const handleSairDoSistema = () => {
+    localStorage.removeItem("log2cia_user");
+    window.location.href = "/";
+  };
 
   const getLinkClass = (path) => {
     const isActive = location.pathname === path;
@@ -60,12 +48,16 @@ export default function AppLayout() {
 
   const navegarPara = (path) => {
     navigate(path);
-    setSidebarAberta(false); // Fecha o menu no mobile ao clicar
+    setSidebarAberta(false);
   };
+
+  const userRole = String(usuario?.role || "").toLowerCase();
+  const isMaster = userRole === "master"; // Alterado para liberar apenas se for estritamente 'master'
+  const isP4OrMaster = userRole === "master" || userRole === "p4";
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-100">
-      {/* Barra Superior Mobile (Hambúrguer) */}
+      {/* Barra Superior Mobile */}
       <div className="md:hidden bg-slate-900 text-white flex items-center justify-between p-4 shadow-md z-30">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white text-xs">
@@ -81,7 +73,6 @@ export default function AppLayout() {
         </button>
       </div>
 
-      {/* Overlay para fechar o menu mobile ao tocar fora */}
       {sidebarAberta && (
         <div
           onClick={() => setSidebarAberta(false)}
@@ -89,7 +80,7 @@ export default function AppLayout() {
         />
       )}
 
-      {/* Sidebar Lateral (Responsiva) */}
+      {/* Sidebar Lateral */}
       <aside
         className={`
         fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-white flex flex-col justify-between p-4 transition-transform duration-300 ease-in-out md:static md:translate-x-0 shrink-0
@@ -97,7 +88,6 @@ export default function AppLayout() {
       `}
       >
         <div className="space-y-6">
-          {/* Header da Sidebar (Desktop) */}
           <div className="hidden md:flex items-center gap-3 px-2 py-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow">
               🛡️
@@ -107,11 +97,10 @@ export default function AppLayout() {
             </span>
           </div>
 
-          {/* Links do Menu */}
           <nav className="space-y-1 mt-4 md:mt-0">
             <button
-              onClick={() => navegarPara("/dashboard")}
-              className={`w-full ${getLinkClass("/dashboard")}`}
+              onClick={() => navegarPara("/")}
+              className={`w-full ${getLinkClass("/")}`}
             >
               <span>📊</span> Dashboard
             </button>
@@ -137,7 +126,7 @@ export default function AppLayout() {
               <span>👥</span> Policiais
             </button>
 
-            {/* PAINEL MASTER EXCLUSIVO */}
+            {/* PAINEL MASTER - APENAS PARA MASTER */}
             {isMaster && (
               <button
                 onClick={() => navegarPara("/painel-master")}
@@ -154,12 +143,16 @@ export default function AppLayout() {
         </div>
 
         {/* Rodapé da Sidebar */}
-        <div className="border-t border-slate-800 pt-3">
+        <div className="border-t border-slate-800 pt-3 space-y-1">
           <button
-            onClick={async () => {
-              await supabase.auth.signOut();
-              navigate("/login");
-            }}
+            onClick={() => navegarPara("/alterar-senha")}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg transition-all"
+          >
+            <span>🔑</span> Alterar Senha
+          </button>
+
+          <button
+            onClick={handleSairDoSistema}
             className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-all"
           >
             <span>🚪</span> Sair
@@ -167,8 +160,37 @@ export default function AppLayout() {
         </div>
       </aside>
 
-      {/* Conteúdo Principal */}
-      <main className="flex-1 p-4 md:p-6 overflow-y-auto">
+      {/* Conteúdo Principal com o Card Profile Original */}
+      <main className="flex-1 p-4 md:p-6 overflow-y-auto space-y-4">
+        {/* Card Profile Sincronizado */}
+        <div className="bg-slate-900 text-white rounded-2xl p-4 shadow flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-base font-bold shadow">
+              👤
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-white">
+                  {usuario?.nome_completo ||
+                    usuario?.nome ||
+                    "Policial / Efetivo"}
+                </h2>
+                <span className="bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                  {usuario?.role || "efetivo"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Posto: {usuario?.posto_graduacao || usuario?.posto || "N/A"} |
+                Mat: {usuario?.matricula || "N/A"}
+              </p>
+            </div>
+          </div>
+          <div className="bg-slate-800 border border-slate-700 text-slate-300 text-xs font-medium px-3 py-2 rounded-xl flex items-center gap-2 shadow-inner">
+            <span className="text-emerald-400">🛡️</span> Sessão Autenticada e
+            Auditada
+          </div>
+        </div>
+
         <Outlet />
       </main>
     </div>

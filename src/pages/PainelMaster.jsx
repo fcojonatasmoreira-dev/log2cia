@@ -14,8 +14,8 @@ import {
   getPerfisPendentes,
   getDocumentoUrl,
   homologarUsuario,
-  preCadastrarOperador,
 } from "../services/masterService";
+import { supabase } from "../lib/supabaseClient";
 
 export default function PainelMaster() {
   const [pendentes, setPendentes] = useState([]);
@@ -25,12 +25,15 @@ export default function PainelMaster() {
   const [loadingUrls, setLoadingUrls] = useState(false);
   const [roleSelecionada, setRoleSelecionada] = useState("armeiro");
 
-  // Estado da Modal de Pré-Cadastro
+  // Estado da Modal de Cadastro (Adaptado com as colunas corretas e os 4 cargos)
   const [isModalPreOpen, setIsModalPreOpen] = useState(false);
   const [preForm, setPreForm] = useState({
-    email: "",
     nome: "",
-    role: "armeiro",
+    matricula: "",
+    posto: "Soldado",
+    numeral: "",
+    role: "policial",
+    primeiro_acesso: true,
   });
   const [submittingPre, setSubmittingPre] = useState(false);
 
@@ -84,24 +87,53 @@ export default function PainelMaster() {
     e.preventDefault();
     setSubmittingPre(true);
     try {
-      await preCadastrarOperador({
-        email: preForm.email,
-        nome: preForm.nome,
-        roleAtribuida: preForm.role,
-      });
+      // 1. Verifica se a matrícula já existe
+      const { data: existente } = await supabase
+        .from("usuarios_sistema")
+        .select("id")
+        .eq("matricula", preForm.matricula)
+        .maybeSingle();
+
+      if (existente) {
+        alert("Já existe um operador cadastrado com essa matrícula.");
+        setSubmittingPre(false);
+        return;
+      }
+
+      // 2. Insere na tabela unificada de autenticação e efetivo
+      const { error } = await supabase.from("usuarios_sistema").insert([
+        {
+          nome: preForm.nome,
+          matricula: preForm.matricula,
+          posto_graduacao: preForm.posto,
+          numeral: preForm.numeral,
+          role: preForm.role,
+          primeiro_acesso: preForm.primeiro_acesso,
+        },
+      ]);
+
+      if (error) throw error;
+
       alert(
-        `Convite gerado! O operador ${preForm.nome} tem até 7 dias para entrar com a conta Google (${preForm.email}) e enviar a funcional e selfie.`,
+        `Policial ${preForm.nome} (${preForm.role.toUpperCase()}) cadastrado com sucesso! Acesso liberado.`,
       );
+
       setIsModalPreOpen(false);
-      setPreForm({ email: "", nome: "", role: "armeiro" });
+      setPreForm({
+        nome: "",
+        matricula: "",
+        posto: "Soldado",
+        numeral: "",
+        role: "policial",
+        primeiro_acesso: true,
+      });
       loadPendentes();
     } catch (err) {
-      alert(`Erro ao pré-cadastrar: ${err.message}`);
+      alert(`Erro ao cadastrar operador: ${err.message}`);
     } finally {
       setSubmittingPre(false);
     }
   };
-
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -115,7 +147,7 @@ export default function PainelMaster() {
               Painel de Homologação Master
             </h1>
             <p className="text-xs text-slate-400">
-              Análise biométrica e gestão de acessos do Log2CIA
+              Gestão de credenciamentos e cadastro direto de operadores.
             </p>
           </div>
         </div>
@@ -126,7 +158,7 @@ export default function PainelMaster() {
             className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-colors shadow-xs"
           >
             <UserPlus className="w-4 h-4" />
-            <span>Pré-Cadastrar Operador</span>
+            <span>Cadastrar Operador</span>
           </button>
 
           <button
@@ -299,12 +331,10 @@ export default function PainelMaster() {
                     onChange={(e) => setRoleSelecionada(e.target.value)}
                     className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 bg-white"
                   >
-                    <option value="armeiro">
-                      Armeiro / P4 (Acesso Operacional)
-                    </option>
-                    <option value="consulta">
-                      Consulta / Comando (Apenas Leitura)
-                    </option>
+                    <option value="policial">Policial</option>
+                    <option value="armeiro">Armeiro</option>
+                    <option value="p4">P4</option>
+                    <option value="master">Master</option>
                   </select>
                 </div>
 
@@ -330,38 +360,17 @@ export default function PainelMaster() {
         </div>
       </div>
 
-      {/* MODAL DE PRÉ-CADASTRO DE OPERADOR */}
+      {/* MODAL DE CADASTRO DIRETO DE OPERADOR */}
       {isModalPreOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 font-sans">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <h2 className="text-lg font-bold text-slate-900">
-              Pré-Cadastrar Operador (P4/Armeiro)
+            <h2 className="text-lg font-bold text-slate-900 border-b pb-2">
+              Cadastrar Novo Operador
             </h2>
-            <p className="text-xs text-slate-500">
-              O operador receberá o acesso pré-aprovado e terá{" "}
-              <strong>7 dias</strong> para logar via Google e completar o envio
-              da selfie e funcional.
-            </p>
             <form onSubmit={handlePreCadastroSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                  E-mail Google do Operador
-                </label>
-                <input
-                  type="email"
-                  required
-                  placeholder="operador@gmail.com"
-                  value={preForm.email}
-                  onChange={(e) =>
-                    setPreForm({ ...preForm, email: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                  Nome Completo / Referência
+                  Nome Completo / Guerra *
                 </label>
                 <input
                   type="text"
@@ -371,31 +380,104 @@ export default function PainelMaster() {
                   onChange={(e) =>
                     setPreForm({ ...preForm, nome: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                    Matrícula *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: 303726-1-1"
+                    value={preForm.matricula}
+                    onChange={(e) =>
+                      setPreForm({ ...preForm, matricula: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                    Posto / Graduação
+                  </label>
+                  <select
+                    value={preForm.posto}
+                    onChange={(e) =>
+                      setPreForm({ ...preForm, posto: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="Soldado">Soldado</option>
+                    <option value="Cabo">Cabo</option>
+                    <option value="Sargento">Sargento</option>
+                    <option value="Subtenente">Subtenente</option>
+                    <option value="Tenente">Tenente</option>
+                    <option value="Capitão">Capitão</option>
+                    <option value="Major">Major</option>
+                  </select>
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                  Perfil Operacional
+                  Senha / Numeral Padrão *
                 </label>
-                <select
-                  value={preForm.role}
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: 25009"
+                  value={preForm.numeral}
                   onChange={(e) =>
-                    setPreForm({ ...preForm, role: e.target.value })
+                    setPreForm({ ...preForm, numeral: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="armeiro">
-                    Armeiro / P4 (Acesso Operacional Completo)
-                  </option>
-                  <option value="consulta">
-                    Consulta / Comando (Apenas Leitura)
-                  </option>
-                </select>
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
               </div>
 
-              <div className="flex justify-end space-x-3 pt-4 border-t">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                    Perfil de Acesso
+                  </label>
+                  <select
+                    value={preForm.role}
+                    onChange={(e) =>
+                      setPreForm({ ...preForm, role: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="policial">Policial</option>
+                    <option value="armeiro">Armeiro</option>
+                    <option value="p4">P4</option>
+                    <option value="master">Master</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col justify-end pb-1.5">
+                  <label className="flex items-center space-x-2 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={preForm.primeiro_acesso}
+                      onChange={(e) =>
+                        setPreForm({
+                          ...preForm,
+                          primeiro_acesso: e.target.checked,
+                        })
+                      }
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span className="text-xs font-semibold text-slate-700 uppercase group-hover:text-blue-700 transition-colors">
+                      Forçar Troca de Senha
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4 border-t border-slate-200 mt-6">
                 <button
                   type="button"
                   onClick={() => setIsModalPreOpen(false)}
@@ -408,9 +490,7 @@ export default function PainelMaster() {
                   disabled={submittingPre}
                   className="px-4 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-md disabled:opacity-50"
                 >
-                  {submittingPre
-                    ? "Salvando..."
-                    : "Conceder Acesso (Prazo 7 Dias)"}
+                  {submittingPre ? "Salvando..." : "Finalizar Cadastro"}
                 </button>
               </div>
             </form>

@@ -8,7 +8,10 @@ export default function Cautelas() {
   const [cautelas, setCautelas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
-  const [userProfile, setUserProfile] = useState(null);
+
+  // Perfil unificado do usuário logado via localStorage ('log2cia_user')
+  const [userRole, setUserRole] = useState("policial");
+  const [userName, setUserName] = useState("Armeiro");
 
   // Modais de Ação e Visualização
   const [cautelaVisualizando, setCautelaVisualizando] = useState(null);
@@ -22,24 +25,29 @@ export default function Cautelas() {
   const [campoAlteracoes, setCampoAlteracoes] = useState("");
 
   useEffect(() => {
-    carregarPerfilEData();
+    carregarSessaoEData();
   }, []);
 
-  async function carregarPerfilEData() {
+  async function carregarSessaoEData() {
     setLoading(true);
     try {
+      // Lê os dados do usuário autenticado na sessão unificada
+      const usuarioSalvo = localStorage.getItem("log2cia_user");
+      if (usuarioSalvo) {
+        const dadosUser = JSON.parse(usuarioSalvo);
+        setUserRole(String(dadosUser?.role || "policial").toLowerCase());
+        setUserName(
+          dadosUser?.nome_guerra || dadosUser?.nome_completo || "Armeiro",
+        );
+      }
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (user) {
         setCurrentUser(user);
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("id, nome, role")
-          .eq("id", user.id)
-          .maybeSingle();
-        setUserProfile(profile);
       }
+
       await carregarCautelas();
     } catch (err) {
       console.error("Erro ao carregar dados:", err.message);
@@ -50,7 +58,6 @@ export default function Cautelas() {
 
   async function carregarCautelas() {
     try {
-      // 1. Busca pura das cautelas e dos policiais vinculados
       const { data, error } = await supabase
         .from("cautelas")
         .select(
@@ -89,6 +96,7 @@ export default function Cautelas() {
       console.error("Erro crítico ao carregar cautelas:", err.message);
     }
   }
+
   const handleIniciarDevolucaoFromModal = (cautela) => {
     setCautelaVisualizando(null);
     setCautelaDevolvendo(cautela);
@@ -154,6 +162,7 @@ export default function Cautelas() {
         .from("cautela_itens")
         .delete()
         .eq("cautela_id", cautela.id);
+
       const { error } = await supabase
         .from("cautelas")
         .delete()
@@ -205,7 +214,6 @@ export default function Cautelas() {
     };
   };
 
-  // BAIXAR COMPROVANTE BÉLICO DIRETO EM PDF (DOWNLOAD AUTOMÁTICO)
   const handleBaixarPDF = async (cautela, nomeArmeiro) => {
     const pol = cautela.policial || {};
     const item = cautela.cautela_itens?.[0] || {};
@@ -213,7 +221,6 @@ export default function Cautelas() {
     const infoRelatorio = parseRelatorio(cautela.alteracoes);
     const dataHoraEmissao = new Date().toLocaleString("pt-BR");
 
-    // Elemento HTML temporário para renderização do PDF
     const element = document.createElement("div");
     element.innerHTML = `
       <div style="font-family: Arial, sans-serif; padding: 20px; color: #0f172a; line-height: 1.5; background: #ffffff;">
@@ -266,7 +273,6 @@ export default function Cautelas() {
       </div>
     `;
 
-    // Opções de salvamento automático do PDF
     const opt = {
       margin: 10,
       filename: `Termo_Devolucao_${pol.nome_guerra || "Militar"}_${eq.num_serie || "Serie"}.pdf`,
@@ -276,31 +282,17 @@ export default function Cautelas() {
     };
 
     try {
-      // Importa dinamicamente e executa o download direto
       const html2pdf = (await import("html2pdf.js")).default;
       html2pdf().set(opt).from(element).save();
     } catch (err) {
       console.error("Erro ao gerar PDF:", err);
-      alert(
-        "Falha ao gerar PDF automaticamente. Certifique-se de ter executado 'npm install html2pdf.js'.",
-      );
+      alert("Falha ao gerar PDF automaticamente.");
     }
   };
 
-  // Permissões
-  const isDevLocal =
-    import.meta.env.DEV &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1");
-  const userEmail = currentUser?.email?.toLowerCase();
-
-  const isMaster =
-    userEmail === "jonatas.sillv@gmail.com" || userProfile?.role === "master";
-  const isArmeiro =
-    isMaster ||
-    userProfile?.role === "armeiro" ||
-    userProfile?.role === "p4" ||
-    (isDevLocal && userEmail === "fcojonatasmoreira@gmail.com");
+  // Verificações de permissão baseadas estritamente na sessão unificada
+  const isMaster = userRole === "master";
+  const isArmeiro = isMaster || userRole === "armeiro" || userRole === "p4";
 
   return (
     <div className="space-y-6 p-4">
@@ -436,18 +428,7 @@ export default function Cautelas() {
         (() => {
           const isAtiva = cautelaVisualizando.status === "ativa";
           const infoRelatorio = parseRelatorio(cautelaVisualizando.alteracoes);
-
-          const nomeArmeiro =
-            cautelaVisualizando.armeiro?.nome ||
-            userProfile?.nome ||
-            (userEmail === "fcojonatasmoreira@gmail.com"
-              ? "Soldado Jonatas (Armeiro)"
-              : null) ||
-            (userEmail === "jonatas.sillv@gmail.com"
-              ? "Albert (Master)"
-              : null) ||
-            cautelaVisualizando.armeiro?.email ||
-            "Armeiro de Plantão";
+          const nomeArmeiro = userName;
 
           return (
             <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50 font-sans">
