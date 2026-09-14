@@ -7,6 +7,7 @@ export default function AppLayout() {
   const location = useLocation();
 
   const [isMaster, setIsMaster] = useState(false);
+  const [sidebarAberta, setSidebarAberta] = useState(false);
 
   useEffect(() => {
     async function checarPerfilMaster() {
@@ -20,7 +21,6 @@ export default function AppLayout() {
 
         const userId = sessionData.session.user.id;
 
-        // Consulta filtrada estritamente na coluna existente 'role'
         const { data: perfil, error: perfilError } = await supabase
           .from("profiles")
           .select("role")
@@ -58,13 +58,47 @@ export default function AppLayout() {
     }`;
   };
 
+  const navegarPara = (path) => {
+    navigate(path);
+    setSidebarAberta(false); // Fecha o menu no mobile ao clicar
+  };
+
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar Lateral */}
-      <aside className="w-64 bg-slate-900 text-white flex flex-col justify-between p-4 shrink-0">
+    <div className="flex flex-col md:flex-row min-h-screen bg-gray-100">
+      {/* Barra Superior Mobile (Hambúrguer) */}
+      <div className="md:hidden bg-slate-900 text-white flex items-center justify-between p-4 shadow-md z-30">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white text-xs">
+            🛡️
+          </div>
+          <span className="font-bold text-base tracking-wide">Log2CIA</span>
+        </div>
+        <button
+          onClick={() => setSidebarAberta(!sidebarAberta)}
+          className="p-2 text-slate-300 hover:text-white focus:outline-none"
+        >
+          {sidebarAberta ? "✕ Fechar" : "☰ Menu"}
+        </button>
+      </div>
+
+      {/* Overlay para fechar o menu mobile ao tocar fora */}
+      {sidebarAberta && (
+        <div
+          onClick={() => setSidebarAberta(false)}
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+        />
+      )}
+
+      {/* Sidebar Lateral (Responsiva) */}
+      <aside
+        className={`
+        fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-white flex flex-col justify-between p-4 transition-transform duration-300 ease-in-out md:static md:translate-x-0 shrink-0
+        ${sidebarAberta ? "translate-x-0" : "-translate-x-full"}
+      `}
+      >
         <div className="space-y-6">
-          {/* Header da Sidebar */}
-          <div className="flex items-center gap-3 px-2 py-2">
+          {/* Header da Sidebar (Desktop) */}
+          <div className="hidden md:flex items-center gap-3 px-2 py-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow">
               🛡️
             </div>
@@ -74,30 +108,30 @@ export default function AppLayout() {
           </div>
 
           {/* Links do Menu */}
-          <nav className="space-y-1">
+          <nav className="space-y-1 mt-4 md:mt-0">
             <button
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navegarPara("/dashboard")}
               className={`w-full ${getLinkClass("/dashboard")}`}
             >
               <span>📊</span> Dashboard
             </button>
 
             <button
-              onClick={() => navigate("/cautelas")}
+              onClick={() => navegarPara("/cautelas")}
               className={`w-full ${getLinkClass("/cautelas")}`}
             >
               <span>🔄</span> Cautelas
             </button>
 
             <button
-              onClick={() => navigate("/inventario")}
+              onClick={() => navegarPara("/inventario")}
               className={`w-full ${getLinkClass("/inventario")}`}
             >
               <span>📦</span> Acervo / Inventário
             </button>
 
             <button
-              onClick={() => navigate("/policiais")}
+              onClick={() => navegarPara("/policiais")}
               className={`w-full ${getLinkClass("/policiais")}`}
             >
               <span>👥</span> Policiais
@@ -106,7 +140,7 @@ export default function AppLayout() {
             {/* PAINEL MASTER EXCLUSIVO */}
             {isMaster && (
               <button
-                onClick={() => navigate("/painel-master")}
+                onClick={() => navegarPara("/painel-master")}
                 className={`w-full mt-4 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all border border-amber-500/30 ${
                   location.pathname === "/painel-master"
                     ? "bg-amber-500 text-slate-950 shadow"
@@ -134,7 +168,7 @@ export default function AppLayout() {
       </aside>
 
       {/* Conteúdo Principal */}
-      <main className="flex-1 p-6 overflow-y-auto">
+      <main className="flex-1 p-4 md:p-6 overflow-y-auto">
         <Outlet />
       </main>
     </div>
