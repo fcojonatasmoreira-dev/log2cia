@@ -48,22 +48,32 @@ export default function AlterarSenhaObrigatoria() {
     setErro("");
 
     try {
-      const { error } = await supabase
+      // Atualiza a senha no banco e define primeiro_acesso como false
+      const { data, error } = await supabase
         .from("policiais")
         .update({
-          senha: novaSenha, // Salva na coluna dedicada de senha
+          senha: String(novaSenha).trim(),
           primeiro_acesso: false,
         })
-        .eq("id", usuarioLogado.id);
+        .eq("id", String(usuarioLogado.id).trim())
+        .select();
 
       if (error) throw error;
 
-      usuarioLogado.senha = novaSenha;
-      usuarioLogado.primeiro_acesso = false;
-      localStorage.setItem("log2cia_user", JSON.stringify(usuarioLogado));
+      console.log("Senha atualizada com sucesso no banco:", data);
 
-      navigate("/dashboard");
+      // Atualiza a sessão no navegador de forma segura (sem salvar a senha no localStorage)
+      const sessaoSegura = {
+        ...usuarioLogado,
+        primeiro_acesso: false,
+      };
+
+      localStorage.setItem("log2cia_user", JSON.stringify(sessaoSegura));
+
+      // Redireciona limpo para o dashboard
+      window.location.href = "/dashboard";
     } catch (err) {
+      console.error("Erro no update da senha:", err);
       setErro("Erro ao atualizar senha: " + err.message);
     } finally {
       setSalvando(false);
@@ -171,10 +181,10 @@ export default function AlterarSenhaObrigatoria() {
 
           <button
             type="submit"
-            disabled={salvando || !requisitos.isValid}
+            disabled={salvando}
             className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow transition-all disabled:opacity-50"
           >
-            {salvando ? "Salvando..." : "Salvar e Acessar Sistema"}
+            {salvando ? "A salvar..." : "Salvar e Acessar Sistema"}
           </button>
         </form>
       </div>

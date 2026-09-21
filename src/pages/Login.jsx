@@ -41,16 +41,25 @@ export default function Login() {
         throw new Error("Senha ou numeral incorreto.");
       }
 
-      // Salva o perfil completo na sessão do navegador
-      localStorage.setItem("log2cia_user", JSON.stringify(perfil));
+      // Cria um objeto de sessão limpo e seguro (sem expor a senha no navegador)
+      const sessaoSegura = {
+        id: perfil.id,
+        matricula: perfil.matricula,
+        nome_completo: perfil.nome_completo,
+        nome_guerra: perfil.nome_guerra,
+        posto_graduacao: perfil.posto_graduacao,
+        role: perfil.role,
+        primeiro_acesso: perfil.primeiro_acesso,
+      };
 
-      // Se for primeiro acesso, redireciona para a tela de alteração de senha obrigatória
-      if (perfil.primeiro_acesso === true) {
-        navigate("/alterar-senha");
-      } else {
-        navigate("/dashboard");
-        window.location.reload();
-      }
+      // Salva apenas os dados seguros na sessão do navegador
+      localStorage.setItem("log2cia_user", JSON.stringify(sessaoSegura));
+
+      console.log("Login bem-sucedido. Redirecionando com segurança...");
+
+      // Força a recarga para a rota adequada de acordo com o status de primeiro acesso
+      window.location.href =
+        perfil.primeiro_acesso === true ? "/alterar-senha" : "/dashboard";
     } catch (err) {
       console.error("Erro no login:", err.message);
       setErro(err.message);

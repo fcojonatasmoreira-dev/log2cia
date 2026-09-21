@@ -10,6 +10,7 @@ import {
   Eye,
   Shield,
   Package,
+  KeyRound,
 } from "lucide-react";
 import {
   getPoliciais,
@@ -48,7 +49,7 @@ export default function Policiais() {
     nome_completo: "",
     nome_guerra: "",
     matricula: "",
-    posto_graduacao: "1º SARGENTO",
+    posto_graduacao: "SOLDADO",
     numeral: "",
     role: "policial",
     unidade: "2ª CIA / 15º BPM",
@@ -92,7 +93,7 @@ export default function Policiais() {
       nome_completo: "",
       nome_guerra: "",
       matricula: "",
-      posto_graduacao: "1º SARGENTO",
+      posto_graduacao: "SOLDADO",
       numeral: "",
       role: "policial",
       unidade: "2ª CIA / 15º BPM",
@@ -102,12 +103,22 @@ export default function Policiais() {
   };
 
   const handleOpenModalEdit = (p) => {
+    // Trava de segurança extra no clique: P4 não pode editar Master ou P4
+    if (
+      userRole === "p4" &&
+      (String(p.role).toLowerCase() === "master" ||
+        String(p.role).toLowerCase() === "p4")
+    ) {
+      alert("Acesso negado: Usuários P4 não podem editar perfis Master ou P4.");
+      return;
+    }
+
     setEditingId(p.id);
     setFormData({
       nome_completo: p.nome_completo || "",
       nome_guerra: p.nome_guerra || "",
       matricula: p.matricula || "",
-      posto_graduacao: p.posto_graduacao || "1º SARGENTO",
+      posto_graduacao: p.posto_graduacao || "SOLDADO",
       numeral: p.numeral || "",
       role: p.role || "policial",
       unidade: p.unidade || "2ª CIA / 15º BPM",
@@ -116,20 +127,74 @@ export default function Policiais() {
     setIsModalOpen(true);
   };
 
-  // Abrir Modal de Visualização e buscar cautelas ativas do policial
+  // Função exclusiva Master para Resetar Senha do militar
+  const handleResetarSenha = async () => {
+    if (!editingId) return;
+
+    if (
+      !confirm(
+        "Confirma o reset da senha deste militar? A senha voltará a ser o numeral e ele precisará redefini-la no próximo acesso.",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("policiais")
+        .update({
+          senha: null,
+          primeiro_acesso: true,
+        })
+        .eq("id", editingId);
+
+      if (error) throw error;
+
+      alert(
+        "Senha resetada com sucesso! O militar agora está em regime de primeiro acesso.",
+      );
+      setIsModalOpen(false);
+      loadPoliciais();
+    } catch (err) {
+      console.error("Erro ao resetar senha:", err);
+      alert("Erro ao resetar senha: " + err.message);
+    }
+  };
+
+  // Abrir Modal de Visualização e buscar cautelas ativas do policial cruzando com cautela_itens
   const handleOpenModalView = async (p) => {
     setPolicialSelecionado(p);
     setIsViewModalOpen(true);
     setLoadingCautelas(true);
     try {
-      const { data, error } = await supabase
+      const { data: cautelasData, error: cautelasError } = await supabase
         .from("cautelas")
-        .select("*, equipamentos(*)")
-        .eq("policial_id", p.id)
-        .eq("status", "ATIVA");
+        .select("*")
+        .eq("policial_id", p.id);
 
-      if (error) throw error;
-      setCautelasAtivas(data || []);
+      if (cautelasError) throw cautelasError;
+
+      const ativas = (cautelasData || []).filter(
+        (c) =>
+          String(c.status).toLowerCase() === "ativa" ||
+          String(c.status).toLowerCase() === "em_andamento",
+      );
+
+      const cautelasComEquipamentos = await Promise.all(
+        ativas.map(async (cautela) => {
+          const { data: itensData } = await supabase
+            .from("cautela_itens")
+            .select("*, equipamentos(*)")
+            .eq("cautela_id", cautela.id);
+
+          return {
+            ...cautela,
+            equipamentos: itensData?.[0]?.equipamentos || null,
+          };
+        }),
+      );
+
+      setCautelasAtivas(cautelasComEquipamentos);
     } catch (err) {
       console.error("Erro ao carregar cautelas do policial:", err);
       setCautelasAtivas([]);
@@ -155,6 +220,29 @@ export default function Policiais() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Trava de segurança estrita de RBAC para P4 ao submeter o formulário
+    if (userRole === "p4") {
+      if (editingId) {
+        const policialAlvo = policiais.find((p) => p.id === editingId);
+        if (
+          policialAlvo &&
+          ["master", "p4"].includes(String(policialAlvo.role).toLowerCase())
+        ) {
+          alert(
+            "Acesso negado: Usuários P4 não possuem privilégios para alterar dados de perfis Master ou P4.",
+          );
+          return;
+        }
+      }
+      if (formData.role !== "policial") {
+        alert(
+          "Acesso negado: Usuários P4 só podem definir o perfil como policial comum.",
+        );
+        return;
+      }
+    }
+
     try {
       if (editingId) {
         await updatePolicial(editingId, formData);
@@ -176,7 +264,9 @@ export default function Policiais() {
           }
         }
       } else {
-        await createPolicial(formData);
+        const dadosParaSalvar =
+          userRole === "p4" ? { ...formData, role: "policial" } : formData;
+        await createPolicial(dadosParaSalvar);
       }
       setIsModalOpen(false);
       loadPoliciais();
@@ -277,78 +367,86 @@ export default function Policiais() {
                     </td>
                   </tr>
                 ) : (
-                  filteredPoliciais.map((p) => (
-                    <tr
-                      key={p.id}
-                      className="hover:bg-slate-50/80 transition-colors"
-                    >
-                      <td className="px-6 py-4">
-                        <span className="font-semibold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md text-xs border border-slate-200">
-                          {p.posto_graduacao}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 font-bold text-slate-900">
-                        {p.nome_guerra}
-                      </td>
-                      <td className="px-6 py-4 font-mono text-slate-600">
-                        {p.matricula || "N/I"}
-                      </td>
-                      <td className="px-6 py-4 text-slate-800">
-                        {p.nome_completo}
-                      </td>
-                      <td className="px-6 py-4 font-mono text-slate-600">
-                        {p.numeral || "—"}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-blue-200">
-                          {p.role || "policial"}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                            p.status === "EM ATIVIDADE"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-amber-100 text-amber-800"
-                          }`}
-                        >
-                          {p.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right space-x-1">
-                        {/* Botão Visualizar (Disponível para todos) */}
-                        <button
-                          onClick={() => handleOpenModalView(p)}
-                          className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors inline-flex"
-                          title="Visualizar detalhes e acautelamentos"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
+                  filteredPoliciais.map((p) => {
+                    const roleAlvo = String(p.role || "policial").toLowerCase();
+                    const p4PodeEditar = !(
+                      userRole === "p4" &&
+                      (roleAlvo === "master" || roleAlvo === "p4")
+                    );
 
-                        {/* Botão Editar (Aparece para P4 e Master) */}
-                        {isP4OrMaster && (
-                          <button
-                            onClick={() => handleOpenModalEdit(p)}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
-                            title="Editar cadastro"
+                    return (
+                      <tr
+                        key={p.id}
+                        className="hover:bg-slate-50/80 transition-colors"
+                      >
+                        <td className="px-6 py-4">
+                          <span className="font-semibold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md text-xs border border-slate-200">
+                            {p.posto_graduacao}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 font-bold text-slate-900">
+                          {p.nome_guerra}
+                        </td>
+                        <td className="px-6 py-4 font-mono text-slate-600">
+                          {p.matricula || "N/I"}
+                        </td>
+                        <td className="px-6 py-4 text-slate-800">
+                          {p.nome_completo}
+                        </td>
+                        <td className="px-6 py-4 font-mono text-slate-600">
+                          {p.numeral || "—"}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-blue-200">
+                            {p.role || "policial"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                              p.status === "EM ATIVIDADE"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
                           >
-                            <Edit3 className="w-4 h-4" />
+                            {p.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right space-x-1">
+                          {/* Botão Visualizar (Disponível para todos) */}
+                          <button
+                            onClick={() => handleOpenModalView(p)}
+                            className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors inline-flex"
+                            title="Visualizar detalhes e acautelamentos"
+                          >
+                            <Eye className="w-4 h-4" />
                           </button>
-                        )}
 
-                        {/* Botão Excluir (Aparece SOMENTE para Master) */}
-                        {isMaster && (
-                          <button
-                            onClick={() => handleDelete(p.id, p.nome_guerra)}
-                            className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
-                            title="Excluir policial"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                          {/* Botão Editar (Bloqueado para P4 editar perfis Master ou P4) */}
+                          {isP4OrMaster && p4PodeEditar && (
+                            <button
+                              onClick={() => handleOpenModalEdit(p)}
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
+                              title="Editar cadastro"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          {/* Botão Excluir (Aparece SOMENTE para Master) */}
+                          {isMaster && (
+                            <button
+                              onClick={() => handleDelete(p.id, p.nome_guerra)}
+                              className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex"
+                              title="Excluir policial"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -433,12 +531,17 @@ export default function Policiais() {
                       <div>
                         <p className="font-bold text-slate-900">
                           {cautela.equipamentos?.tipo ||
+                            cautela.equipamentos?.nome ||
                             "Armamento / Equipamento"}{" "}
-                          — {cautela.equipamentos?.modelo || ""}
+                          —{" "}
+                          {cautela.equipamentos?.modelo ||
+                            cautela.equipamentos?.modelo_descricao ||
+                            ""}
                         </p>
                         <p className="text-slate-500 font-mono mt-0.5">
                           Série/Tombo:{" "}
                           {cautela.equipamentos?.numero_serie ||
+                            cautela.equipamentos?.num_serie ||
                             cautela.equipamentos?.tombo ||
                             "N/I"}
                         </p>
@@ -469,9 +572,26 @@ export default function Policiais() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
-            <h2 className="text-xl font-bold text-slate-900">
-              {editingId ? "Editar Policial" : "Cadastrar Policial / Servidor"}
-            </h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-slate-900">
+                {editingId
+                  ? "Editar Policial"
+                  : "Cadastrar Policial / Servidor"}
+              </h2>
+              {/* Botão exclusivo Master para Resetar Senha */}
+              {editingId && isMaster && (
+                <button
+                  type="button"
+                  onClick={handleResetarSenha}
+                  className="flex items-center space-x-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-lg transition-colors shadow-sm"
+                  title="Reseta a senha para o numeral e força primeiro acesso"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  <span>Resetar Senha</span>
+                </button>
+              )}
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">

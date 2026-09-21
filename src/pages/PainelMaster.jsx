@@ -25,14 +25,17 @@ export default function PainelMaster() {
   const [loadingUrls, setLoadingUrls] = useState(false);
   const [roleSelecionada, setRoleSelecionada] = useState("armeiro");
 
-  // Estado da Modal de Cadastro (Adaptado com as colunas corretas e os 4 cargos)
+  // Estado da Modal de Cadastro (Adaptado para a tabela unificada 'policiais' e cargos completos)
   const [isModalPreOpen, setIsModalPreOpen] = useState(false);
   const [preForm, setPreForm] = useState({
-    nome: "",
+    nome_completo: "",
+    nome_guerra: "",
     matricula: "",
-    posto: "Soldado",
+    posto_graduacao: "SOLDADO",
     numeral: "",
     role: "policial",
+    unidade: "2ª CIA / 15º BPM",
+    status: "EM ATIVIDADE",
     primeiro_acesso: true,
   });
   const [submittingPre, setSubmittingPre] = useState(false);
@@ -87,27 +90,30 @@ export default function PainelMaster() {
     e.preventDefault();
     setSubmittingPre(true);
     try {
-      // 1. Verifica se a matrícula já existe
+      // 1. Verifica se a matrícula já existe na tabela unificada "policiais"
       const { data: existente } = await supabase
-        .from("usuarios_sistema")
+        .from("policiais")
         .select("id")
-        .eq("matricula", preForm.matricula)
+        .eq("matricula", preForm.matricula.trim())
         .maybeSingle();
 
       if (existente) {
-        alert("Já existe um operador cadastrado com essa matrícula.");
+        alert("Já existe um policial cadastrado com essa matrícula.");
         setSubmittingPre(false);
         return;
       }
 
-      // 2. Insere na tabela unificada de autenticação e efetivo
-      const { error } = await supabase.from("usuarios_sistema").insert([
+      // 2. Insere na tabela unificada "policiais"
+      const { error } = await supabase.from("policiais").insert([
         {
-          nome: preForm.nome,
-          matricula: preForm.matricula,
-          posto_graduacao: preForm.posto,
-          numeral: preForm.numeral,
+          nome_completo: preForm.nome_completo,
+          nome_guerra: preForm.nome_guerra || preForm.nome_completo,
+          matricula: preForm.matricula.trim(),
+          posto_graduacao: preForm.posto_graduacao,
+          numeral: preForm.numeral.trim(),
           role: preForm.role,
+          unidade: preForm.unidade,
+          status: preForm.status,
           primeiro_acesso: preForm.primeiro_acesso,
         },
       ]);
@@ -115,16 +121,19 @@ export default function PainelMaster() {
       if (error) throw error;
 
       alert(
-        `Policial ${preForm.nome} (${preForm.role.toUpperCase()}) cadastrado com sucesso! Acesso liberado.`,
+        `Operador ${preForm.nome_completo} (${preForm.role.toUpperCase()}) cadastrado com sucesso!`,
       );
 
       setIsModalPreOpen(false);
       setPreForm({
-        nome: "",
+        nome_completo: "",
+        nome_guerra: "",
         matricula: "",
-        posto: "Soldado",
+        posto_graduacao: "SOLDADO",
         numeral: "",
         role: "policial",
+        unidade: "2ª CIA / 15º BPM",
+        status: "EM ATIVIDADE",
         primeiro_acesso: true,
       });
       loadPendentes();
@@ -134,6 +143,7 @@ export default function PainelMaster() {
       setSubmittingPre(false);
     }
   };
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -147,7 +157,8 @@ export default function PainelMaster() {
               Painel de Homologação Master
             </h1>
             <p className="text-xs text-slate-400">
-              Gestão de credenciamentos e cadastro direto de operadores.
+              Gestão de credenciamentos e cadastro direto de operadores e
+              efetivo.
             </p>
           </div>
         </div>
@@ -360,25 +371,44 @@ export default function PainelMaster() {
         </div>
       </div>
 
-      {/* MODAL DE CADASTRO DIRETO DE OPERADOR */}
+      {/* MODAL DE CADASTRO DIRETO DE OPERADOR (PAINEL MASTER) */}
       {isModalPreOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 font-sans">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
             <h2 className="text-lg font-bold text-slate-900 border-b pb-2">
-              Cadastrar Novo Operador
+              Cadastrar Novo Operador / Efetivo
             </h2>
-            <form onSubmit={handlePreCadastroSubmit} className="space-y-4">
+            <form
+              onSubmit={handlePreCadastroSubmit}
+              className="space-y-4 text-xs"
+            >
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                  Nome Completo / Guerra *
+                <label className="block font-semibold text-slate-700 uppercase mb-1">
+                  Nome Completo *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Sgt Silva"
-                  value={preForm.nome}
+                  placeholder="Ex: Fulano de Tal"
+                  value={preForm.nome_completo}
                   onChange={(e) =>
-                    setPreForm({ ...preForm, nome: e.target.value })
+                    setPreForm({ ...preForm, nome_completo: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 uppercase mb-1">
+                  Nome de Guerra *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Silva"
+                  value={preForm.nome_guerra}
+                  onChange={(e) =>
+                    setPreForm({ ...preForm, nome_guerra: e.target.value })
                   }
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 />
@@ -386,62 +416,68 @@ export default function PainelMaster() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Matrícula *
+                  <label className="block font-semibold text-slate-700 uppercase mb-1">
+                    Matrícula / RE *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="Ex: 303726-1-1"
+                    placeholder="Ex: 30012345"
                     value={preForm.matricula}
                     onChange={(e) =>
                       setPreForm({ ...preForm, matricula: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Posto / Graduação
+                  <label className="block font-semibold text-slate-700 uppercase mb-1">
+                    Posto / Graduação *
                   </label>
                   <select
-                    value={preForm.posto}
+                    value={preForm.posto_graduacao}
                     onChange={(e) =>
-                      setPreForm({ ...preForm, posto: e.target.value })
+                      setPreForm({
+                        ...preForm,
+                        posto_graduacao: e.target.value,
+                      })
                     }
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                   >
-                    <option value="Soldado">Soldado</option>
-                    <option value="Cabo">Cabo</option>
-                    <option value="Sargento">Sargento</option>
-                    <option value="Subtenente">Subtenente</option>
-                    <option value="Tenente">Tenente</option>
-                    <option value="Capitão">Capitão</option>
-                    <option value="Major">Major</option>
+                    <option value="SOLDADO">SOLDADO</option>
+                    <option value="CABO">CABO</option>
+                    <option value="3º SARGENTO">3º SARGENTO</option>
+                    <option value="2º SARGENTO">2º SARGENTO</option>
+                    <option value="1º SARGENTO">1º SARGENTO</option>
+                    <option value="SUBTENENTE">SUBTENENTE</option>
+                    <option value="2º TENENTE">2º TENENTE</option>
+                    <option value="1º TENENTE">1º TENENTE</option>
+                    <option value="CAPITÃO">CAPITÃO</option>
+                    <option value="MAJOR">MAJOR</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                  Senha / Numeral Padrão *
+                <label className="block font-semibold text-slate-700 uppercase mb-1">
+                  Numeral (Senha Provisória do 1º Acesso) *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: 25009"
+                  placeholder="Ex: 31929"
                   value={preForm.numeral}
                   onChange={(e) =>
                     setPreForm({ ...preForm, numeral: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Perfil de Acesso
+                  <label className="block font-semibold text-slate-700 uppercase mb-1">
+                    Perfil de Acesso (Role) *
                   </label>
                   <select
                     value={preForm.role}
@@ -470,7 +506,7 @@ export default function PainelMaster() {
                       }
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
                     />
-                    <span className="text-xs font-semibold text-slate-700 uppercase group-hover:text-blue-700 transition-colors">
+                    <span className="font-semibold text-slate-700 uppercase group-hover:text-blue-700 transition-colors">
                       Forçar Troca de Senha
                     </span>
                   </label>
@@ -481,14 +517,14 @@ export default function PainelMaster() {
                 <button
                   type="button"
                   onClick={() => setIsModalPreOpen(false)}
-                  className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors font-medium"
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors font-medium"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={submittingPre}
-                  className="px-4 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-md disabled:opacity-50"
+                  className="px-4 py-2 font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-md disabled:opacity-50"
                 >
                   {submittingPre ? "Salvando..." : "Finalizar Cadastro"}
                 </button>
