@@ -19,6 +19,7 @@ export default function ModalDetalhesArma({
   const [podeEditar, setPodeEditar] = useState(false);
   const [modoEdicao, setModoEdicao] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
   const [mensagem, setMensagem] = useState(null);
   const [mostrarQrCodeModal, setMostrarQrCodeModal] = useState(false);
 
@@ -53,7 +54,6 @@ export default function ModalDetalhesArma({
   const [arquivoNumeracao, setArquivoNumeracao] = useState(null);
 
   useEffect(() => {
-    // Determina se o usuário pode editar com base na prop userRole ou checando o localStorage unificado
     let cargo = userRole;
     if (!cargo) {
       try {
@@ -68,7 +68,6 @@ export default function ModalDetalhesArma({
     }
 
     const nivel = String(cargo || "").toLowerCase();
-    // Apenas P4 ou Master têm permissão para editar os dados do armamento
     if (nivel === "p4" || nivel === "master") {
       setPodeEditar(true);
     } else {
@@ -99,7 +98,7 @@ export default function ModalDetalhesArma({
 
   const handleSalvarEdicao = async () => {
     if (!podeEditar) {
-      alert("Acesso negado: Apenas P4 ou Master podem editar armamentos.");
+      alert("Acesso negado: Apenas P4 ou Master podem editar equipamentos.");
       return;
     }
 
@@ -157,6 +156,39 @@ export default function ModalDetalhesArma({
     }
   };
 
+  const handleExcluirArmamento = async () => {
+    if (!podeEditar) {
+      alert("Acesso negado: Apenas P4 ou Master podem excluir equipamentos.");
+      return;
+    }
+
+    if (
+      !confirm(
+        `Confirma a exclusão permanentemente deste equipamento (${modelo} - Série: ${numSerie})? Esta ação não pode ser desfeita.`,
+      )
+    ) {
+      return;
+    }
+
+    setExcluindo(true);
+    try {
+      const { error } = await supabase
+        .from("equipamentos")
+        .delete()
+        .eq("id", arma.id);
+
+      if (error) throw error;
+
+      alert("Equipamento excluído com sucesso!");
+      if (onUpdateSuccess) onUpdateSuccess();
+      onClose();
+    } catch (err) {
+      alert("Erro ao excluir equipamento: " + err.message);
+    } finally {
+      setExcluindo(false);
+    }
+  };
+
   const handleImprimir = () => {
     const conteudoEtiqueta = printRef.current.innerHTML;
     const janela = window.open("", "", "width=400,height=450");
@@ -186,9 +218,9 @@ export default function ModalDetalhesArma({
         <div className="flex justify-between items-center border-b pb-2">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold text-gray-800">
-              Ficha do Armamento / Equipamento
+              Ficha do Equipamento / Armamento
             </h2>
-            {/* O botão Editar só aparece se podeEditar for true (P4 ou Master) */}
+            {/* O botão Editar aparece se podeEditar for true (P4 ou Master) */}
             {podeEditar && !modoEdicao && (
               <button
                 type="button"
@@ -390,7 +422,7 @@ export default function ModalDetalhesArma({
           </div>
         </div>
 
-        {/* Seção de Fotos (Layout Compacto) */}
+        {/* Seção de Fotos */}
         {modoEdicao ? (
           <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 p-2.5 rounded-lg border">
             <div>
@@ -488,44 +520,61 @@ export default function ModalDetalhesArma({
           )}
         </div>
 
-        {/* Ações */}
-        <div className="flex gap-2 pt-2 border-t">
-          {modoEdicao ? (
-            <>
-              <button
-                type="button"
-                disabled={salvando}
-                onClick={() => setModoEdicao(false)}
-                className="w-1/3 py-2 bg-gray-200 text-gray-700 font-bold text-xs rounded-lg hover:bg-gray-300"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={salvando}
-                onClick={handleSalvarEdicao}
-                className="w-2/3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow disabled:opacity-50"
-              >
-                {salvando ? "Salvando..." : "Salvar Alterações"}
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-1/3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-xs rounded-lg"
-              >
-                Fechar
-              </button>
-              <button
-                type="button"
-                onClick={handleImprimir}
-                className="w-2/3 py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-lg shadow flex items-center justify-center gap-2"
-              >
-                <span>🖨️ Imprimir Etiqueta</span>
-              </button>
-            </>
+        {/* Ações e Botão Excluir (Disponível para P4 e Master) */}
+        <div className="flex flex-col gap-2 pt-2 border-t">
+          <div className="flex gap-2">
+            {modoEdicao ? (
+              <>
+                <button
+                  type="button"
+                  disabled={salvando}
+                  onClick={() => setModoEdicao(false)}
+                  className="w-1/3 py-2 bg-gray-200 text-gray-700 font-bold text-xs rounded-lg hover:bg-gray-300"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={salvando}
+                  onClick={handleSalvarEdicao}
+                  className="w-2/3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow disabled:opacity-50"
+                >
+                  {salvando ? "Salvando..." : "Salvar Alterações"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-1/3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-xs rounded-lg"
+                >
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleImprimir}
+                  className="w-2/3 py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-lg shadow flex items-center justify-center gap-2"
+                >
+                  <span>🖨️ Imprimir Etiqueta</span>
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Botão de Excluir visível para P4 e Master */}
+          {podeEditar && !modoEdicao && (
+            <button
+              type="button"
+              disabled={excluindo}
+              onClick={handleExcluirArmamento}
+              className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-lg border border-rose-200 transition-all flex items-center justify-center gap-1.5"
+            >
+              <span>
+                🗑️{" "}
+                {excluindo ? "Excluindo..." : "Excluir Equipamento do Acervo"}
+              </span>
+            </button>
           )}
         </div>
       </div>

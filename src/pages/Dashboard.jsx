@@ -33,18 +33,31 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    loadMetrics();
     loadUserData();
+    // Só carrega métricas se não for policial comum
+    const usuarioSalvo = localStorage.getItem("log2cia_user");
+    if (usuarioSalvo) {
+      const dados = JSON.parse(usuarioSalvo);
+      if (String(dados?.role || "").toLowerCase() !== "policial") {
+        loadMetrics();
+      } else {
+        setLoadingMetrics(false);
+      }
+    }
   }, []);
 
   const handleAtualizarTudo = () => {
-    loadMetrics();
     loadUserData();
+    const userRole = String(usuario?.role || "").toLowerCase();
+    if (userRole !== "policial") {
+      loadMetrics();
+    }
   };
 
-  // Identifica se o usuário logado é armeiro
+  // Identifica o perfil do usuário logado
   const userRole = String(usuario?.role || "").toLowerCase();
   const isArmeiro = userRole === "armeiro";
+  const isPolicialComum = userRole === "policial";
 
   return (
     <div className="space-y-6">
@@ -52,10 +65,14 @@ export default function Dashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
-            Painel Geral — Log2CIA
+            {isPolicialComum
+              ? "Painel de Avisos — Log2CIA"
+              : "Painel Geral — Log2CIA"}
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Status operacional e controle do efetivo em tempo real.{" "}
+            {isPolicialComum
+              ? "Acompanhe abaixo as diretrizes e avisos emanados pelo comando."
+              : "Status operacional e controle do efetivo em tempo real."}{" "}
             {usuario?.nome_guerra || usuario?.nome_completo
               ? `Bem-vindo(a), ${usuario.nome_guerra || usuario.nome_completo}.`
               : ""}
@@ -77,56 +94,72 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* GRID DE CARDS COM RESTRIÇÃO CONDICIONAL PARA ARMEIRO */}
-      <div
-        className={`grid grid-cols-1 sm:grid-cols-2 ${
-          isArmeiro ? "lg:grid-cols-2 max-w-2xl" : "lg:grid-cols-4"
-        } gap-6`}
-      >
-        {/* Card 1: Cautelas Ativas (Visível para todos) */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
-          <p className="text-xs font-semibold text-slate-500">
-            Cautelas Ativas
-          </p>
-          <p className="text-3xl font-bold text-slate-900">
-            {loadingMetrics ? "-" : (metrics?.cautelasAtivas ?? 0)}
-          </p>
-        </div>
-
-        {/* Card 2: Armas Disponíveis (Visível para todos) */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
-          <p className="text-xs font-semibold text-slate-500">
-            Armas Disponíveis
-          </p>
-          <p className="text-3xl font-bold text-slate-900">
-            {loadingMetrics ? "-" : (metrics?.armasDisponiveis ?? 0)}
-          </p>
-        </div>
-
-        {/* Card 3: Coletes a Vencer (Oculto para Armeiro) */}
-        {!isArmeiro && (
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
-            <p className="text-xs font-semibold text-slate-500">
-              Coletes a Vencer (30d)
-            </p>
-            <p className="text-3xl font-bold text-amber-600">
-              {loadingMetrics ? "-" : (metrics?.coletesAVencer ?? 0)}
-            </p>
+      {/* SE FOR POLICIAL COMUM, O DASHBOARD FICA ZERADO DE CARDS DE MÉTRICAS */}
+      {isPolicialComum ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-3 shadow-xs">
+          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mx-auto text-xl font-bold shadow-inner">
+            📢
           </div>
-        )}
-
-        {/* Card 4: Efetivo Ativo (Oculto para Armeiro) */}
-        {!isArmeiro && (
+          <h2 className="text-base font-bold text-slate-800">
+            Nenhum aviso ou determinação no momento
+          </h2>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            Esta seção será atualizada em breve com as diretrizes, avisos e
+            links úteis emanados pelo comando da unidade.
+          </p>
+        </div>
+      ) : (
+        /* GRID DE CARDS COM RESTRIÇÃO CONDICIONAL PARA ARMEIRO / ADMIN */
+        <div
+          className={`grid grid-cols-1 sm:grid-cols-2 ${
+            isArmeiro ? "lg:grid-cols-2 max-w-2xl" : "lg:grid-cols-4"
+          } gap-6`}
+        >
+          {/* Card 1: Cautelas Ativas */}
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
             <p className="text-xs font-semibold text-slate-500">
-              Efetivo Ativo
+              Cautelas Ativas
             </p>
             <p className="text-3xl font-bold text-slate-900">
-              {loadingMetrics ? "-" : (metrics?.efetivoAtivo ?? 0)}
+              {loadingMetrics ? "-" : (metrics?.cautelasAtivas ?? 0)}
             </p>
           </div>
-        )}
-      </div>
+
+          {/* Card 2: Armas Disponíveis */}
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
+            <p className="text-xs font-semibold text-slate-500">
+              Armas Disponíveis
+            </p>
+            <p className="text-3xl font-bold text-slate-900">
+              {loadingMetrics ? "-" : (metrics?.armasDisponiveis ?? 0)}
+            </p>
+          </div>
+
+          {/* Card 3: Coletes a Vencer (Oculto para Armeiro) */}
+          {!isArmeiro && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
+              <p className="text-xs font-semibold text-slate-500">
+                Coletes a Vencer (30d)
+              </p>
+              <p className="text-3xl font-bold text-amber-600">
+                {loadingMetrics ? "-" : (metrics?.coletesAVencer ?? 0)}
+              </p>
+            </div>
+          )}
+
+          {/* Card 4: Efetivo Ativo (Oculto para Armeiro) */}
+          {!isArmeiro && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
+              <p className="text-xs font-semibold text-slate-500">
+                Efetivo Ativo
+              </p>
+              <p className="text-3xl font-bold text-slate-900">
+                {loadingMetrics ? "-" : (metrics?.efetivoAtivo ?? 0)}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

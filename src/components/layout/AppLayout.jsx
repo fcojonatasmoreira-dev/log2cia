@@ -22,7 +22,6 @@ export default function AppLayout() {
   useEffect(() => {
     carregarUsuario();
 
-    // Ouve atualizações de perfil em tempo real
     window.addEventListener("storage", carregarUsuario);
     window.addEventListener("usuarioAtualizado", carregarUsuario);
 
@@ -52,8 +51,8 @@ export default function AppLayout() {
   };
 
   const userRole = String(usuario?.role || "").toLowerCase();
-  const isMaster = userRole === "master"; // Alterado para liberar apenas se for estritamente 'master'
-  const isP4OrMaster = userRole === "master" || userRole === "p4";
+  const isMaster = userRole === "master";
+  const isArmeiroOrAdmin = ["master", "p4", "armeiro"].includes(userRole);
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-100">
@@ -112,19 +111,25 @@ export default function AppLayout() {
               <span>🔄</span> Cautelas
             </button>
 
-            <button
-              onClick={() => navegarPara("/inventario")}
-              className={`w-full ${getLinkClass("/inventario")}`}
-            >
-              <span>📦</span> Acervo / Inventário
-            </button>
+            {/* ACERVO / INVENTÁRIO - EXCLUSIVO PARA ARMEIRO, P4 E MASTER */}
+            {isArmeiroOrAdmin && (
+              <button
+                onClick={() => navegarPara("/inventario")}
+                className={`w-full ${getLinkClass("/inventario")}`}
+              >
+                <span>📦</span> Acervo / Inventário
+              </button>
+            )}
 
-            <button
-              onClick={() => navegarPara("/policiais")}
-              className={`w-full ${getLinkClass("/policiais")}`}
-            >
-              <span>👥</span> Policiais
-            </button>
+            {/* ABA POLICIAIS - EXCLUSIVA PARA ARMEIRO, P4 E MASTER */}
+            {isArmeiroOrAdmin && (
+              <button
+                onClick={() => navegarPara("/policiais")}
+                className={`w-full ${getLinkClass("/policiais")}`}
+              >
+                <span>👥</span> Policiais
+              </button>
+            )}
 
             {/* PAINEL MASTER - APENAS PARA MASTER */}
             {isMaster && (
@@ -160,9 +165,8 @@ export default function AppLayout() {
         </div>
       </aside>
 
-      {/* Conteúdo Principal com o Card Profile Original */}
+      {/* Conteúdo Principal */}
       <main className="flex-1 p-4 md:p-6 overflow-y-auto space-y-4">
-        {/* Card Profile Sincronizado */}
         <div className="bg-slate-900 text-white rounded-2xl p-4 shadow flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-base font-bold shadow">

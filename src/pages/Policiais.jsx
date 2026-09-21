@@ -103,7 +103,6 @@ export default function Policiais() {
   };
 
   const handleOpenModalEdit = (p) => {
-    // Trava de segurança extra no clique: P4 não pode editar Master ou P4
     if (
       userRole === "p4" &&
       (String(p.role).toLowerCase() === "master" ||
@@ -127,7 +126,6 @@ export default function Policiais() {
     setIsModalOpen(true);
   };
 
-  // Função exclusiva Master para Resetar Senha do militar
   const handleResetarSenha = async () => {
     if (!editingId) return;
 
@@ -161,7 +159,6 @@ export default function Policiais() {
     }
   };
 
-  // Abrir Modal de Visualização e buscar cautelas ativas do policial cruzando com cautela_itens
   const handleOpenModalView = async (p) => {
     setPolicialSelecionado(p);
     setIsViewModalOpen(true);
@@ -221,7 +218,6 @@ export default function Policiais() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Trava de segurança estrita de RBAC para P4 ao submeter o formulário
     if (userRole === "p4") {
       if (editingId) {
         const policialAlvo = policiais.find((p) => p.id === editingId);
@@ -244,10 +240,15 @@ export default function Policiais() {
     }
 
     try {
-      if (editingId) {
-        await updatePolicial(editingId, formData);
+      const dadosParaSalvar = { ...formData };
+      // Se não for master, garante que a role não seja alterada indevidamente
+      if (!isMaster && editingId) {
+        delete dadosParaSalvar.role;
+      }
 
-        // Se o usuário editou o próprio perfil logado, atualiza o localStorage em tempo real
+      if (editingId) {
+        await updatePolicial(editingId, dadosParaSalvar);
+
         const usuarioSalvo = localStorage.getItem("log2cia_user");
         if (usuarioSalvo) {
           const usuarioAtual = JSON.parse(usuarioSalvo);
@@ -255,7 +256,7 @@ export default function Policiais() {
             usuarioAtual.id === editingId ||
             usuarioAtual.matricula === formData.matricula
           ) {
-            const usuarioAtualizado = { ...usuarioAtual, ...formData };
+            const usuarioAtualizado = { ...usuarioAtual, ...dadosParaSalvar };
             localStorage.setItem(
               "log2cia_user",
               JSON.stringify(usuarioAtualizado),
@@ -264,9 +265,9 @@ export default function Policiais() {
           }
         }
       } else {
-        const dadosParaSalvar =
+        const dadosNovos =
           userRole === "p4" ? { ...formData, role: "policial" } : formData;
-        await createPolicial(dadosParaSalvar);
+        await createPolicial(dadosNovos);
       }
       setIsModalOpen(false);
       loadPoliciais();
@@ -287,6 +288,9 @@ export default function Policiais() {
       (p.matricula && p.matricula.includes(searchTerm)),
   );
 
+  // Calcula o total de colunas para o colSpan de carregamento/vazio dinamicamente (7 se não for master, 8 se for master)
+  const totalColunas = isMaster ? 8 : 7;
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -301,6 +305,7 @@ export default function Policiais() {
         </div>
         {isP4OrMaster && (
           <button
+            type="button"
             onClick={handleOpenModalNew}
             className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2.5 rounded-lg transition-colors shadow-xs"
           >
@@ -348,7 +353,8 @@ export default function Policiais() {
                   <th className="px-6 py-3.5">Matrícula</th>
                   <th className="px-6 py-3.5">Nome Completo</th>
                   <th className="px-6 py-3.5">Numeral</th>
-                  <th className="px-6 py-3.5">Perfil</th>
+                  {/* COLUNA PERFIL EXCLUSIVA PARA MASTER */}
+                  {isMaster && <th className="px-6 py-3.5">Perfil</th>}
                   <th className="px-6 py-3.5">Situação</th>
                   <th className="px-6 py-3.5 text-right">Ações</th>
                 </tr>
@@ -356,13 +362,19 @@ export default function Policiais() {
               <tbody className="divide-y divide-slate-200 text-sm font-medium text-slate-700">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-8 text-slate-400">
+                    <td
+                      colSpan={totalColunas}
+                      className="text-center py-8 text-slate-400"
+                    >
                       Carregando efetivo...
                     </td>
                   </tr>
                 ) : filteredPoliciais.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-8 text-slate-400">
+                    <td
+                      colSpan={totalColunas}
+                      className="text-center py-8 text-slate-400"
+                    >
                       Nenhum policial encontrado.
                     </td>
                   </tr>
@@ -396,11 +408,14 @@ export default function Policiais() {
                         <td className="px-6 py-4 font-mono text-slate-600">
                           {p.numeral || "—"}
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-blue-200">
-                            {p.role || "policial"}
-                          </span>
-                        </td>
+                        {/* CÉLULA PERFIL EXCLUSIVA PARA MASTER */}
+                        {isMaster && (
+                          <td className="px-6 py-4">
+                            <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-blue-200">
+                              {p.role || "policial"}
+                            </span>
+                          </td>
+                        )}
                         <td className="px-6 py-4">
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
@@ -413,7 +428,6 @@ export default function Policiais() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right space-x-1">
-                          {/* Botão Visualizar (Disponível para todos) */}
                           <button
                             onClick={() => handleOpenModalView(p)}
                             className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors inline-flex"
@@ -422,7 +436,6 @@ export default function Policiais() {
                             <Eye className="w-4 h-4" />
                           </button>
 
-                          {/* Botão Editar (Bloqueado para P4 editar perfis Master ou P4) */}
                           {isP4OrMaster && p4PodeEditar && (
                             <button
                               onClick={() => handleOpenModalEdit(p)}
@@ -433,7 +446,6 @@ export default function Policiais() {
                             </button>
                           )}
 
-                          {/* Botão Excluir (Aparece SOMENTE para Master) */}
                           {isMaster && (
                             <button
                               onClick={() => handleDelete(p.id, p.nome_guerra)}
@@ -479,7 +491,9 @@ export default function Policiais() {
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border text-xs">
+            <div
+              className={`grid ${isMaster ? "grid-cols-3" : "grid-cols-2"} gap-3 bg-slate-50 p-3 rounded-xl border text-xs`}
+            >
               <div>
                 <p className="text-slate-400 uppercase font-semibold">
                   Numeral
@@ -488,14 +502,17 @@ export default function Policiais() {
                   {policialSelecionado.numeral || "—"}
                 </p>
               </div>
-              <div>
-                <p className="text-slate-400 uppercase font-semibold">
-                  Perfil (Role)
-                </p>
-                <p className="font-bold text-blue-700 uppercase mt-0.5">
-                  {policialSelecionado.role || "policial"}
-                </p>
-              </div>
+              {/* CAMPO PERFIL NO MODAL VISUALIZAR EXCLUSIVO PARA MASTER */}
+              {isMaster && (
+                <div>
+                  <p className="text-slate-400 uppercase font-semibold">
+                    Perfil (Role)
+                  </p>
+                  <p className="font-bold text-blue-700 uppercase mt-0.5">
+                    {policialSelecionado.role || "policial"}
+                  </p>
+                </div>
+              )}
               <div>
                 <p className="text-slate-400 uppercase font-semibold">
                   Situação
@@ -578,7 +595,6 @@ export default function Policiais() {
                   ? "Editar Policial"
                   : "Cadastrar Policial / Servidor"}
               </h2>
-              {/* Botão exclusivo Master para Resetar Senha */}
               {editingId && isMaster && (
                 <button
                   type="button"
@@ -684,7 +700,8 @@ export default function Policiais() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                {isMaster ? (
+                {/* CAMPO DE SELEÇÃO DE PERFIL NO MODAL EXCLUSIVO PARA MASTER */}
+                {isMaster && (
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
                       Perfil de Acesso (Role)
@@ -701,18 +718,6 @@ export default function Policiais() {
                       <option value="p4">P4</option>
                       <option value="master">Master</option>
                     </select>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                      Perfil de Acesso (Role)
-                    </label>
-                    <input
-                      type="text"
-                      disabled
-                      value={formData.role.toUpperCase()}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-500 font-bold uppercase cursor-not-allowed"
-                    />
                   </div>
                 )}
                 <div>
