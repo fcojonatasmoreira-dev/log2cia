@@ -11,7 +11,8 @@ export default function Cautelas() {
 
   // Perfil unificado do usuário logado via localStorage ('log2cia_user')
   const [userRole, setUserRole] = useState("policial");
-  const [userName, setUserName] = useState("Armeiro");
+  const [userName, setUserName] = useState("Militar");
+  const [userId, setUserId] = useState(null);
 
   // Modais de Ação e Visualização
   const [cautelaVisualizando, setCautelaVisualizando] = useState(null);
@@ -31,14 +32,20 @@ export default function Cautelas() {
   async function carregarSessaoEData() {
     setLoading(true);
     try {
-      // Lê os dados do usuário autenticado na sessão unificada
+      let roleLida = "policial";
+      let matriculaLogada = null;
+      let nomeLido = "Militar";
+
       const usuarioSalvo = localStorage.getItem("log2cia_user");
       if (usuarioSalvo) {
         const dadosUser = JSON.parse(usuarioSalvo);
-        setUserRole(String(dadosUser?.role || "policial").toLowerCase());
-        setUserName(
-          dadosUser?.nome_guerra || dadosUser?.nome_completo || "Armeiro",
-        );
+        roleLida = String(dadosUser?.role || "policial").toLowerCase();
+        nomeLido =
+          dadosUser?.nome_guerra || dadosUser?.nome_completo || "Militar";
+        matriculaLogada = dadosUser?.matricula;
+
+        setUserRole(roleLida);
+        setUserName(nomeLido);
       }
 
       const {
@@ -48,7 +55,30 @@ export default function Cautelas() {
         setCurrentUser(user);
       }
 
-      await carregarCautelas();
+      // Busca o ID real do policial na tabela unificada usando a matrícula ou auth ID
+      let policialIdEncontrado = null;
+      if (matriculaLogada) {
+        const { data: polData } = await supabase
+          .from("policiais")
+          .select("id")
+          .eq("matricula", matriculaLogada)
+          .maybeSingle();
+        if (polData) policialIdEncontrado = polData.id;
+      }
+
+      if (!policialIdEncontrado && user) {
+        const { data: polData } = await supabase
+          .from("policiais")
+          .select("id")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (polData) policialIdEncontrado = polData.id;
+      }
+
+      setUserId(policialIdEncontrado);
+
+      const temAcessoTotal = ["master", "p4", "armeiro"].includes(roleLida);
+      await carregarCautelas(temAcessoTotal, policialIdEncontrado);
     } catch (err) {
       console.error("Erro ao carregar dados:", err.message);
     } finally {
@@ -56,19 +86,22 @@ export default function Cautelas() {
     }
   }
 
-  async function carregarCautelas() {
+  async function carregarCautelas(acessoTotal, policialId) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("cautelas")
         .select(
           `
           id,
           status,
+          status_aceite,
           data_cautela,
           data_devolucao,
           alteracoes,
           armeiro_id,
+          policial_id,
           policial:policiais!policial_id (
+            id,
             matricula,
             posto_graduacao,
             nome_guerra
@@ -88,6 +121,16 @@ export default function Cautelas() {
         )
         .order("data_cautela", { ascending: false });
 
+      if (!acessoTotal) {
+        if (policialId) {
+          query = query.eq("policial_id", policialId);
+        } else {
+          setCautelas([]);
+          return;
+        }
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       if (data) {
         setCautelas(data);
@@ -96,6 +139,81 @@ export default function Cautelas() {
       console.error("Erro crítico ao carregar cautelas:", err.message);
     }
   }
+
+  // Função para o policial aceitar a cautela
+  const handleAceitarCautela = async (cautelaId) => {
+    setProcessando(true);
+    try {
+      const { error } = await supabase
+        .from("cautelas")
+        .update({ status_aceite: "aceito" })
+        .eq("id", cautelaId);
+
+      if (error) throw error;
+
+      alert("Cautela aceita com sucesso!");
+      const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
+      await carregarCautelas(temAcessoTotal, userId);
+
+      if (cautelaVisualizando && cautelaVisualizando.id === cautelaId) {
+        setCautelaVisualizando((prev) => ({
+          ...prev,
+          status_aceite: "aceito",
+        }));
+      }
+    } catch (err) {
+      alert("Erro ao aceitar cautela: " + err.message);
+    } finally {
+      setProcessando(false);
+    }
+  };
+
+  // Função para cancelar a cautela antes do aceite
+  const handleCancelarCautelaPendente = async (cautela) => {
+    if (
+      !window.confirm(
+        "Deseja realmente cancelar esta cautela pendente? O armamento voltará a ficar disponível.",
+      )
+    ) {
+      return;
+    }
+
+    setProcessando(true);
+    try {
+      const numSerie = cautela.cautela_itens?.[0]?.equipamento?.num_serie;
+
+      // 1. Remove os itens vinculados
+      await supabase
+        .from("cautela_itens")
+        .delete()
+        .eq("cautela_id", cautela.id);
+
+      // 2. Deleta o registro da cautela
+      const { error } = await supabase
+        .from("cautelas")
+        .delete()
+        .eq("id", cautela.id);
+
+      if (error) throw error;
+
+      // 3. Libera o equipamento de volta no estoque
+      if (numSerie) {
+        await supabase
+          .from("equipamentos")
+          .update({ status: "disponivel" })
+          .eq("num_serie", numSerie);
+      }
+
+      alert("Cautela cancelada com sucesso!");
+      setCautelaVisualizando(null);
+      const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
+      await carregarCautelas(temAcessoTotal, userId);
+    } catch (err) {
+      alert("Erro ao cancelar cautela: " + err.message);
+    } finally {
+      setProcessando(false);
+    }
+  };
 
   const handleIniciarDevolucaoFromModal = (cautela) => {
     setCautelaVisualizando(null);
@@ -139,7 +257,8 @@ export default function Cautelas() {
       }
 
       setCautelaDevolvendo(null);
-      carregarCautelas();
+      const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
+      carregarCautelas(temAcessoTotal, userId);
     } catch (err) {
       alert("Erro ao homologar devolução: " + err.message);
     } finally {
@@ -290,7 +409,6 @@ export default function Cautelas() {
     }
   };
 
-  // Verificações de permissão baseadas estritamente na sessão unificada
   const isMaster = userRole === "master";
   const isArmeiro = isMaster || userRole === "armeiro" || userRole === "p4";
 
@@ -299,10 +417,14 @@ export default function Cautelas() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
-            Controle de Cautelas e Devoluções
+            {isArmeiro
+              ? "Controle de Cautelas e Devoluções"
+              : "Minhas Cautelas"}
           </h1>
           <p className="text-sm text-slate-500">
-            Registro de saída e devolução homologada de material bélico.
+            {isArmeiro
+              ? "Registro de saída e devolução homologada de material bélico."
+              : "Acompanhe seus armamentos acautelados e confirme o recebimento."}
           </p>
         </div>
 
@@ -329,7 +451,7 @@ export default function Cautelas() {
                 <th className="p-3">Policial / Servidor</th>
                 <th className="p-3">Itens Cautelados</th>
                 <th className="p-3">Data Saída</th>
-                <th className="p-3">Status</th>
+                <th className="p-3">Status / Aceite</th>
                 <th className="p-3 text-right">Ações</th>
               </tr>
             </thead>
@@ -337,13 +459,15 @@ export default function Cautelas() {
               {cautelas.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="p-4 text-center text-slate-400">
-                    Nenhuma cautela registrada.
+                    Nenhuma cautela encontrada.
                   </td>
                 </tr>
               ) : (
                 cautelas.map((c) => {
                   const pol = c.policial || {};
                   const isAtiva = c.status === "ativa";
+                  const statusAceite = c.status_aceite || "pendente";
+                  const isMeuRegistro = userId && pol.id === userId;
 
                   return (
                     <tr
@@ -394,24 +518,49 @@ export default function Cautelas() {
                           : "N/A"}
                       </td>
 
-                      <td className="p-3">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                            isAtiva
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-emerald-100 text-emerald-800"
-                          }`}
-                        >
-                          {isAtiva ? "• Em Cautela" : "✓ Devolvido / Histórico"}
-                        </span>
+                      <td className="p-3 space-y-1">
+                        <div>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              isAtiva
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-emerald-100 text-emerald-800"
+                            }`}
+                          >
+                            {isAtiva ? "• Em Cautela" : "✓ Devolvido"}
+                          </span>
+                        </div>
+                        <div>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                              statusAceite === "aceito"
+                                ? "bg-blue-100 text-blue-800"
+                                : "bg-orange-100 text-orange-800"
+                            }`}
+                          >
+                            {statusAceite === "aceito"
+                              ? "Aceito pelo Militar"
+                              : "Aguardando Aceite"}
+                          </span>
+                        </div>
                       </td>
 
-                      <td className="p-3 text-right">
+                      <td className="p-3 text-right space-x-1">
+                        {isAtiva &&
+                          statusAceite === "pendente" &&
+                          isMeuRegistro && (
+                            <button
+                              onClick={() => handleAceitarCautela(c.id)}
+                              className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded text-xs transition-all shadow-2xs"
+                            >
+                              ✓ Aceitar Cautela
+                            </button>
+                          )}
                         <button
                           onClick={() => setCautelaVisualizando(c)}
                           className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded text-xs transition-all border border-slate-300 shadow-2xs"
                         >
-                          👁️ Visualizar Cautela
+                          👁️ Visualizar
                         </button>
                       </td>
                     </tr>
@@ -427,8 +576,11 @@ export default function Cautelas() {
       {cautelaVisualizando &&
         (() => {
           const isAtiva = cautelaVisualizando.status === "ativa";
+          const statusAceite = cautelaVisualizando.status_aceite || "pendente";
           const infoRelatorio = parseRelatorio(cautelaVisualizando.alteracoes);
           const nomeArmeiro = userName;
+          const isOwnerPolicial =
+            userId && cautelaVisualizando.policial?.id === userId;
 
           return (
             <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50 font-sans">
@@ -444,18 +596,40 @@ export default function Cautelas() {
                         : "Comprovante de devolução concluída"}
                     </p>
                   </div>
-                  <span
-                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                      isAtiva
-                        ? "bg-amber-100 text-amber-800"
-                        : "bg-emerald-100 text-emerald-800"
-                    }`}
-                  >
-                    {isAtiva ? "• Em Cautela" : "✓ Devolvido"}
-                  </span>
+                  <div className="flex gap-1.5">
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                        isAtiva
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-emerald-100 text-emerald-800"
+                      }`}
+                    >
+                      {isAtiva ? "• Em Cautela" : "✓ Devolvido"}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="space-y-3 text-xs">
+                  {isAtiva && statusAceite === "pendente" && (
+                    <div className="p-3 bg-orange-50 border border-orange-200 text-orange-800 rounded-xl flex items-center justify-between">
+                      <span>
+                        ⚠️ Esta cautela aguarda o aceite do policial
+                        responsável.
+                      </span>
+                      {isOwnerPolicial && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleAceitarCautela(cautelaVisualizando.id)
+                          }
+                          className="px-3 py-1 bg-blue-600 text-white font-bold rounded-lg text-xs hover:bg-blue-700 shrink-0 ml-2"
+                        >
+                          Aceitar Agora
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {/* Datas */}
                   <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
                     <div>
@@ -516,38 +690,6 @@ export default function Cautelas() {
                     </div>
                   </div>
 
-                  {/* Checklist (se finalizado) */}
-                  {!isAtiva && (
-                    <div className="space-y-1.5">
-                      <span className="text-slate-500 block text-[10px] uppercase font-bold">
-                        Conferência do Material (Checklist)
-                      </span>
-                      <div className="flex gap-2">
-                        <span
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold ${infoRelatorio.arma ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}
-                        >
-                          {infoRelatorio.arma
-                            ? "✓ Armamento OK"
-                            : "✕ Armamento Avariado"}
-                        </span>
-                        <span
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold ${infoRelatorio.carregadores ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}
-                        >
-                          {infoRelatorio.carregadores
-                            ? "✓ Carregadores OK"
-                            : "✕ Carregadores Divergentes"}
-                        </span>
-                        <span
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold ${infoRelatorio.municao ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}
-                        >
-                          {infoRelatorio.municao
-                            ? "✓ Munições OK"
-                            : "✕ Munições Divergentes"}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Equipamento */}
                   <div>
                     <span className="text-slate-500 block mb-1 font-bold uppercase text-[10px]">
@@ -594,7 +736,6 @@ export default function Cautelas() {
                     </div>
                   </div>
 
-                  {/* Relatório de Alterações */}
                   {!isAtiva && (
                     <div>
                       <span className="text-slate-500 block mb-1 font-bold uppercase text-[10px]">
@@ -606,7 +747,6 @@ export default function Cautelas() {
                     </div>
                   )}
 
-                  {/* BOTÃO EXCLUSIVO DE BAIXAR EM PDF (SE FINALIZADA) */}
                   {!isAtiva && (
                     <div className="pt-2">
                       <button
@@ -622,10 +762,22 @@ export default function Cautelas() {
                   )}
                 </div>
 
-                {/* RODAPÉ */}
                 <div className="flex items-center justify-between pt-4 border-t gap-2">
                   <div>
-                    {isMaster && (
+                    {/* BOTÃO DE CANCELAR CAUTELA (DISPONÍVEL APENAS ENQUANTO O ACEITE ESTIVER PENDENTE) */}
+                    {isAtiva && statusAceite === "pendente" && isArmeiro && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleCancelarCautelaPendente(cautelaVisualizando)
+                        }
+                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-lg text-xs transition-all border border-rose-200"
+                      >
+                        ❌ Cancelar Cautela
+                      </button>
+                    )}
+
+                    {isMaster && !isAtiva && (
                       <button
                         type="button"
                         onClick={() =>
@@ -647,7 +799,7 @@ export default function Cautelas() {
                       Fechar
                     </button>
 
-                    {isAtiva && isArmeiro && (
+                    {isAtiva && isArmeiro && statusAceite === "aceito" && (
                       <button
                         type="button"
                         onClick={() =>

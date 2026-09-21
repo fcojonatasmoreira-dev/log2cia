@@ -42,6 +42,10 @@ export default function Dashboard() {
     loadUserData();
   };
 
+  // Identifica se o usuário logado é armeiro
+  const userRole = String(usuario?.role || "").toLowerCase();
+  const isArmeiro = userRole === "armeiro";
+
   return (
     <div className="space-y-6">
       {/* TOP HEADER DO PAINEL GERAL */}
@@ -52,7 +56,9 @@ export default function Dashboard() {
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             Status operacional e controle do efetivo em tempo real.{" "}
-            {usuario?.nome ? `Bem-vindo(a), ${usuario.nome}.` : ""}
+            {usuario?.nome_guerra || usuario?.nome_completo
+              ? `Bem-vindo(a), ${usuario.nome_guerra || usuario.nome_completo}.`
+              : ""}
           </p>
         </div>
         <div className="flex items-center space-x-3">
@@ -71,9 +77,13 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* GRID COM OS 4 CARDS DE MÉTRICAS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Card 1: Cautelas Ativas */}
+      {/* GRID DE CARDS COM RESTRIÇÃO CONDICIONAL PARA ARMEIRO */}
+      <div
+        className={`grid grid-cols-1 sm:grid-cols-2 ${
+          isArmeiro ? "lg:grid-cols-2 max-w-2xl" : "lg:grid-cols-4"
+        } gap-6`}
+      >
+        {/* Card 1: Cautelas Ativas (Visível para todos) */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
           <p className="text-xs font-semibold text-slate-500">
             Cautelas Ativas
@@ -83,7 +93,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* Card 2: Armas Disponíveis */}
+        {/* Card 2: Armas Disponíveis (Visível para todos) */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
           <p className="text-xs font-semibold text-slate-500">
             Armas Disponíveis
@@ -93,23 +103,29 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* Card 3: Coletes a Vencer (30d) */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
-          <p className="text-xs font-semibold text-slate-500">
-            Coletes a Vencer (30d)
-          </p>
-          <p className="text-3xl font-bold text-amber-600">
-            {loadingMetrics ? "-" : (metrics?.coletesAVencer ?? 0)}
-          </p>
-        </div>
+        {/* Card 3: Coletes a Vencer (Oculto para Armeiro) */}
+        {!isArmeiro && (
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
+            <p className="text-xs font-semibold text-slate-500">
+              Coletes a Vencer (30d)
+            </p>
+            <p className="text-3xl font-bold text-amber-600">
+              {loadingMetrics ? "-" : (metrics?.coletesAVencer ?? 0)}
+            </p>
+          </div>
+        )}
 
-        {/* Card 4: Efetivo Ativo */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
-          <p className="text-xs font-semibold text-slate-500">Efetivo Ativo</p>
-          <p className="text-3xl font-bold text-slate-900">
-            {loadingMetrics ? "-" : (metrics?.efetivoAtivo ?? 0)}
-          </p>
-        </div>
+        {/* Card 4: Efetivo Ativo (Oculto para Armeiro) */}
+        {!isArmeiro && (
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
+            <p className="text-xs font-semibold text-slate-500">
+              Efetivo Ativo
+            </p>
+            <p className="text-3xl font-bold text-slate-900">
+              {loadingMetrics ? "-" : (metrics?.efetivoAtivo ?? 0)}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

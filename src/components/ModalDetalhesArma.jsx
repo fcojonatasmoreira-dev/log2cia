@@ -7,10 +7,16 @@ function formatarTipo(texto) {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
-export default function ModalDetalhesArma({ arma, onClose, onUpdateSuccess }) {
+export default function ModalDetalhesArma({
+  arma,
+  userRole,
+  onClose,
+  onUpdateSuccess,
+}) {
   const printRef = useRef();
 
-  const [podeEditar, setPodeEditar] = useState(true);
+  // Verifica o nível de permissão baseado no userRole passado ou recuperado do localStorage
+  const [podeEditar, setPodeEditar] = useState(false);
   const [modoEdicao, setModoEdicao] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState(null);
@@ -47,36 +53,28 @@ export default function ModalDetalhesArma({ arma, onClose, onUpdateSuccess }) {
   const [arquivoNumeracao, setArquivoNumeracao] = useState(null);
 
   useEffect(() => {
-    async function checarPermissoes() {
+    // Determina se o usuário pode editar com base na prop userRole ou checando o localStorage unificado
+    let cargo = userRole;
+    if (!cargo) {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data: perfil } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (perfil) {
-          const nivel = (
-            perfil.role ||
-            perfil.perfil_acesso ||
-            perfil.tipo_usuario ||
-            ""
-          ).toLowerCase();
-          if (nivel === "p4" || nivel === "master" || perfil.is_admin) {
-            setPodeEditar(true);
-          }
+        const usuarioSalvo = localStorage.getItem("log2cia_user");
+        if (usuarioSalvo) {
+          const parsed = JSON.parse(usuarioSalvo);
+          cargo = parsed?.role;
         }
-      } catch (err) {
-        console.warn("Usando permissão padrão para edição:", err);
+      } catch (e) {
+        console.error("Erro ao ler role do storage:", e);
       }
     }
-    checarPermissoes();
-  }, []);
+
+    const nivel = String(cargo || "").toLowerCase();
+    // Apenas P4 ou Master têm permissão para editar os dados do armamento
+    if (nivel === "p4" || nivel === "master") {
+      setPodeEditar(true);
+    } else {
+      setPodeEditar(false);
+    }
+  }, [userRole]);
 
   if (!arma) return null;
 
@@ -100,6 +98,11 @@ export default function ModalDetalhesArma({ arma, onClose, onUpdateSuccess }) {
   }
 
   const handleSalvarEdicao = async () => {
+    if (!podeEditar) {
+      alert("Acesso negado: Apenas P4 ou Master podem editar armamentos.");
+      return;
+    }
+
     setSalvando(true);
     setMensagem(null);
 
@@ -185,6 +188,7 @@ export default function ModalDetalhesArma({ arma, onClose, onUpdateSuccess }) {
             <h2 className="text-base font-bold text-gray-800">
               Ficha do Armamento / Equipamento
             </h2>
+            {/* O botão Editar só aparece se podeEditar for true (P4 ou Master) */}
             {podeEditar && !modoEdicao && (
               <button
                 type="button"

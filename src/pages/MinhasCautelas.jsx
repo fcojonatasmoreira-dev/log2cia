@@ -13,41 +13,67 @@ export default function MinhasCautelas() {
 
   async function carregarCautelas() {
     setLoading(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    try {
+      // Obtém o usuário logado na sessão unificada do localStorage ou auth
+      let policialId = null;
+      const usuarioSalvo = localStorage.getItem("log2cia_user");
+      if (usuarioSalvo) {
+        const dadosUser = JSON.parse(usuarioSalvo);
+        if (dadosUser?.matricula) {
+          const { data: polData } = await supabase
+            .from("policiais")
+            .select("id")
+            .eq("matricula", dadosUser.matricula)
+            .maybeSingle();
+          if (polData) policialId = polData.id;
+        }
+      }
 
-    if (!user) return;
+      if (!policialId) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) policialId = user.id;
+      }
 
-    const { data, error } = await supabase
-      .from("cautelas")
-      .select(
-        `
-        id, status, data_cautela,
-        cautela_itens (
-          quantidade_municao, tipo_municao, quantidade_carregadores, observacoes,
-          equipamentos ( id, tipo, modelo, numero_serie, calibre )
+      if (!policialId) {
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("cautelas")
+        .select(
+          `
+          id, status, data_cautela,
+          cautela_itens (
+            quantidade_municao, tipo_municao, quantidade_carregadores, observacoes,
+            equipamentos ( id, tipo, modelo, modelo_descricao, num_serie, numero_serie, calibre )
+          )
+        `,
         )
-      `,
-      )
-      .eq("policial_id", user.id)
-      .in("status", ["pendente_confirmacao", "ativa"])
-      .order("data_cautela", { ascending: false });
+        .eq("policial_id", policialId)
+        .in("status", ["pendente_confirmacao", "ativa"])
+        .order("data_cautela", { ascending: false });
 
-    if (!error && data) {
-      setCautelasPendentes(
-        data.filter((c) => c.status === "pendente_confirmacao"),
-      );
-      setCautelasAtivas(data.filter((c) => c.status === "ativa"));
+      if (!error && data) {
+        setCautelasPendentes(
+          data.filter((c) => c.status === "pendente_confirmacao"),
+        );
+        setCautelasAtivas(data.filter((c) => c.status === "ativa"));
+      }
+    } catch (err) {
+      console.error("Erro ao carregar cautelas do militar:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   const handleAceitarCautela = async (cautela) => {
     setProcessandoId(cautela.id);
 
     try {
-      // 1. Atualiza status da cautela
+      // 1. Atualiza status da cautela para ativa
       const { error: errorCautela } = await supabase
         .from("cautelas")
         .update({ status: "ativa" })
@@ -56,16 +82,18 @@ export default function MinhasCautelas() {
       if (errorCautela) throw errorCautela;
 
       // 2. Atualiza status dos equipamentos vinculados para 'cautelado'
-      const equipamentosIds = cautela.cautela_itens.map(
-        (i) => i.equipamentos.id,
-      );
+      const equipamentosIds = cautela.cautela_itens
+        .map((i) => i.equipamentos?.id)
+        .filter(Boolean);
 
-      const { error: errorArma } = await supabase
-        .from("equipamentos")
-        .update({ status: "cautelado" })
-        .in("id", equipamentosIds);
+      if (equipamentosIds.length > 0) {
+        const { error: errorArma } = await supabase
+          .from("equipamentos")
+          .update({ status: "cautelado" })
+          .in("id", equipamentosIds);
 
-      if (errorArma) throw errorArma;
+        if (errorArma) throw errorArma;
+      }
 
       alert("Cautela confirmada e assinada com sucesso!");
       carregarCautelas();
@@ -89,9 +117,10 @@ export default function MinhasCautelas() {
         Minhas Cautelas
       </h1>
 
+      {/* Seção: Aguardando Assinatura do Policial */}
       <div className="mb-6">
         <h2 className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2 flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+          <span className="w-2 h-2 rounded-full bg-amber-500 inline-block animate-pulse"></span>
           Aguardando Sua Assinatura ({cautelasPendentes.length})
         </h2>
 
@@ -101,24 +130,29 @@ export default function MinhasCautelas() {
           </p>
         ) : (
           cautelasPendentes.map((c) => {
-            const item = c.cautela_itens[0] || {};
+            const item = c.cautela_itens?.[0] || {};
             const eq = item.equipamentos || {};
 
             return (
               <div
                 key={c.id}
-                className="bg-white p-4 rounded-xl shadow-sm border border-amber-200 mb-3 space-y-3"
+                className="bg-white p-4 rounded-xl shadow-sm border border-amber-300 mb-3 space-y-3"
               >
                 <div className="flex justify-between items-start">
                   <div>
                     <span className="font-bold text-gray-900 block">
-                      {eq.tipo} - {eq.modelo}
+                      {eq.tipo?.toUpperCase()} -{" "}
+                      {eq.modelo_descricao || eq.modelo || "N/I"}
                     </span>
                     <span className="text-xs text-gray-600 block">
-                      Série: <strong>{eq.numero_serie}</strong> ({eq.calibre})
+                      Série:{" "}
+                      <strong>
+                        {eq.num_serie || eq.numero_serie || "N/I"}
+                      </strong>{" "}
+                      ({eq.calibre || "N/I"})
                     </span>
                   </div>
-                  <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
                     Pendente
                   </span>
                 </div>
@@ -126,11 +160,11 @@ export default function MinhasCautelas() {
                 <div className="bg-gray-50 p-2.5 rounded-lg text-xs space-y-1 text-gray-700">
                   <p>
                     <strong>Carregadores:</strong>{" "}
-                    {item.quantidade_carregadores}
+                    {item.quantidade_carregadores || 0}
                   </p>
                   <p>
-                    <strong>Munição:</strong> {item.quantidade_municao} un. (
-                    {item.tipo_municao})
+                    <strong>Munição:</strong> {item.quantidade_municao || 0} un.
+                    ({item.tipo_municao || "N/I"})
                   </p>
                   {item.observacoes && (
                     <p>
@@ -169,7 +203,7 @@ export default function MinhasCautelas() {
                       <span>Assinando e Confirmando...</span>
                     </>
                   ) : (
-                    "Aceitar e Assinar Cautela"
+                    "✓ Aceitar e Assinar Cautela"
                   )}
                 </button>
               </div>
@@ -178,6 +212,7 @@ export default function MinhasCautelas() {
         )}
       </div>
 
+      {/* Seção: Armamentos em Posse do Policial */}
       <div>
         <h2 className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-2 flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
@@ -190,7 +225,7 @@ export default function MinhasCautelas() {
           </p>
         ) : (
           cautelasAtivas.map((c) => {
-            const item = c.cautela_itens[0] || {};
+            const item = c.cautela_itens?.[0] || {};
             const eq = item.equipamentos || {};
 
             return (
@@ -201,29 +236,32 @@ export default function MinhasCautelas() {
                 <div className="flex justify-between items-start">
                   <div>
                     <span className="font-bold text-gray-900 block">
-                      {eq.tipo} - {eq.modelo}
+                      {eq.tipo?.toUpperCase()} -{" "}
+                      {eq.modelo_descricao || eq.modelo || "N/I"}
                     </span>
                     <span className="text-xs text-gray-600 block">
-                      Série: <strong>{eq.numero_serie}</strong>
+                      Série:{" "}
+                      <strong>
+                        {eq.num_serie || eq.numero_serie || "N/I"}
+                      </strong>
                     </span>
                   </div>
-                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
                     Ativa
                   </span>
                 </div>
 
                 <div className="text-xs text-gray-600">
                   <p>
-                    Munição: {item.quantidade_municao} un. ({item.tipo_municao})
-                    | Carregadores: {item.quantidade_carregadores}
+                    Munição: {item.quantidade_municao || 0} un. (
+                    {item.tipo_municao || "N/I"}) | Carregadores:{" "}
+                    {item.quantidade_carregadores || 0}
                   </p>
                   <p className="text-[11px] text-gray-400 mt-1">
                     Cautelado em:{" "}
-                    {new Date(c.data_cautela).toLocaleDateString("pt-BR")} às{" "}
-                    {new Date(c.data_cautela).toLocaleTimeString("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {c.data_cautela
+                      ? `${new Date(c.data_cautela).toLocaleDateString("pt-BR")} às ${new Date(c.data_cautela).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                      : "N/I"}
                   </p>
                 </div>
               </div>

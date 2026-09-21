@@ -12,6 +12,7 @@ export default function Inventario() {
   const [loading, setLoading] = useState(true);
   const [armaSelecionada, setArmaSelecionada] = useState(null);
   const [modalNovo, setModalNovo] = useState(false);
+  const [userRole, setUserRole] = useState("policial");
 
   // Campos do formulário de novo armamento
   const [novoTipo, setNovoTipo] = useState("armamento");
@@ -27,9 +28,25 @@ export default function Inventario() {
   const [arquivoNumeracao, setArquivoNumeracao] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
+  // Verifica o cargo do usuário logado no localStorage
+  const checkUserRole = () => {
+    try {
+      const usuarioSalvo = localStorage.getItem("log2cia_user");
+      if (usuarioSalvo) {
+        const usuario = JSON.parse(usuarioSalvo);
+        setUserRole(String(usuario?.role || "policial").toLowerCase());
+      }
+    } catch (e) {
+      console.error("Erro ao verificar cargo:", e);
+    }
+  };
+
   useEffect(() => {
+    checkUserRole();
     carregarInventario();
   }, []);
+
+  const isP4OrMaster = userRole === "master" || userRole === "p4";
 
   async function carregarInventario() {
     setLoading(true);
@@ -70,6 +87,12 @@ export default function Inventario() {
 
   const handleCadastrarArmamento = async (e) => {
     e.preventDefault();
+    if (!isP4OrMaster) {
+      alert(
+        "Acesso negado: Apenas perfis P4 ou Master podem cadastrar novos armamentos.",
+      );
+      return;
+    }
     setSalvando(true);
 
     try {
@@ -117,7 +140,7 @@ export default function Inventario() {
 
   return (
     <div className="p-4 space-y-4 max-w-6xl mx-auto">
-      {/* Cabeçalho da Página com o Botão de Cadastro */}
+      {/* Cabeçalho da Página com o Botão de Cadastro restrito a P4/Master */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">
@@ -128,13 +151,15 @@ export default function Inventario() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setModalNovo(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg shadow text-xs flex items-center gap-2 transition-all"
-        >
-          <span>+</span> Novo Armamento
-        </button>
+        {isP4OrMaster && (
+          <button
+            type="button"
+            onClick={() => setModalNovo(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg shadow text-xs flex items-center gap-2 transition-all"
+          >
+            <span>+</span> Novo Armamento
+          </button>
+        )}
       </div>
 
       {/* Tabela do Acervo */}
@@ -222,8 +247,8 @@ export default function Inventario() {
         </div>
       )}
 
-      {/* Modal de Cadastro de Novo Armamento */}
-      {modalNovo && (
+      {/* Modal de Cadastro de Novo Armamento (Apenas P4/Master) */}
+      {modalNovo && isP4OrMaster && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 space-y-4 my-8">
             <div className="flex justify-between items-center border-b pb-3">
@@ -396,10 +421,11 @@ export default function Inventario() {
         </div>
       )}
 
-      {/* Modal de Visualização/Edição Avançada */}
+      {/* Modal de Visualização/Edição Avançada (Passa o userRole para o componente gerenciar restrições) */}
       {armaSelecionada && (
         <ModalDetalhesArma
           arma={armaSelecionada}
+          userRole={userRole}
           onClose={() => setArmaSelecionada(null)}
           onUpdateSuccess={() => {
             carregarInventario();
