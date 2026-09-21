@@ -1,490 +1,265 @@
-import React, { useState, useEffect } from "react";
-import {
-  ShieldCheck,
-  Eye,
-  CheckCircle2,
-  XCircle,
-  RefreshCw,
-  UserCheck,
-  FileText,
-  Camera,
-  UserPlus,
-} from "lucide-react";
-import {
-  getPerfisPendentes,
-  getDocumentoUrl,
-  homologarUsuario,
-} from "../services/masterService";
+import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
+import {
+  Shield,
+  KeyRound,
+  CheckCircle2,
+  AlertCircle,
+  Users,
+  UserPlus,
+  FileText,
+} from "lucide-react";
 
 export default function PainelMaster() {
-  const [pendentes, setPendentes] = useState([]);
+  const [solicitacoes, setSolicitacoes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [urls, setUrls] = useState({ funcional: null, selfie: null });
-  const [loadingUrls, setLoadingUrls] = useState(false);
-  const [roleSelecionada, setRoleSelecionada] = useState("armeiro");
+  const [modalOperador, setModalOperador] = useState(false);
 
-  // Estado da Modal de Cadastro (Adaptado para a tabela unificada 'policiais' e cargos completos)
-  const [isModalPreOpen, setIsModalPreOpen] = useState(false);
-  const [preForm, setPreForm] = useState({
-    nome_completo: "",
-    nome_guerra: "",
-    matricula: "",
-    posto_graduacao: "SOLDADO",
-    numeral: "",
-    role: "policial",
-    unidade: "2ª CIA / 15º BPM",
-    status: "EM ATIVIDADE",
-    primeiro_acesso: true,
-  });
-  const [submittingPre, setSubmittingPre] = useState(false);
+  // Estados para o formulário de Cadastro de Operador
+  const [nomeCompleto, setNomeCompleto] = useState("");
+  const [nomeGuerra, setNomeGuerra] = useState("");
+  const [matricula, setMatricula] = useState("");
+  const [numeral, setNumeral] = useState("");
+  const [postoGraduacao, setPostoGraduacao] = useState("Soldado");
+  const [role, setRole] = useState("policial");
+  const [unidade, setUnidade] = useState("2ª CIA");
+  const [primeiroAcesso, setPrimeiroAcesso] = useState(true);
+  const [cadastrando, setCadastrando] = useState(false);
 
-  const loadPendentes = async () => {
+  useEffect(() => {
+    carregarSolicitacoes();
+  }, []);
+
+  async function carregarSolicitacoes() {
+    setLoading(true);
     try {
-      setLoading(true);
-      const data = await getPerfisPendentes();
-      setPendentes(data);
+      const { data, error } = await supabase
+        .from("solicitacoes_senha")
+        .select("*")
+        .eq("status", "pendente")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      if (data) setSolicitacoes(data);
     } catch (err) {
-      alert(`Erro ao carregar solicitações: ${err.message}`);
+      console.error("Erro ao carregar solicitações de senha:", err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  useEffect(() => {
-    loadPendentes();
-  }, []);
-
-  const handleSelectUser = async (user) => {
-    setSelectedUser(user);
-    setLoadingUrls(true);
-    try {
-      const funcionalUrl = await getDocumentoUrl(user.foto_funcional_url);
-      const selfieUrl = await getDocumentoUrl(user.foto_selfie_url);
-      setUrls({ funcional: funcionalUrl, selfie: selfieUrl });
-    } catch (err) {
-      alert(`Erro ao carregar mídias: ${err.message}`);
-    } finally {
-      setLoadingUrls(false);
+  const handleAprovarReset = async (solicitacao) => {
+    if (
+      !confirm(
+        `Confirma a aprovação de reset de senha para o militar ${solicitacao.nome_guerra} (Mat: ${solicitacao.matricula})? A senha voltará a ser o numeral e ele será obrigado a redefinir no próximo acesso.`,
+      )
+    ) {
+      return;
     }
-  };
 
-  const handleAprovarRejeitar = async (status) => {
-    if (!selectedUser) return;
     try {
-      await homologarUsuario(selectedUser.id, status, roleSelecionada);
-      alert(
-        status === "aprovado"
-          ? "Acesso aprovado com sucesso!"
-          : "Credenciamento rejeitado.",
-      );
-      setSelectedUser(null);
-      loadPendentes();
-    } catch (err) {
-      alert(`Erro no processo de homologação: ${err.message}`);
-    }
-  };
-
-  const handlePreCadastroSubmit = async (e) => {
-    e.preventDefault();
-    setSubmittingPre(true);
-    try {
-      // 1. Verifica se a matrícula já existe na tabela unificada "policiais"
-      const { data: existente } = await supabase
+      const { error: errPolicial } = await supabase
         .from("policiais")
-        .select("id")
-        .eq("matricula", preForm.matricula.trim())
-        .maybeSingle();
+        .update({
+          senha: null,
+          primeiro_acesso: true,
+        })
+        .eq("id", solicitacao.policial_id);
 
-      if (existente) {
-        alert("Já existe um policial cadastrado com essa matrícula.");
-        setSubmittingPre(false);
-        return;
-      }
+      if (errPolicial) throw errPolicial;
 
-      // 2. Insere na tabela unificada "policiais"
-      const { error } = await supabase.from("policiais").insert([
-        {
-          nome_completo: preForm.nome_completo,
-          nome_guerra: preForm.nome_guerra || preForm.nome_completo,
-          matricula: preForm.matricula.trim(),
-          posto_graduacao: preForm.posto_graduacao,
-          numeral: preForm.numeral.trim(),
-          role: preForm.role,
-          unidade: preForm.unidade,
-          status: preForm.status,
-          primeiro_acesso: preForm.primeiro_acesso,
-        },
-      ]);
+      const { error: errSolicitacao } = await supabase
+        .from("solicitacoes_senha")
+        .update({ status: "aprovada" })
+        .eq("id", solicitacao.id);
+
+      if (errSolicitacao) throw errSolicitacao;
+
+      alert(
+        "Senha resetada com sucesso! O militar agora está em regime de primeiro acesso.",
+      );
+      carregarSolicitacoes();
+    } catch (err) {
+      alert("Erro ao aprovar reset: " + err.message);
+    }
+  };
+
+  const handleCadastrarOperador = async (e) => {
+    e.preventDefault();
+    setCadastrando(true);
+
+    try {
+      const payload = {
+        nome_completo: nomeCompleto.trim(),
+        nome_guerra: nomeGuerra.trim(),
+        matricula: matricula.trim(),
+        numeral: numeral ? String(numeral).trim() : null, // numeral é do tipo text na base
+        posto_graduacao: postoGraduacao,
+        role: role.toLowerCase(),
+        unidade: unidade.trim(),
+        primeiro_acesso: primeiroAcesso,
+        senha: null,
+        status: "EM ATIVIDADE",
+      };
+
+      const { error } = await supabase.from("policiais").insert([payload]);
 
       if (error) throw error;
 
-      alert(
-        `Operador ${preForm.nome_completo} (${preForm.role.toUpperCase()}) cadastrado com sucesso!`,
-      );
-
-      setIsModalPreOpen(false);
-      setPreForm({
-        nome_completo: "",
-        nome_guerra: "",
-        matricula: "",
-        posto_graduacao: "SOLDADO",
-        numeral: "",
-        role: "policial",
-        unidade: "2ª CIA / 15º BPM",
-        status: "EM ATIVIDADE",
-        primeiro_acesso: true,
-      });
-      loadPendentes();
+      alert("Operador cadastrado com sucesso!");
+      setNomeCompleto("");
+      setNomeGuerra("");
+      setMatricula("");
+      setNumeral("");
+      setPostoGraduacao("Soldado");
+      setRole("policial");
+      setUnidade("2ª CIA");
+      setPrimeiroAcesso(true);
+      setModalOperador(false);
     } catch (err) {
-      alert(`Erro ao cadastrar operador: ${err.message}`);
+      alert("Erro ao cadastrar operador: " + err.message);
     } finally {
-      setSubmittingPre(false);
+      setCadastrando(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 text-white p-6 rounded-2xl shadow-xl">
-        <div className="flex items-center space-x-3">
-          <div className="p-3 bg-blue-600 rounded-xl">
-            <ShieldCheck className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-wide">
-              Painel de Homologação Master
-            </h1>
-            <p className="text-xs text-slate-400">
-              Gestão de credenciamentos e cadastro direto de operadores e
-              efetivo.
-            </p>
-          </div>
+    <div className="space-y-6 p-4 max-w-6xl mx-auto">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <Shield className="w-7 h-7 text-blue-600" />
+            <span>Painel Master — Governança e Segurança</span>
+          </h1>
+          <p className="text-sm text-slate-500">
+            Gerenciamento absoluto do sistema, cadastros de operadores e
+            aprovação de redefinições de senhas.
+          </p>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setIsModalPreOpen(true)}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-colors shadow-xs"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Cadastrar Operador</span>
-          </button>
-
-          <button
-            onClick={loadPendentes}
-            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors"
-            title="Atualizar solicitações"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setModalOperador(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl shadow text-xs flex items-center gap-2 transition-all"
+        >
+          <UserPlus className="w-4 h-4" />
+          <span>Novo Operador</span>
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Lista de Cadastros Pendentes */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 space-y-3">
-          <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center justify-between">
-            <span>Solicitações Pendentes</span>
-            <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full text-xs font-bold">
-              {pendentes.length}
-            </span>
-          </h2>
-
-          {loading ? (
-            <p className="text-xs text-slate-400 text-center py-6">
-              Buscando cadastros...
-            </p>
-          ) : pendentes.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 space-y-2">
-              <UserCheck className="w-8 h-8 mx-auto text-slate-300" />
-              <p className="text-xs">
-                Nenhum credenciamento aguardando análise no momento.
-              </p>
+      {/* Modal de Cadastro de Operador */}
+      {modalOperador && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-gray-100 space-y-4 my-8">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-blue-600" />
+                <span>Cadastrar Novo Operador / Efetivo</span>
+              </h2>
+              <button
+                onClick={() => setModalOperador(false)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1"
+              >
+                ✕
+              </button>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {pendentes.map((p) => (
-                <div
-                  key={p.id}
-                  onClick={() => handleSelectUser(p)}
-                  className={`p-3 rounded-lg border text-left cursor-pointer transition-all ${
-                    selectedUser?.id === p.id
-                      ? "border-blue-600 bg-blue-50/50 shadow-xs"
-                      : "border-slate-200 hover:bg-slate-50"
-                  }`}
-                >
-                  <p className="font-bold text-sm text-slate-900">
-                    {p.nome || p.email}
-                  </p>
-                  <div className="flex items-center justify-between mt-1 text-xs text-slate-500 font-mono">
-                    <span>
-                      {p.posto_graduacao || "N/I"} {p.nome_guerra}
-                    </span>
-                    <span>RE: {p.matricula || "N/I"}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* Detalhes do Credenciamento para Análise */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-xs p-6">
-          {!selectedUser ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 py-16 space-y-2">
-              <Eye className="w-10 h-10 text-slate-300" />
-              <p className="text-sm font-medium">
-                Selecione uma solicitação da lista para analisar as mídias e
-                homologar.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="border-b pb-4 flex justify-between items-start">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">
-                    {selectedUser.nome}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-mono">
-                    E-mail: {selectedUser.email}
-                  </p>
-                </div>
-                <span className="bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1 rounded-full">
-                  Aguardando Análise
-                </span>
-              </div>
-
-              {/* Dados Funcionais */}
-              <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
-                <div>
-                  <p className="text-slate-400 font-medium uppercase">
-                    Posto / Graduação
-                  </p>
-                  <p className="font-bold text-slate-800 mt-0.5">
-                    {selectedUser.posto_graduacao || "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-slate-400 font-medium uppercase">
-                    Matrícula / RE
-                  </p>
-                  <p className="font-bold text-slate-800 mt-0.5 font-mono">
-                    {selectedUser.matricula || "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-slate-400 font-medium uppercase">
-                    Lotação
-                  </p>
-                  <p className="font-bold text-slate-800 mt-0.5">
-                    {selectedUser.lotacao || "—"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Mídias de Segurança */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="border border-slate-200 rounded-xl p-3 bg-slate-900 text-white space-y-2">
-                  <div className="flex items-center space-x-2 text-xs font-semibold text-slate-300">
-                    <Camera className="w-4 h-4 text-blue-400" />
-                    <span>Selfie Biométrica em Tempo Real</span>
-                  </div>
-                  <div className="aspect-video bg-slate-950 rounded-lg overflow-hidden flex items-center justify-center">
-                    {loadingUrls ? (
-                      <RefreshCw className="w-6 h-6 animate-spin text-slate-500" />
-                    ) : urls.selfie ? (
-                      <img
-                        src={urls.selfie}
-                        alt="Selfie Biométrica"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-xs text-slate-500">
-                        Sem selfie anexada
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="border border-slate-200 rounded-xl p-3 bg-slate-900 text-white space-y-2">
-                  <div className="flex items-center space-x-2 text-xs font-semibold text-slate-300">
-                    <FileText className="w-4 h-4 text-emerald-400" />
-                    <span>Carteira Funcional Anexada</span>
-                  </div>
-                  <div className="aspect-video bg-slate-950 rounded-lg overflow-hidden flex items-center justify-center">
-                    {loadingUrls ? (
-                      <RefreshCw className="w-6 h-6 animate-spin text-slate-500" />
-                    ) : urls.funcional ? (
-                      <img
-                        src={urls.funcional}
-                        alt="Funcional Anexada"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-xs text-slate-500">
-                        Sem documento anexado
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Decisão Master */}
-              <div className="pt-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center space-x-2 w-full sm:w-auto">
-                  <label className="text-xs font-semibold text-slate-700 uppercase">
-                    Perfil a Atribuir:
-                  </label>
-                  <select
-                    value={roleSelecionada}
-                    onChange={(e) => setRoleSelecionada(e.target.value)}
-                    className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 bg-white"
-                  >
-                    <option value="policial">Policial</option>
-                    <option value="armeiro">Armeiro</option>
-                    <option value="p4">P4</option>
-                    <option value="master">Master</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center space-x-3 w-full sm:w-auto justify-end">
-                  <button
-                    onClick={() => handleAprovarRejeitar("rejeitado")}
-                    className="flex-1 sm:flex-none px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center space-x-1"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    <span>Rejeitar</span>
-                  </button>
-                  <button
-                    onClick={() => handleAprovarRejeitar("aprovado")}
-                    className="flex-1 sm:flex-none px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-lg flex items-center justify-center space-x-1"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Aprovar Acesso</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* MODAL DE CADASTRO DIRETO DE OPERADOR (PAINEL MASTER) */}
-      {isModalPreOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 font-sans">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <h2 className="text-lg font-bold text-slate-900 border-b pb-2">
-              Cadastrar Novo Operador / Efetivo
-            </h2>
             <form
-              onSubmit={handlePreCadastroSubmit}
-              className="space-y-4 text-xs"
+              onSubmit={handleCadastrarOperador}
+              className="space-y-3 text-xs"
             >
               <div>
-                <label className="block font-semibold text-slate-700 uppercase mb-1">
+                <label className="block font-bold text-slate-700 uppercase mb-1">
                   Nome Completo *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Fulano de Tal"
-                  value={preForm.nome_completo}
-                  onChange={(e) =>
-                    setPreForm({ ...preForm, nome_completo: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Ex: João da Silva"
+                  value={nomeCompleto}
+                  onChange={(e) => setNomeCompleto(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
                 />
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 uppercase mb-1">
-                  Nome de Guerra *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: Silva"
-                  value={preForm.nome_guerra}
-                  onChange={(e) =>
-                    setPreForm({ ...preForm, nome_guerra: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 uppercase mb-1">
-                    Matrícula / RE *
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Nome de Guerra *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="Ex: 30012345"
-                    value={preForm.matricula}
-                    onChange={(e) =>
-                      setPreForm({ ...preForm, matricula: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Ex: Sd Silva"
+                    value={nomeGuerra}
+                    onChange={(e) => setNomeGuerra(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 uppercase mb-1">
-                    Posto / Graduação *
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Matrícula *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: 1357281X"
+                    value={matricula}
+                    onChange={(e) => setMatricula(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Numeral *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: 31929"
+                    value={numeral}
+                    onChange={(e) => setNumeral(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Posto / Graduação
                   </label>
                   <select
-                    value={preForm.posto_graduacao}
-                    onChange={(e) =>
-                      setPreForm({
-                        ...preForm,
-                        posto_graduacao: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={postoGraduacao}
+                    onChange={(e) => setPostoGraduacao(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium"
                   >
-                    <option value="SOLDADO">SOLDADO</option>
-                    <option value="CABO">CABO</option>
-                    <option value="3º SARGENTO">3º SARGENTO</option>
-                    <option value="2º SARGENTO">2º SARGENTO</option>
-                    <option value="1º SARGENTO">1º SARGENTO</option>
-                    <option value="SUBTENENTE">SUBTENENTE</option>
-                    <option value="2º TENENTE">2º TENENTE</option>
-                    <option value="1º TENENTE">1º TENENTE</option>
-                    <option value="CAPITÃO">CAPITÃO</option>
-                    <option value="MAJOR">MAJOR</option>
+                    <option value="Soldado">Soldado</option>
+                    <option value="Cabo">Cabo</option>
+                    <option value="3º Sgt">3º Sgt</option>
+                    <option value="2º Sgt">2º Sgt</option>
+                    <option value="1º Sgt">1º Sgt</option>
+                    <option value="Subtenente">Subtenente</option>
+                    <option value="Aspirante">Aspirante</option>
+                    <option value="2º Tenente">2º Tenente</option>
+                    <option value="1º Tenente">1º Tenente</option>
+                    <option value="Capitão">Capitão</option>
+                    <option value="Major">Major</option>
+                    <option value="Tenente Coronel">Tenente Coronel</option>
+                    <option value="Coronel">Coronel</option>
                   </select>
                 </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 uppercase mb-1">
-                  Numeral (Senha Provisória do 1º Acesso) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: 31929"
-                  value={preForm.numeral}
-                  onChange={(e) =>
-                    setPreForm({ ...preForm, numeral: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-semibold text-slate-700 uppercase mb-1">
-                    Perfil de Acesso (Role) *
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Perfil de Acesso (Role)
                   </label>
                   <select
-                    value={preForm.role}
-                    onChange={(e) =>
-                      setPreForm({ ...preForm, role: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium"
                   >
                     <option value="policial">Policial</option>
                     <option value="armeiro">Armeiro</option>
@@ -492,47 +267,116 @@ export default function PainelMaster() {
                     <option value="master">Master</option>
                   </select>
                 </div>
-
-                <div className="flex flex-col justify-end pb-1.5">
-                  <label className="flex items-center space-x-2 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={preForm.primeiro_acesso}
-                      onChange={(e) =>
-                        setPreForm({
-                          ...preForm,
-                          primeiro_acesso: e.target.checked,
-                        })
-                      }
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
-                    />
-                    <span className="font-semibold text-slate-700 uppercase group-hover:text-blue-700 transition-colors">
-                      Forçar Troca de Senha
-                    </span>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Unidade / OPM
                   </label>
+                  <input
+                    type="text"
+                    value={unidade}
+                    onChange={(e) => setUnidade(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
+                  />
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-3 pt-4 border-t border-slate-200 mt-6">
+              {/* Checkbox de Primeiro Acesso */}
+              <div className="flex items-center gap-2 pt-2">
+                <input
+                  type="checkbox"
+                  id="primeiroAcessoCheck"
+                  checked={primeiroAcesso}
+                  onChange={(e) => setPrimeiroAcesso(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                />
+                <label
+                  htmlFor="primeiroAcessoCheck"
+                  className="font-semibold text-slate-700 cursor-pointer"
+                >
+                  Exigir alteração de senha no primeiro acesso (Senha inicial:
+                  Numeral)
+                </label>
+              </div>
+
+              <div className="flex gap-2 pt-3 border-t">
                 <button
                   type="button"
-                  onClick={() => setIsModalPreOpen(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors font-medium"
+                  onClick={() => setModalOperador(false)}
+                  className="w-1/3 py-2.5 bg-gray-200 text-gray-700 font-bold rounded-xl"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingPre}
-                  className="px-4 py-2 font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-md disabled:opacity-50"
+                  disabled={cadastrando}
+                  className="w-2/3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow disabled:opacity-50"
                 >
-                  {submittingPre ? "Salvando..." : "Finalizar Cadastro"}
+                  {cadastrando ? "Cadastrando..." : "Salvar Operador"}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Seção de Solicitações Pendentes de Senha */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2">
+            <KeyRound className="w-5 h-5 text-amber-600" />
+            <h2 className="text-base font-bold text-slate-800">
+              Solicitações Pendentes de Redefinição de Senha
+            </h2>
+          </div>
+          <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full">
+            {solicitacoes.length} pendente(s)
+          </span>
+        </div>
+
+        {loading ? (
+          <p className="text-center py-6 text-slate-400 text-xs">
+            Carregando solicitações...
+          </p>
+        ) : solicitacoes.length === 0 ? (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center text-slate-500 text-xs">
+            Nenhuma solicitação de redefinição de senha pendente no momento.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {solicitacoes.map((sol) => (
+              <div
+                key={sol.id}
+                className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs"
+              >
+                <div className="space-y-1">
+                  <div className="font-bold text-slate-900 text-sm">
+                    {sol.nome_guerra}{" "}
+                    <span className="font-mono font-normal text-slate-500">
+                      (Mat: {sol.matricula})
+                    </span>
+                  </div>
+                  <p className="text-slate-600 font-medium">
+                    <strong>Motivo:</strong> {sol.motivo}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-mono">
+                    Solicitado em:{" "}
+                    {new Date(sol.created_at).toLocaleString("pt-BR")}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleAprovarReset(sol)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow transition-all shrink-0 flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Aprovar Reset de Senha</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

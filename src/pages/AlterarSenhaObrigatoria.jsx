@@ -31,6 +31,11 @@ export default function AlterarSenhaObrigatoria() {
 
   const requisitos = validarSenhaForte(novaSenha);
 
+  const handleVoltarLogin = () => {
+    localStorage.removeItem("log2cia_user");
+    window.location.href = "/";
+  };
+
   const handleAlterarSenha = async (e) => {
     e.preventDefault();
 
@@ -60,9 +65,7 @@ export default function AlterarSenhaObrigatoria() {
 
       if (error) throw error;
 
-      console.log("Senha atualizada com sucesso no banco:", data);
-
-      // Atualiza a sessão no navegador de forma segura (sem salvar a senha no localStorage)
+      // Atualiza a sessão no navegador de forma segura
       const sessaoSegura = {
         ...usuarioLogado,
         primeiro_acesso: false,
@@ -75,15 +78,23 @@ export default function AlterarSenhaObrigatoria() {
     } catch (err) {
       console.error("Erro no update da senha:", err);
       setErro("Erro ao atualizar senha: " + err.message);
-    } finally {
       setSalvando(false);
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
-        <div className="text-center space-y-1">
+      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 relative">
+        {/* Botão de Voltar / Sair para evitar travamento */}
+        <button
+          type="button"
+          onClick={handleVoltarLogin}
+          className="absolute top-4 left-4 text-xs font-bold text-slate-400 hover:text-slate-700 transition-colors flex items-center gap-1"
+        >
+          ← Voltar ao Login
+        </button>
+
+        <div className="text-center space-y-1 pt-4">
           <div className="w-12 h-12 bg-amber-500 rounded-xl mx-auto flex items-center justify-center text-slate-950 text-xl font-bold shadow">
             🔐
           </div>
