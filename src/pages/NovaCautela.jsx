@@ -15,37 +15,93 @@ export default function NovaCautela() {
   const [policiais, setPoliciais] = useState([]);
   const [policialSelecionado, setPolicialSelecionado] = useState("");
 
+  const [policialLogadoId, setPolicialLogadoId] = useState(null);
+  const [userRole, setUserRole] = useState("policial");
+
   const [qtdCarregadores, setQtdCarregadores] = useState(0);
   const [qtdMunicao, setQtdMunicao] = useState(0);
   const [tipoMunicao, setTipoMunicao] = useState("");
   const [salvandoCautela, setSalvandoCautela] = useState(false);
 
   useEffect(() => {
-    carregarPoliciais();
+    carregarDadosIniciais();
   }, []);
 
-  // Inicializa e limpa o scanner de QR Code dinamicamente
+  async function carregarDadosIniciais() {
+    await identificarPolicialLogadoEPerfil();
+    await carregarPoliciais();
+  }
+
+  async function identificarPolicialLogadoEPerfil() {
+    try {
+      const usuarioSalvo = localStorage.getItem("log2cia_user");
+      if (!usuarioSalvo) return;
+
+      const dadosUser = JSON.parse(usuarioSalvo);
+      const matriculaLogada = dadosUser?.matricula;
+      const roleLida = String(dadosUser?.role || "policial")
+        .trim()
+        .toLowerCase();
+      setUserRole(roleLida);
+
+      if (matriculaLogada) {
+        const { data: polData } = await supabase
+          .from("policiais")
+          .select("id")
+          .eq("matricula", matriculaLogada)
+          .maybeSingle();
+        if (polData) setPolicialLogadoId(polData.id);
+      }
+    } catch (err) {
+      console.error("Aviso ao identificar sessão:", err.message);
+    }
+  }
+
+  async function carregarPoliciais() {
+    try {
+      const { data, error } = await supabase
+        .from("policiais")
+        .select("id, nome_guerra, posto_graduacao, matricula")
+        .order("nome_guerra", { ascending: true });
+
+      if (error) throw error;
+      if (data) {
+        // Se não for master, remove o próprio usuário logado da lista para impedir autocautela
+        const roleAtual = String(userRole || "").toLowerCase();
+        if (roleAtual !== "master" && policialLogadoId) {
+          const filtrados = data.filter((p) => p.id !== policialLogadoId);
+          setPoliciais(filtrados);
+        } else {
+          setPoliciais(data);
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao carregar policiais:", err.message);
+    }
+  }
+
+  // Executa o recarregamento dos policiais se o ID logado for resolvido após a listagem
+  useEffect(() => {
+    if (policialLogadoId) {
+      carregarPoliciais();
+    }
+  }, [policialLogadoId, userRole]);
+
   useEffect(() => {
     let scanner = null;
-
     if (modoDigitacao === "camera") {
-      // Pequeno delay para garantir que a div "reader" já foi renderizada no DOM
       const timer = setTimeout(() => {
         scanner = new Html5QrcodeScanner(
           "reader",
           { fps: 10, qrbox: { width: 250, height: 250 } },
           false,
         );
-
         scanner.render(
           async (decodedText) => {
-            // Sucesso na leitura do QR Code (decodedText contém o UUID do equipamento)
             scanner.clear();
             await buscarArmaPorId(decodedText);
           },
-          (errorMessage) => {
-            // Erros de varredura quadro a quadro podem ser ignorados silenciosamente
-          },
+          () => {},
         );
       }, 100);
 
@@ -60,21 +116,6 @@ export default function NovaCautela() {
     }
   }, [modoDigitacao]);
 
-  async function carregarPoliciais() {
-    try {
-      const { data, error } = await supabase
-        .from("policiais")
-        .select("id, nome_guerra, posto_graduacao, matricula")
-        .order("nome_guerra", { ascending: true });
-
-      if (error) throw error;
-      if (data) setPoliciais(data);
-    } catch (err) {
-      console.error("Erro ao carregar policiais:", err.message);
-    }
-  }
-
-  // Busca o armamento diretamente pelo ID lido no QR Code
   async function buscarArmaPorId(idArma) {
     setCarregando(true);
     setMensagemErro("");
@@ -88,15 +129,12 @@ export default function NovaCautela() {
         .maybeSingle();
 
       if (error) throw error;
-
       if (!data) {
-        setMensagemErro("Armamento não encontrado pelo QR Code lido!");
+        setMensagemErro("Armamento não encontrado pelo QR Code!");
         return;
       }
-
       validarEAtribuirArma(data);
     } catch (err) {
-      console.error("Erro ao buscar armamento por QR Code:", err.message);
       setMensagemErro("Erro na leitura do QR Code: " + err.message);
     } finally {
       setCarregando(false);
@@ -105,7 +143,6 @@ export default function NovaCautela() {
 
   const handleBuscarArmamento = async (e) => {
     if (e) e.preventDefault();
-
     const termo = termoBusca.trim();
     if (!termo) {
       setMensagemErro("Digite o número de série, modelo ou patrimônio.");
@@ -132,21 +169,7 @@ export default function NovaCautela() {
           .limit(1)
           .maybeSingle();
         data = resModelo.data;
-        error = resModelo.error;
       }
-
-      if (!data && !error) {
-        const resPatrimonio = await supabase
-          .from("equipamentos")
-          .select("*")
-          .ilike("patrimonio", `%${termo}%`)
-          .limit(1)
-          .maybeSingle();
-        data = resPatrimonio.data;
-        error = resPatrimonio.error;
-      }
-
-      if (error) throw error;
 
       if (!data) {
         setMensagemErro("Armamento não encontrado no acervo!");
@@ -155,7 +178,6 @@ export default function NovaCautela() {
 
       validarEAtribuirArma(data);
     } catch (err) {
-      console.error("Erro ao buscar armamento:", err.message);
       setMensagemErro("Erro na busca: " + err.message);
     } finally {
       setCarregando(false);
@@ -166,24 +188,30 @@ export default function NovaCautela() {
     const st = String(data.status || "").toLowerCase();
     if (st !== "disponivel") {
       setMensagemErro(
-        `BLOQUEIO BÉLICO: O armamento série ${data.num_serie} consta como "${data.status.toUpperCase()}" e NÃO pode ser cautelado novamente!`,
+        `BLOQUEIO BÉLICO: O armamento série ${data.num_serie} consta como "${data.status.toUpperCase()}"!`,
       );
       return;
     }
     setArmaEncontrada(data);
-    setModoDigitacao("manual"); // Retorna para a tela de visualização da arma encontrada
+    setModoDigitacao("manual");
   };
 
   const handleFinalizarCautela = async (e) => {
     e.preventDefault();
-
     if (!armaEncontrada) {
       setMensagemErro("Selecione um armamento disponível antes de finalizar.");
       return;
     }
-
     if (!policialSelecionado) {
       setMensagemErro("Selecione o policial responsável pela cautela.");
+      return;
+    }
+
+    // Validação extra de segurança contra autocautela
+    if (userRole !== "master" && policialSelecionado === policialLogadoId) {
+      setMensagemErro(
+        "Erro de Segurança: Você não pode registrar uma cautela para si próprio.",
+      );
       return;
     }
 
@@ -191,30 +219,17 @@ export default function NovaCautela() {
     setMensagemErro("");
 
     try {
-      const { data: armaAtual } = await supabase
-        .from("equipamentos")
-        .select("status")
-        .eq("num_serie", armaEncontrada.num_serie)
-        .single();
-
-      if (
-        armaAtual &&
-        String(armaAtual.status).toLowerCase() !== "disponivel"
-      ) {
-        throw new Error(
-          "Este armamento acabou de ser cautelado por outro operador!",
-        );
-      }
+      const dadosNovaCautela = {
+        policial_id: policialSelecionado,
+        status: "ativa",
+        status_aceite: "pendente",
+        data_cautela: new Date().toISOString(),
+        armeiro_id: policialLogadoId || null,
+      };
 
       const { data: novaCautela, error: errCautela } = await supabase
         .from("cautelas")
-        .insert([
-          {
-            policial_id: policialSelecionado,
-            status: "ativa",
-            data_cautela: new Date().toISOString(),
-          },
-        ])
+        .insert([dadosNovaCautela])
         .select()
         .single();
 
@@ -235,17 +250,10 @@ export default function NovaCautela() {
         throw errItem;
       }
 
-      const { error: errUpdate } = await supabase
+      await supabase
         .from("equipamentos")
         .update({ status: "cautelado" })
         .eq("num_serie", armaEncontrada.num_serie);
-
-      if (errUpdate) {
-        console.error(
-          "Aviso ao atualizar status do equipamento:",
-          errUpdate.message,
-        );
-      }
 
       navigate("/cautelas");
     } catch (err) {
@@ -275,22 +283,14 @@ export default function NovaCautela() {
           <button
             type="button"
             onClick={() => setModoDigitacao("camera")}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-              modoDigitacao === "camera"
-                ? "bg-white text-blue-600 shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${modoDigitacao === "camera" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
           >
             📷 Câmera / QR Code
           </button>
           <button
             type="button"
             onClick={() => setModoDigitacao("manual")}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-              modoDigitacao === "manual"
-                ? "bg-white text-blue-600 shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${modoDigitacao === "manual" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
           >
             ⌨️ Digitação Manual
           </button>
@@ -312,11 +312,10 @@ export default function NovaCautela() {
                 type="text"
                 value={termoBusca}
                 onChange={(e) => setTermoBusca(e.target.value)}
-                placeholder="Ex: 1234, PT 840, abc123"
+                placeholder="Ex: 1234, PT 840..."
                 className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
-
             <button
               type="submit"
               disabled={carregando}
@@ -331,24 +330,12 @@ export default function NovaCautela() {
               id="reader"
               className="w-full overflow-hidden rounded-lg"
             ></div>
-            <p className="text-[11px] text-slate-500 text-center mt-2">
-              Posicione o QR Code da etiqueta impressa no interior da moldura da
-              câmera.
-            </p>
           </div>
         )}
 
         {armaEncontrada && (
           <div className="mt-6 border-t border-slate-200 pt-5 space-y-4">
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-emerald-800 uppercase">
-                  {armaEncontrada.tipo || "Armamento"} Encontrado
-                </span>
-                <span className="px-2 py-0.5 bg-emerald-200 text-emerald-900 rounded-full text-[10px] font-bold">
-                  {armaEncontrada.status}
-                </span>
-              </div>
               <div className="text-sm font-bold text-slate-900">
                 {armaEncontrada.modelo_descricao}
               </div>
@@ -357,8 +344,6 @@ export default function NovaCautela() {
                 <strong className="font-mono text-slate-800">
                   {armaEncontrada.num_serie}
                 </strong>
-                {armaEncontrada.patrimonio &&
-                  ` | Patrimônio: ${armaEncontrada.patrimonio}`}
               </div>
             </div>
 
@@ -399,7 +384,6 @@ export default function NovaCautela() {
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium"
                   />
                 </div>
-
                 <div>
                   <label className="block font-bold text-slate-700 uppercase mb-1">
                     Qtd. Munições
@@ -420,7 +404,7 @@ export default function NovaCautela() {
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: .40 S&W Gold Hex, 9mm Luger"
+                  placeholder="Ex: .40 S&W Gold Hex"
                   value={tipoMunicao}
                   onChange={(e) => setTipoMunicao(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium"
@@ -432,9 +416,7 @@ export default function NovaCautela() {
                 disabled={salvandoCautela}
                 className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm uppercase tracking-wider rounded-xl shadow transition-all disabled:opacity-50 mt-2"
               >
-                {salvandoCautela
-                  ? "Registrando Cautela..."
-                  : "Confirmar e Gerar Cautela"}
+                {salvandoSalvarCautelaCheck(salvandoCautela)}
               </button>
             </form>
           </div>
@@ -442,4 +424,8 @@ export default function NovaCautela() {
       </div>
     </div>
   );
+}
+
+function salvandoSalvarCautelaCheck(loading) {
+  return loading ? "Registrando Cautela..." : "Confirmar e Gerar Cautela";
 }

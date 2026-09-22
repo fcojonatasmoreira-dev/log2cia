@@ -11,6 +11,7 @@ import {
   RefreshCw,
   FileText,
   Trash2,
+  Edit3,
   X,
 } from "lucide-react";
 
@@ -21,24 +22,22 @@ export default function Cautelas() {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Perfil unificado do usuário logado via localStorage ('log2cia_user')
   const [userRole, setUserRole] = useState("policial");
   const [userName, setUserName] = useState("Militar");
   const [userId, setUserId] = useState(null);
 
-  // Estados dos Filtros de Busca
   const [filtroTexto, setFiltroTexto] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("todos");
   const [filtroDataInicio, setFiltroDataInicio] = useState("");
   const [filtroDataFim, setFiltroDataFim] = useState("");
   const [somenteMinhas, setSomenteMinhas] = useState(false);
 
-  // Modais de Ação e Visualização
   const [cautelaVisualizando, setCautelaVisualizando] = useState(null);
   const [cautelaDevolvendo, setCautelaDevolvendo] = useState(null);
+  const [cautelaEditando, setCautelaEditando] = useState(null);
+  const [equipamentosDisponiveis, setEquipamentosDisponiveis] = useState([]);
   const [processando, setProcessando] = useState(false);
 
-  // Formulário do Checklist e Devolução
   const [checkArma, setCheckArma] = useState(true);
   const [checkCarregadores, setCheckCarregadores] = useState(true);
   const [checkMunicao, setCheckMunicao] = useState(true);
@@ -58,7 +57,9 @@ export default function Cautelas() {
       const usuarioSalvo = localStorage.getItem("log2cia_user");
       if (usuarioSalvo) {
         const dadosUser = JSON.parse(usuarioSalvo);
-        roleLida = String(dadosUser?.role || "policial").toLowerCase();
+        roleLida = String(dadosUser?.role || "policial")
+          .trim()
+          .toLowerCase();
         nomeLido =
           dadosUser?.nome_guerra || dadosUser?.nome_completo || "Militar";
         matriculaLogada = dadosUser?.matricula;
@@ -70,9 +71,7 @@ export default function Cautelas() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUser(user);
-      }
+      if (user) setCurrentUser(user);
 
       let policialIdEncontrado = null;
       if (matriculaLogada) {
@@ -84,23 +83,28 @@ export default function Cautelas() {
         if (polData) policialIdEncontrado = polData.id;
       }
 
-      if (!policialIdEncontrado && user) {
-        const { data: polData } = await supabase
-          .from("policiais")
-          .select("id")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (polData) policialIdEncontrado = polData.id;
-      }
-
       setUserId(policialIdEncontrado);
 
       const temAcessoTotal = ["master", "p4", "armeiro"].includes(roleLida);
       await carregarCautelas(temAcessoTotal, policialIdEncontrado);
+      await carregarEquipamentosDisponiveis();
     } catch (err) {
       console.error("Erro ao carregar dados:", err.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function carregarEquipamentosDisponiveis() {
+    try {
+      const { data, error } = await supabase
+        .from("equipamentos")
+        .select("id, tipo, modelo_descricao, num_serie, status")
+        .eq("status", "disponivel");
+      if (error) throw error;
+      if (data) setEquipamentosDisponiveis(data);
+    } catch (err) {
+      console.error("Erro ao carregar equipamentos disponíveis:", err.message);
     }
   }
 
@@ -117,22 +121,20 @@ export default function Cautelas() {
           data_devolucao,
           alteracoes,
           armeiro_id,
+          armeiro_baixa_id,
           policial_id,
-          policial:policiais!policial_id (
-            id,
-            matricula,
-            posto_graduacao,
-            nome_guerra
-          ),
           cautela_itens (
             id,
             quantidade_municao,
             tipo_municao,
             quantidade_carregadores,
+            equipamento_id,
             equipamento:equipamentos (
+              id,
               tipo,
               modelo_descricao,
-              num_serie
+              num_serie,
+              status
             )
           )
         `,
@@ -144,17 +146,38 @@ export default function Cautelas() {
           query = query.eq("policial_id", policialId);
         } else {
           setCautelas([]);
+          setLoading(false);
           return;
         }
       }
 
       const { data, error } = await query;
       if (error) throw error;
+
       if (data) {
-        setCautelas(data);
+        const { data: policiaisData } = await supabase
+          .from("policiais")
+          .select("id, posto_graduacao, nome_guerra, matricula");
+        const mapPoliciais = {};
+        if (policiaisData) {
+          policiaisData.forEach((p) => {
+            mapPoliciais[p.id] = p;
+          });
+        }
+
+        const dadosEnriquecidos = data.map((c) => ({
+          ...c,
+          policial: mapPoliciais[c.policial_id] || null,
+          armeiro: mapPoliciais[c.armeiro_id] || null,
+          armeiro_baixa: mapPoliciais[c.armeiro_baixa_id] || null,
+        }));
+
+        setCautelas(dadosEnriquecidos);
       }
     } catch (err) {
       console.error("Erro crítico ao carregar cautelas:", err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -167,7 +190,6 @@ export default function Cautelas() {
         .eq("id", cautelaId);
 
       if (error) throw error;
-
       alert("Cautela aceita com sucesso!");
       const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
       await carregarCautelas(temAcessoTotal, userId);
@@ -186,41 +208,49 @@ export default function Cautelas() {
   };
 
   const handleCancelarCautelaPendente = async (cautela) => {
+    const isMaster = userRole === "master";
+    const isArmeiroOrP4 = ["armeiro", "p4"].includes(userRole);
+    const ehCautelaParaMim = userId && cautela.policial?.id === userId;
+
+    if (!isMaster && (!isArmeiroOrP4 || ehCautelaParaMim)) {
+      alert(
+        "Acesso negado: Você não tem permissão para cancelar esta cautela.",
+      );
+      return;
+    }
+
     if (
       !window.confirm(
         "Deseja realmente cancelar esta cautela pendente? O armamento voltará a ficar disponível.",
       )
-    ) {
+    )
       return;
-    }
 
     setProcessando(true);
     try {
-      const numSerie = cautela.cautela_itens?.[0]?.equipamento?.num_serie;
-
+      const equipamentoIdAntigo = cautela.cautela_itens?.[0]?.equipamento?.id;
       await supabase
         .from("cautela_itens")
         .delete()
         .eq("cautela_id", cautela.id);
-
       const { error } = await supabase
         .from("cautelas")
         .delete()
         .eq("id", cautela.id);
-
       if (error) throw error;
 
-      if (numSerie) {
+      if (equipamentoIdAntigo) {
         await supabase
           .from("equipamentos")
           .update({ status: "disponivel" })
-          .eq("num_serie", numSerie);
+          .eq("id", equipamentoIdAntigo);
       }
 
       alert("Cautela cancelada com sucesso!");
       setCautelaVisualizando(null);
       const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
       await carregarCautelas(temAcessoTotal, userId);
+      await carregarEquipamentosDisponiveis();
     } catch (err) {
       alert("Erro ao cancelar cautela: " + err.message);
     } finally {
@@ -243,35 +273,57 @@ export default function Cautelas() {
     setProcessando(true);
 
     try {
-      const numSerie =
-        cautelaDevolvendo.cautela_itens?.[0]?.equipamento?.num_serie;
-      const dataHoraAtual = new Date().toISOString();
+      let armeiroBaixaIdFinal = userId;
+      if (!armeiroBaixaIdFinal) {
+        const usuarioSalvo = localStorage.getItem("log2cia_user");
+        if (usuarioSalvo) {
+          const dadosUser = JSON.parse(usuarioSalvo);
+          if (dadosUser?.matricula) {
+            const { data: polData } = await supabase
+              .from("policiais")
+              .select("id")
+              .eq("matricula", dadosUser.matricula)
+              .maybeSingle();
+            if (polData) armeiroBaixaIdFinal = polData.id;
+          }
+        }
+      }
 
+      const equipamentoId =
+        cautelaDevolvendo.cautela_itens?.[0]?.equipamento?.id;
+      const dataHoraAtual = new Date().toISOString();
       const checklistStatus = `ARMA:${checkArma ? "OK" : "NOK"}|CARREGADORES:${checkCarregadores ? "OK" : "NOK"}|MUNICAO:${checkMunicao ? "OK" : "NOK"}`;
       const relatorioFormatado = `${checklistStatus} | OBS:${campoAlteracoes ? campoAlteracoes.trim() : "Sem alterações"}`;
 
+      const dadosUpdate = {
+        status: "finalizada",
+        data_devolucao: dataHoraAtual,
+        alteracoes: relatorioFormatado,
+      };
+
+      if (armeiroBaixaIdFinal) {
+        dadosUpdate.armeiro_baixa_id = armeiroBaixaIdFinal;
+      }
+
       const { error: errCautela } = await supabase
         .from("cautelas")
-        .update({
-          status: "finalizada",
-          data_devolucao: dataHoraAtual,
-          armeiro_id: currentUser?.id || null,
-          alteracoes: relatorioFormatado,
-        })
+        .update(dadosUpdate)
         .eq("id", cautelaDevolvendo.id);
 
       if (errCautela) throw errCautela;
 
-      if (numSerie) {
+      if (equipamentoId) {
         await supabase
           .from("equipamentos")
           .update({ status: "disponivel" })
-          .eq("num_serie", numSerie);
+          .eq("id", equipamentoId);
       }
 
       setCautelaDevolvendo(null);
+      alert("Devolução homologada com sucesso!");
       const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
-      carregarCautelas(temAcessoTotal, userId);
+      await carregarCautelas(temAcessoTotal, userId);
+      await carregarEquipamentosDisponiveis();
     } catch (err) {
       alert("Erro ao homologar devolução: " + err.message);
     } finally {
@@ -280,39 +332,94 @@ export default function Cautelas() {
   };
 
   const handleExcluirCautela = async (cautela) => {
+    if (userRole !== "master") {
+      alert("Acesso restrito ao perfil Master.");
+      return;
+    }
+
     if (
       !window.confirm(
-        "Atenção (Master): Deseja realmente excluir este registro histórico?",
+        "Atenção: Deseja realmente excluir este registro de cautela? O armamento voltará a ficar disponível.",
       )
     )
       return;
 
     try {
-      const numSerie = cautela.cautela_itens?.[0]?.equipamento?.num_serie;
-
+      const equipamentoId = cautela.cautela_itens?.[0]?.equipamento?.id;
       await supabase
         .from("cautela_itens")
         .delete()
         .eq("cautela_id", cautela.id);
-
       const { error } = await supabase
         .from("cautelas")
         .delete()
         .eq("id", cautela.id);
-
       if (error) throw error;
 
-      if (cautela.status === "ativa" && numSerie) {
+      if (equipamentoId && cautela.status === "ativa") {
         await supabase
           .from("equipamentos")
           .update({ status: "disponivel" })
-          .eq("num_serie", numSerie);
+          .eq("id", equipamentoId);
       }
 
       setCautelaVisualizando(null);
-      setCautelas((prev) => prev.filter((c) => c.id !== cautela.id));
+      alert("Cautela excluída com sucesso!");
+      const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
+      await carregarCautelas(temAcessoTotal, userId);
+      await carregarEquipamentosDisponiveis();
     } catch (err) {
       alert("Erro ao excluir cautela: " + err.message);
+    }
+  };
+
+  const handleSalvarEdicao = async (e) => {
+    e.preventDefault();
+    if (!cautelaEditando) return;
+    setProcessando(true);
+
+    try {
+      const itemAtual = cautelaEditando.cautela_itens[0] || {};
+      const novoEquipamentoId = itemAtual.equipamento_id;
+      const equipamentoAntigoId = cautelaEditando.equipamentoAntigoId;
+
+      const { error: errItem } = await supabase
+        .from("cautela_itens")
+        .update({
+          equipamento_id: novoEquipamentoId || null,
+          quantidade_carregadores:
+            Number(itemAtual.quantidade_carregadores) || 0,
+          quantidade_municao: Number(itemAtual.quantidade_municao) || 0,
+          tipo_municao: itemAtual.tipo_municao || "",
+        })
+        .eq("id", itemAtual.id);
+
+      if (errItem) throw errItem;
+
+      if (
+        equipamentoAntigoId &&
+        novoEquipamentoId &&
+        equipamentoAntigoId !== novoEquipamentoId
+      ) {
+        await supabase
+          .from("equipamentos")
+          .update({ status: "disponivel" })
+          .eq("id", equipamentoAntigoId);
+        await supabase
+          .from("equipamentos")
+          .update({ status: "cautelado" })
+          .eq("id", novoEquipamentoId);
+      }
+
+      alert("Cautela atualizada com sucesso!");
+      setCautelaEditando(null);
+      const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
+      await carregarCautelas(temAcessoTotal, userId);
+      await carregarEquipamentosDisponiveis();
+    } catch (err) {
+      alert("Erro ao atualizar cautela: " + err.message);
+    } finally {
+      setProcessando(false);
     }
   };
 
@@ -324,7 +431,6 @@ export default function Cautelas() {
         municao: true,
         obs: "Sem alterações.",
       };
-
     const armaOk = !texto.includes("ARMA:NOK");
     const carregadoresOk = !texto.includes("CARREGADORES:NOK");
     const municaoOk = !texto.includes("MUNICAO:NOK");
@@ -346,68 +452,72 @@ export default function Cautelas() {
     };
   };
 
-  const handleBaixarPDF = async (cautela, nomeArmeiro) => {
+  const handleBaixarPDF = async (
+    cautela,
+    nomeArmeiroSaida,
+    nomeArmeiroBaixa,
+  ) => {
     const pol = cautela.policial || {};
     const item = cautela.cautela_itens?.[0] || {};
     const eq = item.equipamento || {};
-    const infoRelatorio = parseRelatorio(cautela.alteracoes);
+    const isAtiva = cautela.status === "ativa";
+    const dataCautelaFormatada = cautela.data_cautela
+      ? new Date(cautela.data_cautela).toLocaleString("pt-BR")
+      : "N/I";
+    const dataDevolucaoFormatada = cautela.data_devolucao
+      ? new Date(cautela.data_devolucao).toLocaleString("pt-BR")
+      : "Pendente (Em Cautela)";
     const dataHoraEmissao = new Date().toLocaleString("pt-BR");
+    const infoRelatorio = parseRelatorio(cautela.alteracoes);
 
     const element = document.createElement("div");
     element.innerHTML = `
-      <div style="font-family: Arial, sans-serif; padding: 20px; color: #0f172a; line-height: 1.5; background: #ffffff;">
-        <div style="text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px;">
-          <h1 style="margin: 0; font-size: 16px; text-transform: uppercase; letter-spacing: 1px;">POLÍCIA MILITAR DO ESTADO</h1>
-          <h2 style="margin: 4px 0 0 0; font-size: 12px; color: #475569; font-weight: normal;">2ª COMPANHIA / 15º BATALHÃO — REGISTRO DE ARMAZENAMENTO BÉLICO</h2>
-          <h3 style="margin-top: 8px; font-size: 13px; font-weight: bold; text-transform: uppercase; color: #1e293b;">TERMO DE HOMOLOGAÇÃO E DEVOLUÇÃO BÉLICA</h3>
+      <div style="font-family: Arial, sans-serif; padding: 25px; color: #0f172a; line-height: 1.4; background: #ffffff; font-size: 11px;">
+        <div style="text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px;">
+          <h1 style="margin: 0; font-size: 14px; text-transform: uppercase; font-weight: bold;">POLÍCIA MILITAR DO CEARÁ</h1>
+          <h2 style="margin: 3px 0; font-size: 11px; color: #334155; font-weight: normal;">6º CRPM • 15º BATALHÃO • 2ª COMPANHIA</h2>
+          <h3 style="margin-top: 6px; font-size: 12px; font-weight: bold; text-transform: uppercase; background: #f1f5f9; padding: 4px; border: 1px solid #cbd5e1;">TERMO DE COMPROVAÇÃO DE CAUTELA E DEVOLUÇÃO BÉLICA</h3>
         </div>
 
-        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-          <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; color: #334155; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 3px;">1. DADOS DO MILITAR RESPONSÁVEL</div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
-            <div><strong>Posto/Graduação - Nome:</strong> ${pol.posto_graduacao || ""} ${pol.nome_guerra || "N/I"}</div>
-            <div><strong>Matrícula/RE:</strong> ${pol.matricula || "N/I"}</div>
-          </div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
+          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">1. Dados do Policial / Servidor</div>
+          <div><strong>Militar:</strong> ${pol.posto_graduacao || ""} ${pol.nome_guerra || "N/I"}</div>
+          <div><strong>Matrícula:</strong> ${pol.matricula || "N/I"}</div>
         </div>
 
-        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-          <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; color: #334155; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 3px;">2. DADOS DA TRANSAÇÃO E DATAS</div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
-            <div><strong>Data/Hora de Cautela:</strong> ${cautela.data_cautela ? new Date(cautela.data_cautela).toLocaleString("pt-BR") : "N/I"}</div>
-            <div><strong>Data/Hora de Devolução:</strong> ${cautela.data_devolucao ? new Date(cautela.data_devolucao).toLocaleString("pt-BR") : "N/I"}</div>
-          </div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
+          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">2. Período e Responsáveis</div>
+          <div><strong>Data/Hora Cautela (Saída):</strong> ${dataCautelaFormatada}</div>
+          <div><strong>Armeiro Saída:</strong> ${nomeArmeiroSaida}</div>
+          <br/>
+          <div><strong>Data/Hora Devolução:</strong> ${dataDevolucaoFormatada}</div>
+          <div><strong>Armeiro Baixa:</strong> ${isAtiva ? "Pendente" : nomeArmeiroBaixa}</div>
+          <div><strong>Status Atual:</strong> ${isAtiva ? "EM CAUTELA (Ativa)" : "DEVOLVIDO (Finalizada)"}</div>
         </div>
 
-        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-          <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; color: #334155; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 3px;">3. ESPECIFICAÇÃO DO MATERIAL BÉLICO</div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
-            <div><strong>Equipamento:</strong> ${eq.tipo?.toUpperCase() || ""} ${eq.modelo_descricao || ""}</div>
-            <div><strong>Nº de Série:</strong> ${eq.num_serie || "N/I"}</div>
-            <div><strong>Carregadores Devolvidos:</strong> ${item.quantidade_carregadores || 0} un</div>
-            <div><strong>Munições Devolvidas:</strong> ${item.quantidade_municao || 0} un (${item.tipo_municao || "N/I"})</div>
-          </div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
+          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">3. Material Bélico Acautelado</div>
+          <div><strong>Tipo / Modelo:</strong> ${eq.tipo?.toUpperCase() || "ARMAMENTO"} - ${eq.modelo_descricao || "N/I"}</div>
+          <div><strong>Número de Série:</strong> ${eq.num_serie || "N/I"}</div>
+          <div><strong>Carregadores:</strong> ${item.quantidade_carregadores || 0} unidade(s)</div>
+          <div><strong>Munições:</strong> ${item.quantidade_municao || 0} unidade(s) (${item.tipo_municao || "N/I"})</div>
         </div>
 
-        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-          <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; color: #334155; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 3px;">4. CONFERÊNCIA FÍSICA (CHECKLIST DA RESERVA)</div>
-          <div style="margin-bottom: 6px; font-size: 11px;">
-            <strong>Armamento:</strong> ${infoRelatorio.arma ? "CONFORME" : "AVARIADO"} | 
-            <strong>Carregadores:</strong> ${infoRelatorio.carregadores ? "CONFORME" : "DIVERGENTE"} | 
-            <strong>Munições:</strong> ${infoRelatorio.municao ? "CONFORME" : "DIVERGENTE"}
-          </div>
-          <div style="font-size: 10px;"><strong>Observações/Avarias:</strong> ${infoRelatorio.obs}</div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 15px;">
+          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">4. Conferência / Observações</div>
+          <div>${infoRelatorio.obs}</div>
         </div>
 
-        <div style="margin-top: 40px; border-top: 2px dashed #0f172a; padding-top: 12px; text-align: center;">
-          <div style="font-size: 11px; font-weight: bold; text-transform: uppercase; color: #0f172a;">Assinado eletronicamente por ${nomeArmeiro}</div>
-          <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Homologado via Log2CIA em ${dataHoraEmissao} • Autenticidade Auditada no Sistema</div>
+        <div style="margin-top: 25px; text-align: center; font-size: 10px; color: #334155; border-top: 1px dashed #94a3b8; padding-top: 10px;">
+          <p style="margin: 2px 0;">Documento gerado e assinado eletronicamente pelo sistema oficial da Unidade.</p>
+          <p style="margin: 2px 0;"><strong>Data e Hora da Emissão:</strong> ${dataHoraEmissao}</p>
         </div>
       </div>
     `;
 
     const opt = {
-      margin: 10,
-      filename: `Termo_Devolucao_${pol.nome_guerra || "Militar"}_${eq.num_serie || "Serie"}.pdf`,
+      margin: 8,
+      filename: `Comprovante_Cautela_${pol.nome_guerra || "Militar"}_${eq.num_serie || "Serie"}.pdf`,
       image: { type: "jpeg", quality: 0.98 },
       html2canvas: { scale: 2 },
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
@@ -418,28 +528,32 @@ export default function Cautelas() {
       html2pdf().set(opt).from(element).save();
     } catch (err) {
       console.error("Erro ao gerar PDF:", err);
-      alert("Falha ao gerar PDF automaticamente.");
+      alert("Falha ao gerar PDF.");
     }
   };
 
   const isMaster = userRole === "master";
-  const isArmeiro = isMaster || userRole === "armeiro" || userRole === "p4";
+  const isArmeiroOrP4 = ["master", "armeiro", "p4"].includes(userRole);
 
-  // Lógica de Filtragem Local Instantânea
   const cautelasFiltradas = cautelas.filter((c) => {
     const pol = c.policial || {};
-    const nomeGuerra = String(pol.nome_guerra || "").toLowerCase();
-    const matricula = String(pol.matricula || "").toLowerCase();
-    const termo = filtroTexto.toLowerCase();
-
-    const matchTexto =
-      !filtroTexto || nomeGuerra.includes(termo) || matricula.includes(termo);
-
+    let matchTexto = true;
     let matchStatus = true;
-    if (filtroStatus === "ativa") matchStatus = c.status === "ativa";
-    if (filtroStatus === "finalizada") matchStatus = c.status === "finalizada";
-    if (filtroStatus === "pendente")
-      matchStatus = c.status_aceite === "pendente";
+
+    if (isArmeiroOrP4) {
+      const nomeGuerra = String(pol.nome_guerra || "").toLowerCase();
+      const matricula = String(pol.matricula || "").toLowerCase();
+      const termo = filtroTexto.toLowerCase();
+
+      matchTexto =
+        !filtroTexto || nomeGuerra.includes(termo) || matricula.includes(termo);
+
+      if (filtroStatus === "ativa") matchStatus = c.status === "ativa";
+      if (filtroStatus === "finalizada")
+        matchStatus = c.status === "finalizada";
+      if (filtroStatus === "pendente")
+        matchStatus = c.status_aceite === "pendente";
+    }
 
     const matchMinhas = !somenteMinhas || (userId && pol.id === userId);
 
@@ -459,18 +573,18 @@ export default function Cautelas() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
-            {isArmeiro
+            {isArmeiroOrP4
               ? "Controle de Cautelas e Devoluções"
               : "Minhas Cautelas"}
           </h1>
           <p className="text-sm text-slate-500">
-            {isArmeiro
+            {isArmeiroOrP4
               ? "Registro de saída e devolução homologada de material bélico."
-              : "Acompanhe seus armamentos acautelados e confirme o recebimento."}
+              : "Acompanhe seus armamentos acautelados."}
           </p>
         </div>
 
-        {isArmeiro && (
+        {isArmeiroOrP4 && (
           <button
             type="button"
             onClick={() => navigate("/cautelas/nova")}
@@ -481,81 +595,81 @@ export default function Cautelas() {
         )}
       </div>
 
-      {/* BARRA DE FILTROS REDESENHADA E MODERNA */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
         <div className="flex items-center gap-2 pb-3 border-b border-slate-100 text-slate-800 font-bold text-xs uppercase tracking-wide">
           <Filter className="w-4 h-4 text-blue-600" />
-          <span>Filtros e Localização de Cautelas</span>
+          <span>
+            {isArmeiroOrP4
+              ? "Filtros e Localização de Cautelas"
+              : "Filtrar por Período"}
+          </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-          {/* Busca por Texto */}
-          <div className="space-y-1.5 lg:col-span-1">
-            <label className="block text-[11px] font-bold text-slate-600 uppercase">
-              Policial / Matrícula
-            </label>
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={filtroTexto}
-                onChange={(e) => setFiltroTexto(e.target.value)}
-                placeholder="Nome ou Mat..."
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-800"
-              />
+        <div
+          className={`grid grid-cols-1 sm:grid-cols-2 ${isArmeiroOrP4 ? "lg:grid-cols-5" : "lg:grid-cols-2"} gap-4 items-end`}
+        >
+          {isArmeiroOrP4 && (
+            <div className="space-y-1.5 lg:col-span-1">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                Policial / Matrícula
+              </label>
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={filtroTexto}
+                  onChange={(e) => setFiltroTexto(e.target.value)}
+                  placeholder="Nome ou Mat..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Status */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold text-slate-600 uppercase">
-              Status
-            </label>
-            <select
-              value={filtroStatus}
-              onChange={(e) => setFiltroStatus(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-800"
-            >
-              <option value="todos">Todos os Status</option>
-              <option value="ativa">Em Cautela (Ativas)</option>
-              <option value="finalizada">Devolvidas (Finalizadas)</option>
-              <option value="pendente">Aguardando Aceite</option>
-            </select>
-          </div>
+          {isArmeiroOrP4 && (
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                Status
+              </label>
+              <select
+                value={filtroStatus}
+                onChange={(e) => setFiltroStatus(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+              >
+                <option value="todos">Todos os Status</option>
+                <option value="ativa">Em Cautela (Ativas)</option>
+                <option value="finalizada">Devolvidas (Finalizadas)</option>
+                <option value="pendente">Aguardando Aceite</option>
+              </select>
+            </div>
+          )}
 
-          {/* Data Início */}
           <div className="space-y-1.5">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
               Data Início
             </label>
-            <div className="relative">
-              <input
-                type="date"
-                value={filtroDataInicio}
-                onChange={(e) => setFiltroDataInicio(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-800"
-              />
-            </div>
+            <input
+              type="date"
+              value={filtroDataInicio}
+              onChange={(e) => setFiltroDataInicio(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+            />
           </div>
 
-          {/* Data Fim */}
           <div className="space-y-1.5">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
               Data Fim
             </label>
-            <div className="relative">
-              <input
-                type="date"
-                value={filtroDataFim}
-                onChange={(e) => setFiltroDataFim(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-800"
-              />
-            </div>
+            <input
+              type="date"
+              value={filtroDataFim}
+              onChange={(e) => setFiltroDataFim(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+            />
           </div>
 
-          {/* Checkbox / Botão Minhas Cautelas */}
-          <div className="flex items-center h-9">
-            {isArmeiro && (
+          {isArmeiroOrP4 && (
+            <div className="flex items-center h-9">
               <label className="flex items-center gap-2.5 bg-blue-50/80 hover:bg-blue-100/60 border border-blue-200 px-3.5 py-2 rounded-xl cursor-pointer text-xs font-bold text-blue-900 transition-all w-full justify-center">
                 <input
                   type="checkbox"
@@ -565,8 +679,8 @@ export default function Cautelas() {
                 />
                 <span className="truncate">Minhas Cautelas</span>
               </label>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -581,7 +695,8 @@ export default function Cautelas() {
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-[11px] font-semibold">
                 <th className="p-3.5">Policial / Servidor</th>
                 <th className="p-3.5">Itens Cautelados</th>
-                <th className="p-3.5">Data Saída</th>
+                <th className="p-3.5">Armeiro Saída</th>
+                <th className="p-3.5">Armeiro Baixa</th>
                 <th className="p-3.5">Status / Aceite</th>
                 <th className="p-3.5 text-right">Ações</th>
               </tr>
@@ -589,13 +704,15 @@ export default function Cautelas() {
             <tbody className="divide-y divide-slate-100">
               {cautelasFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="p-8 text-center text-slate-400">
+                  <td colSpan="6" className="p-8 text-center text-slate-400">
                     Nenhuma cautela encontrada com os filtros aplicados.
                   </td>
                 </tr>
               ) : (
                 cautelasFiltradas.map((c) => {
                   const pol = c.policial || {};
+                  const armeiroSaida = c.armeiro || {};
+                  const armeiroBaixa = c.armeiro_baixa || {};
                   const isAtiva = c.status === "ativa";
                   const statusAceite = c.status_aceite || "pendente";
                   const isMeuRegistro = userId && pol.id === userId;
@@ -610,7 +727,7 @@ export default function Cautelas() {
                           {pol.posto_graduacao} {pol.nome_guerra || "N/I"}
                         </span>
                         <span className="text-[11px] text-slate-500 font-mono">
-                          Matrícula: {pol.matricula || "N/I"}
+                          Mat: {pol.matricula || "N/I"}
                         </span>
                       </td>
 
@@ -643,31 +760,55 @@ export default function Cautelas() {
                         )}
                       </td>
 
-                      <td className="p-3.5 text-slate-600 text-xs font-medium">
-                        {c.data_cautela
-                          ? new Date(c.data_cautela).toLocaleString("pt-BR")
-                          : "N/A"}
+                      <td className="p-3.5 text-xs text-slate-700">
+                        <span className="font-bold block">
+                          {armeiroSaida.nome_guerra
+                            ? `${armeiroSaida.posto_graduacao || ""} ${armeiroSaida.nome_guerra}`
+                            : "N/I"}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {c.data_cautela
+                            ? new Date(c.data_cautela).toLocaleDateString(
+                                "pt-BR",
+                              )
+                            : ""}
+                        </span>
+                      </td>
+
+                      <td className="p-3.5 text-xs text-slate-700">
+                        {isAtiva ? (
+                          <span className="text-amber-600 font-medium italic">
+                            Pendente (Em aberto)
+                          </span>
+                        ) : (
+                          <>
+                            <span className="font-bold block">
+                              {armeiroBaixa.nome_guerra
+                                ? `${armeiroBaixa.posto_graduacao || ""} ${armeiroBaixa.nome_guerra}`
+                                : "Não registrado"}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {c.data_devolucao
+                                ? new Date(c.data_devolucao).toLocaleDateString(
+                                    "pt-BR",
+                                  )
+                                : ""}
+                            </span>
+                          </>
+                        )}
                       </td>
 
                       <td className="p-3.5 space-y-1.5">
                         <div>
                           <span
-                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              isAtiva
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-emerald-100 text-emerald-800"
-                            }`}
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${isAtiva ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}
                           >
                             {isAtiva ? "• Em Cautela" : "✓ Devolvido"}
                           </span>
                         </div>
                         <div>
                           <span
-                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
-                              statusAceite === "aceito"
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-orange-100 text-orange-800"
-                            }`}
+                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${statusAceite === "aceito" ? "bg-blue-100 text-blue-800" : "bg-orange-100 text-orange-800"}`}
                           >
                             {statusAceite === "aceito"
                               ? "Aceito pelo Militar"
@@ -684,7 +825,7 @@ export default function Cautelas() {
                               onClick={() => handleAceitarCautela(c.id)}
                               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-xs"
                             >
-                              ✓ Aceitar Cautela
+                              ✓ Aceitar
                             </button>
                           )}
                         <button
@@ -703,19 +844,44 @@ export default function Cautelas() {
         </div>
       )}
 
-      {/* MODAL 1: VISUALIZAÇÃO E BOTÃO BAIXAR PDF */}
+      {/* MODAL DE VISUALIZAÇÃO */}
       {cautelaVisualizando &&
         (() => {
           const isAtiva = cautelaVisualizando.status === "ativa";
           const statusAceite = cautelaVisualizando.status_aceite || "pendente";
-          const infoRelatorio = parseRelatorio(cautelaVisualizando.alteracoes);
-          const nomeArmeiro = userName;
+
+          const armeiroSaidaObj = cautelaVisualizando.armeiro;
+          const nomeArmeiroSaida = armeiroSaidaObj
+            ? `${armeiroSaidaObj.posto_graduacao || ""} ${armeiroSaidaObj.nome_guerra || ""}`.trim()
+            : "Não registrado";
+
+          const armeiroBaixaObj = cautelaVisualizando.armeiro_baixa;
+          const nomeArmeiroBaixa = armeiroBaixaObj
+            ? `${armeiroBaixaObj.posto_graduacao || ""} ${armeiroBaixaObj.nome_guerra || ""}`.trim()
+            : isAtiva
+              ? "Pendente"
+              : "Não registrado";
+
           const isOwnerPolicial =
             userId && cautelaVisualizando.policial?.id === userId;
+          const eq = cautelaVisualizando.cautela_itens?.[0]?.equipamento || {};
+          const item = cautelaVisualizando.cautela_itens?.[0] || {};
+
+          const isLogadoArmeiroOrP4 = ["armeiro", "p4"].includes(userRole);
+          const ehCautelaParaMim =
+            userId && cautelaVisualizando.policial?.id === userId;
+
+          const podeCancelarOuGerenciar =
+            isMaster || (isLogadoArmeiroOrP4 && !ehCautelaParaMim);
+          const podeFazerDevolucao =
+            isAtiva &&
+            isArmeiroOrP4 &&
+            statusAceite === "aceito" &&
+            (isMaster || !ehCautelaParaMim);
 
           return (
             <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
-              <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
+              <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                   <div>
                     <h2 className="text-base font-bold text-slate-800">
@@ -723,16 +889,12 @@ export default function Cautelas() {
                     </h2>
                     <p className="text-[11px] text-slate-500">
                       {isAtiva
-                        ? "Registro de cautela em aberto"
+                        ? "Registro em aberto"
                         : "Comprovante de devolução concluída"}
                     </p>
                   </div>
                   <span
-                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                      isAtiva
-                        ? "bg-amber-100 text-amber-800"
-                        : "bg-emerald-100 text-emerald-800"
-                    }`}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${isAtiva ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}
                   >
                     {isAtiva ? "• Em Cautela" : "✓ Devolvido"}
                   </span>
@@ -741,10 +903,7 @@ export default function Cautelas() {
                 <div className="space-y-3 text-xs">
                   {isAtiva && statusAceite === "pendente" && (
                     <div className="p-3 bg-orange-50 border border-orange-200 text-orange-800 rounded-xl flex items-center justify-between">
-                      <span>
-                        ⚠️ Esta cautela aguarda o aceite do policial
-                        responsável.
-                      </span>
+                      <span>⚠️ Esta cautela aguarda aceite.</span>
                       {isOwnerPolicial && (
                         <button
                           type="button"
@@ -753,16 +912,16 @@ export default function Cautelas() {
                           }
                           className="px-3 py-1 bg-blue-600 text-white font-bold rounded-lg text-xs hover:bg-blue-700 shrink-0 ml-2"
                         >
-                          Aceitar Agora
+                          Aceitar
                         </button>
                       )}
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                    <div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                       <span className="text-slate-500 block text-[10px] uppercase font-bold">
-                        Data de Cautela
+                        Data de Cautela (Saída)
                       </span>
                       <span className="font-bold text-slate-800">
                         {cautelaVisualizando.data_cautela
@@ -772,15 +931,15 @@ export default function Cautelas() {
                           : "N/I"}
                       </span>
                     </div>
-                    <div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                       <span className="text-slate-500 block text-[10px] uppercase font-bold">
-                        Data de Devolução
+                        Data de Devolução (Baixa)
                       </span>
                       <span
                         className={`font-bold ${isAtiva ? "text-amber-700 italic" : "text-emerald-700"}`}
                       >
                         {isAtiva
-                          ? "Pendente de Devolução"
+                          ? "Pendente"
                           : new Date(
                               cautelaVisualizando.data_devolucao,
                             ).toLocaleString("pt-BR")}
@@ -789,130 +948,121 @@ export default function Cautelas() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                       <span className="text-slate-500 block text-[10px] uppercase font-bold">
-                        Policial que Cautelou
+                        Armeiro Saída
                       </span>
                       <span className="font-bold text-slate-800 block">
-                        {cautelaVisualizando.policial?.posto_graduacao}{" "}
-                        {cautelaVisualizando.policial?.nome_guerra}
-                      </span>
-                      <span className="text-[11px] text-slate-500 font-mono">
-                        Mat: {cautelaVisualizando.policial?.matricula || "N/I"}
+                        {nomeArmeiroSaida}
                       </span>
                     </div>
-
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                       <span className="text-slate-500 block text-[10px] uppercase font-bold">
-                        {isAtiva ? "Armeiro Responsável" : "Armeiro de Plantão"}
+                        Armeiro Baixa
                       </span>
                       <span className="font-bold text-slate-800 block">
-                        {nomeArmeiro}
-                      </span>
-                      <span
-                        className={`text-[11px] font-medium ${isAtiva ? "text-amber-600" : "text-emerald-600"}`}
-                      >
-                        {isAtiva ? "• Em Cautela" : "✓ Homologado"}
+                        {nomeArmeiroBaixa}
                       </span>
                     </div>
                   </div>
 
-                  <div>
-                    <span className="text-slate-500 block mb-1 font-bold uppercase text-[10px]">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">
+                      Policial Cautelado
+                    </span>
+                    <span className="font-bold text-slate-800 block text-sm">
+                      {cautelaVisualizando.policial?.posto_graduacao}{" "}
+                      {cautelaVisualizando.policial?.nome_guerra}
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-mono">
+                      Matrícula:{" "}
+                      {cautelaVisualizando.policial?.matricula || "N/I"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">
                       Equipamento Cautelado
                     </span>
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">
-                      <div className="font-bold text-slate-800">
-                        {cautelaVisualizando.cautela_itens?.[0]?.equipamento?.tipo?.toUpperCase()}{" "}
-                        -{" "}
-                        {
-                          cautelaVisualizando.cautela_itens?.[0]?.equipamento
-                            ?.modelo_descricao
-                        }
-                      </div>
-                      <div className="text-slate-600 font-mono text-[11px]">
-                        Nº de Série:{" "}
-                        <strong>
-                          {
-                            cautelaVisualizando.cautela_itens?.[0]?.equipamento
-                              ?.num_serie
-                          }
-                        </strong>
-                      </div>
-                      <div className="text-[11px] text-slate-500 pt-1">
-                        Carregadores:{" "}
-                        <strong>
-                          {
-                            cautelaVisualizando.cautela_itens?.[0]
-                              ?.quantidade_carregadores
-                          }
-                        </strong>{" "}
-                        | Munição:{" "}
-                        <strong>
-                          {
-                            cautelaVisualizando.cautela_itens?.[0]
-                              ?.quantidade_municao
-                          }
-                        </strong>{" "}
-                        (
-                        {cautelaVisualizando.cautela_itens?.[0]?.tipo_municao ||
-                          "N/I"}
-                        )
-                      </div>
+                    <div className="font-bold text-slate-800 pt-1">
+                      {eq.tipo?.toUpperCase() || "ARMAMENTO"} -{" "}
+                      {eq.modelo_descricao || "N/I"}
+                    </div>
+                    <div className="text-slate-600 font-mono text-[11px]">
+                      Nº de Série: <strong>{eq.num_serie || "N/I"}</strong>
+                    </div>
+                    <div className="text-[11px] text-slate-500 pt-1">
+                      Carregadores:{" "}
+                      <strong>{item.quantidade_carregadores || 0}</strong> |
+                      Munição: <strong>{item.quantidade_municao || 0}</strong> (
+                      {item.tipo_municao || "N/I"})
                     </div>
                   </div>
 
                   {!isAtiva && (
-                    <div>
-                      <span className="text-slate-500 block mb-1 font-bold uppercase text-[10px]">
-                        Observações / Ocorrências
-                      </span>
-                      <div className="bg-amber-50/70 border border-amber-200 p-3 rounded-xl text-slate-800 font-medium whitespace-pre-line text-xs">
-                        {infoRelatorio.obs}
-                      </div>
-                    </div>
-                  )}
-
-                  {!isAtiva && (
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleBaixarPDF(cautelaVisualizando, nomeArmeiro)
-                        }
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all shadow-md text-xs"
-                      >
-                        <FileText className="w-4 h-4" />{" "}
-                        <span>Baixar Comprovante em PDF</span>
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleBaixarPDF(
+                          cautelaVisualizando,
+                          nomeArmeiroSaida,
+                          nomeArmeiroBaixa,
+                        )
+                      }
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all shadow-md text-xs"
+                    >
+                      <FileText className="w-4 h-4" />{" "}
+                      <span>Baixar Comprovante em PDF Completo</span>
+                    </button>
                   )}
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t border-slate-100 gap-2">
-                  <div>
-                    {isAtiva && statusAceite === "pendente" && isArmeiro && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleCancelarCautelaPendente(cautelaVisualizando)
-                        }
-                        className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs transition-all border border-rose-200 flex items-center gap-1"
-                      >
-                        <X className="w-3.5 h-3.5" /> Cancelar Cautela
-                      </button>
-                    )}
+                  <div className="flex gap-2">
+                    {podeCancelarOuGerenciar && (
+                      <>
+                        {isMaster && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const copia = JSON.parse(
+                                JSON.stringify(cautelaVisualizando),
+                              );
+                              copia.equipamentoAntigoId =
+                                cautelaVisualizando.cautela_itens?.[0]?.equipamento?.id;
+                              setCautelaVisualizando(null);
+                              setCautelaEditando(copia);
+                            }}
+                            className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs border border-blue-200 flex items-center gap-1 shadow-xs"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" /> Editar
+                          </button>
+                        )}
 
-                    {isMaster && !isAtiva && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleExcluirCautela(cautelaVisualizando)
-                        }
-                        className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" /> Excluir
-                      </button>
+                        {isMaster && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleExcluirCautela(cautelaVisualizando)
+                            }
+                            className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs border border-rose-200 flex items-center gap-1 shadow-xs"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Excluir
+                          </button>
+                        )}
+
+                        {isAtiva && statusAceite === "pendente" && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleCancelarCautelaPendente(cautelaVisualizando)
+                            }
+                            className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs border border-rose-200 flex items-center gap-1"
+                          >
+                            <X className="w-3.5 h-3.5" /> Cancelar
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -920,21 +1070,20 @@ export default function Cautelas() {
                     <button
                       type="button"
                       onClick={() => setCautelaVisualizando(null)}
-                      className="px-4 py-2 bg-slate-100 text-slate-600 hover:bg-slate-200 font-bold rounded-xl text-xs transition-all"
+                      className="px-4 py-2 bg-slate-100 text-slate-600 hover:bg-slate-200 font-bold rounded-xl text-xs"
                     >
                       Fechar
                     </button>
-
-                    {isAtiva && isArmeiro && statusAceite === "aceito" && (
+                    {podeFazerDevolucao && (
                       <button
                         type="button"
                         onClick={() =>
                           handleIniciarDevolucaoFromModal(cautelaVisualizando)
                         }
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-1"
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md flex items-center gap-1"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />{" "}
-                        <span>Dar Início à Devolução</span>
+                        <span>Devolução</span>
                       </button>
                     )}
                   </div>
@@ -944,117 +1093,142 @@ export default function Cautelas() {
           );
         })()}
 
-      {/* MODAL 2: CHECKLIST DE DEVOLUÇÃO */}
-      {cautelaDevolvendo && (
+      {/* MODAL DE EDIÇÃO MASTER */}
+      {cautelaEditando && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
-            <h2 className="text-lg font-bold text-slate-800">
-              Conferência de Devolução Bélica
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-base font-bold text-slate-800">
+              Editar Cautela e Armamento (Master)
             </h2>
-            <p className="text-xs text-slate-500">
-              Faça o checklist dos itens devolvidos pelo policial antes de
-              liberar o armamento de volta ao estoque.
-            </p>
-
-            <form
-              onSubmit={handleConfirmarDevolucao}
-              className="space-y-4 text-xs"
-            >
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">
-                <div className="font-bold text-slate-800">
-                  Militar: {cautelaDevolvendo.policial?.posto_graduacao}{" "}
-                  {cautelaDevolvendo.policial?.nome_guerra}
-                </div>
-                <div className="text-slate-600 font-mono">
-                  Matrícula: {cautelaDevolvendo.policial?.matricula}
-                </div>
-              </div>
-
-              <div className="space-y-2 border-t pt-3 border-slate-100">
-                <span className="font-bold text-slate-700 uppercase block mb-1">
-                  Checklist de Recebimento
-                </span>
-
-                <label className="flex items-center gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={checkArma}
-                    onChange={(e) => setCheckArma(e.target.checked)}
-                    className="w-4 h-4 text-emerald-600 rounded"
-                  />
-                  <span className="font-medium text-slate-800">
-                    Armamento Principal:{" "}
-                    <strong>
-                      {
-                        cautelaDevolvendo.cautela_itens?.[0]?.equipamento
-                          ?.modelo_descricao
-                      }{" "}
-                      (
-                      {
-                        cautelaDevolvendo.cautela_itens?.[0]?.equipamento
-                          ?.num_serie
-                      }
-                      )
-                    </strong>
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={checkCarregadores}
-                    onChange={(e) => setCheckCarregadores(e.target.checked)}
-                    className="w-4 h-4 text-emerald-600 rounded"
-                  />
-                  <span className="font-medium text-slate-800">
-                    Carregadores:{" "}
-                    <strong>
-                      {
-                        cautelaDevolvendo.cautela_itens?.[0]
-                          ?.quantidade_carregadores
-                      }{" "}
-                      unidade(s)
-                    </strong>
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={checkMunicao}
-                    onChange={(e) => setCheckMunicao(e.target.checked)}
-                    className="w-4 h-4 text-emerald-600 rounded"
-                  />
-                  <span className="font-medium text-slate-800">
-                    Munições:{" "}
-                    <strong>
-                      {cautelaDevolvendo.cautela_itens?.[0]?.quantidade_municao}{" "}
-                      (
-                      {cautelaDevolvendo.cautela_itens?.[0]?.tipo_municao ||
-                        "N/I"}
-                      )
-                    </strong>
-                  </span>
-                </label>
-              </div>
-
-              <div className="border-t pt-3 border-slate-100">
+            <form onSubmit={handleSalvarEdicao} className="space-y-4 text-xs">
+              <div>
                 <label className="block font-bold text-slate-700 uppercase mb-1">
-                  Alterações / Ocorrências (Opcional)
+                  Alterar Armamento Acautelado
                 </label>
-                <textarea
-                  rows="3"
-                  value={campoAlteracoes}
-                  onChange={(e) => setCampoAlteracoes(e.target.value)}
-                  placeholder="Ex: Disparos efetuados, avaria no carregador, perda de munição..."
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                <select
+                  value={cautelaEditando.cautela_itens[0]?.equipamento_id || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCautelaEditando((prev) => ({
+                      ...prev,
+                      cautela_itens: [
+                        {
+                          ...prev.cautela_itens[0],
+                          equipamento_id: val,
+                        },
+                      ],
+                    }));
+                  }}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">
+                    -- Mantenha ou Selecione Novo Armamento --
+                  </option>
+                  {cautelaEditando.cautela_itens[0]?.equipamento && (
+                    <option
+                      value={cautelaEditando.cautela_itens[0].equipamento.id}
+                    >
+                      [Atual]{" "}
+                      {cautelaEditando.cautela_itens[0].equipamento.tipo?.toUpperCase()}{" "}
+                      -{" "}
+                      {
+                        cautelaEditando.cautela_itens[0].equipamento
+                          .modelo_descricao
+                      }{" "}
+                      (Série:{" "}
+                      {cautelaEditando.cautela_itens[0].equipamento.num_serie})
+                    </option>
+                  )}
+                  {equipamentosDisponiveis.map((eq) => (
+                    <option key={eq.id} value={eq.id}>
+                      {eq.tipo?.toUpperCase()} - {eq.modelo_descricao} (Série:{" "}
+                      {eq.num_serie})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Carregadores
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={
+                      cautelaEditando.cautela_itens[0]
+                        ?.quantidade_carregadores || 0
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCautelaEditando((prev) => ({
+                        ...prev,
+                        cautela_itens: [
+                          {
+                            ...prev.cautela_itens[0],
+                            quantidade_carregadores: val,
+                          },
+                        ],
+                      }));
+                    }}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Qtd. Munições
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={
+                      cautelaEditando.cautela_itens[0]?.quantidade_municao || 0
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCautelaEditando((prev) => ({
+                        ...prev,
+                        cautela_itens: [
+                          {
+                            ...prev.cautela_itens[0],
+                            quantidade_municao: val,
+                          },
+                        ],
+                      }));
+                    }}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase mb-1">
+                  Tipo da Munição / Calibre
+                </label>
+                <input
+                  type="text"
+                  value={cautelaEditando.cautela_itens[0]?.tipo_municao || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCautelaEditando((prev) => ({
+                      ...prev,
+                      cautela_itens: [
+                        {
+                          ...prev.cautela_itens[0],
+                          tipo_municao: val,
+                        },
+                      ],
+                    }));
+                  }}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setCautelaDevolvendo(null)}
+                  onClick={() => setCautelaEditando(null)}
                   className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl"
                 >
                   Cancelar
@@ -1062,15 +1236,124 @@ export default function Cautelas() {
                 <button
                   type="submit"
                   disabled={processando}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow transition-all disabled:opacity-50"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow"
                 >
-                  {processando ? "Devolvendo..." : "Homologar Devolução"}
+                  Salvar Alterações
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* MODAL DE DEVOLUÇÃO */}
+      {cautelaDevolvendo &&
+        (() => {
+          const itemDev = cautelaDevolvendo.cautela_itens?.[0] || {};
+          const eqDev = itemDev.equipamento || {};
+          const qtdCarregadores = itemDev.quantidade_carregadores || 0;
+          const qtdMunicao = itemDev.quantidade_municao || 0;
+          const tipoMunicao = itemDev.tipo_municao || "N/I";
+          const numSerieArma = eqDev.num_serie || "N/I";
+          const modeloArma =
+            eqDev.modelo_descricao || eqDev.tipo || "Armamento";
+
+          return (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
+              <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
+                <h2 className="text-lg font-bold text-slate-800">
+                  Conferência de Devolução Bélica
+                </h2>
+                <form
+                  onSubmit={handleConfirmarDevolucao}
+                  className="space-y-4 text-xs"
+                >
+                  <div className="space-y-2 border-t pt-3 border-slate-100">
+                    <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100/70 transition-all">
+                      <input
+                        type="checkbox"
+                        checked={checkArma}
+                        onChange={(e) => setCheckArma(e.target.checked)}
+                        className="w-4 h-4 text-emerald-600 rounded shrink-0"
+                      />
+                      <span className="font-medium text-slate-800">
+                        Armamento Conferido:{" "}
+                        <strong className="text-blue-700">{modeloArma}</strong>{" "}
+                        (Série:{" "}
+                        <strong className="font-mono">{numSerieArma}</strong>)
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100/70 transition-all">
+                      <input
+                        type="checkbox"
+                        checked={checkCarregadores}
+                        onChange={(e) => setCheckCarregadores(e.target.checked)}
+                        className="w-4 h-4 text-emerald-600 rounded shrink-0"
+                      />
+                      <span className="font-medium text-slate-800">
+                        Carregadores Conferidos:{" "}
+                        <strong className="text-blue-700">
+                          {qtdCarregadores} unidade(s)
+                        </strong>{" "}
+                        vinculada(s)
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100/70 transition-all">
+                      <input
+                        type="checkbox"
+                        checked={checkMunicao}
+                        onChange={(e) => setCheckMunicao(e.target.checked)}
+                        className="w-4 h-4 text-emerald-600 rounded shrink-0"
+                      />
+                      <span className="font-medium text-slate-800">
+                        Munições Conferidas:{" "}
+                        <strong className="text-blue-700">
+                          {qtdMunicao} unidade(s)
+                        </strong>{" "}
+                        do tipo{" "}
+                        <strong className="text-slate-700">
+                          {tipoMunicao}
+                        </strong>
+                      </span>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">
+                      Observações / Avarias
+                    </label>
+                    <textarea
+                      rows="3"
+                      value={campoAlteracoes}
+                      onChange={(e) => setCampoAlteracoes(e.target.value)}
+                      placeholder="Ex: Sem alterações..."
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setCautelaDevolvendo(null)}
+                      className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={processando}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow"
+                    >
+                      Homologar Devolução
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          );
+        })()}
     </div>
   );
 }

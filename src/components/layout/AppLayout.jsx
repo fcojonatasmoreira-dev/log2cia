@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { LogOut, Key, Shield } from "lucide-react";
+import { supabase } from "../../lib/supabaseClient";
 
 export default function AppLayout() {
   const navigate = useNavigate();
@@ -31,9 +33,12 @@ export default function AppLayout() {
     };
   }, []);
 
-  const handleSairDoSistema = () => {
-    localStorage.removeItem("log2cia_user");
-    window.location.href = "/";
+  const handleSairDoSistema = async () => {
+    if (window.confirm("Deseja realmente encerrar a sessão?")) {
+      await supabase.auth.signOut();
+      localStorage.removeItem("log2cia_user");
+      window.location.href = "/";
+    }
   };
 
   const getLinkClass = (path) => {
@@ -79,7 +84,7 @@ export default function AppLayout() {
         />
       )}
 
-      {/* Sidebar Lateral */}
+      {/* Sidebar Lateral (Agora limpa, sem os botões de rodapé) */}
       <aside
         className={`
         fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-white flex flex-col justify-between p-4 transition-transform duration-300 ease-in-out md:static md:translate-x-0 shrink-0
@@ -147,30 +152,21 @@ export default function AppLayout() {
           </nav>
         </div>
 
-        {/* Rodapé da Sidebar */}
-        <div className="border-t border-slate-800 pt-3 space-y-1">
-          <button
-            onClick={() => navegarPara("/alterar-senha")}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg transition-all"
-          >
-            <span>🔑</span> Alterar Senha
-          </button>
-
-          <button
-            onClick={handleSairDoSistema}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-all"
-          >
-            <span>🚪</span> Sair
-          </button>
+        {/* Rodapé da Sidebar vazio ou com copyright opcional */}
+        <div className="border-t border-slate-800/60 pt-3 text-center">
+          <span className="text-[10px] text-slate-500 font-mono">
+            PMCE • 2ªCIA / 15ºBPM
+          </span>
         </div>
       </aside>
 
       {/* Conteúdo Principal */}
       <main className="flex-1 p-4 md:p-6 overflow-y-auto space-y-4">
-        <div className="bg-slate-900 text-white rounded-2xl p-4 shadow flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        {/* Cabeçalho Moderno com Informações do Usuário e Botões de Ação no Topo */}
+        <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-lg border border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-base font-bold shadow">
-              👤
+            <div className="w-10 h-10 bg-blue-600/30 border border-blue-500/30 rounded-xl flex items-center justify-center text-blue-400 font-bold shadow">
+              <Shield className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -179,19 +175,36 @@ export default function AppLayout() {
                     usuario?.nome ||
                     "Policial / Efetivo"}
                 </h2>
-                <span className="bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                <span className="bg-emerald-600/25 border border-emerald-500/30 text-emerald-400 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                   {usuario?.role || "efetivo"}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-400 mt-0.5 font-mono">
                 Posto: {usuario?.posto_graduacao || usuario?.posto || "N/A"} |
                 Mat: {usuario?.matricula || "N/A"}
               </p>
             </div>
           </div>
-          <div className="bg-slate-800 border border-slate-700 text-slate-300 text-xs font-medium px-3 py-2 rounded-xl flex items-center gap-2 shadow-inner">
-            <span className="text-emerald-400">🛡️</span> Sessão Autenticada e
-            Auditada
+
+          {/* Botões Modernos no Topo: Alterar Senha e Sair */}
+          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+            <button
+              onClick={() => navegarPara("/alterar-senha")}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-700 shadow-xs"
+              title="Alterar Senha de Acesso"
+            >
+              <Key className="w-3.5 h-3.5 text-amber-400" />
+              <span>Senha</span>
+            </button>
+
+            <button
+              onClick={handleSairDoSistema}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl text-xs font-bold transition-all border border-rose-500/20 shadow-xs"
+              title="Encerrar Sessão"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sair</span>
+            </button>
           </div>
         </div>
 
