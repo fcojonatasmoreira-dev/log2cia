@@ -8,7 +8,9 @@ import {
   FileText,
   RefreshCw,
   Upload,
-  Image as ImageIcon,
+  Radio,
+  Shield,
+  Target,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -21,10 +23,14 @@ function formatarTipo(texto) {
 
 export default function Inventario() {
   const [equipamentos, setEquipamentos] = useState([]);
+  const [radios, setRadios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [armaSelecionada, setArmaSelecionada] = useState(null);
   const [modalNovo, setModalNovo] = useState(false);
   const [userRole, setUserRole] = useState("policial");
+
+  // Aba ativa: 'geral' (armamentos/coletes/munição) ou 'radios'
+  const [abaAtiva, setAbaAtiva] = useState("geral");
 
   // Estados de Filtros e Busca
   const [filtroTipo, setFiltroTipo] = useState("todos");
@@ -38,8 +44,9 @@ export default function Inventario() {
   const [sucessoExcel, setSucessoExcel] = useState(false);
   const [sucessoPdf, setSucessoPdf] = useState(false);
 
-  // Campos gerais do formulário de cadastro
+  // Campos gerais do formulário de cadastro (Geral)
   const [novoTipo, setNovoTipo] = useState("armamento");
+  const [subtipoArmamento, setSubtipoArmamento] = useState("Pistola");
   const [novoModelo, setNovoModelo] = useState("");
   const [novoSerie, setNovoSerie] = useState("");
   const [novoPatrimonio, setNovoPatrimonio] = useState("");
@@ -53,22 +60,29 @@ export default function Inventario() {
   const [coleteTamanho, setColeteTamanho] = useState("M");
   const [coleteDataFabricacao, setColeteDataFabricacao] = useState("");
   const [coleteDataValidade, setColeteDataValidade] = useState("");
-  const [coleteObs, setColeteObs] = useState("");
 
   // Campos específicos para Munição
   const [municaoLote, setMunicaoLote] = useState("");
   const [municaoQuantidade, setMunicaoQuantidade] = useState("");
-  const [municaoObs, setMunicaoObs] = useState("");
 
-  // Estados para arquivos e upload específicos por tipo
-  const [arquivoArma, setArquivoArma] = useState(null); // Foto da Frente da Arma
-  const [arquivoNumeracao, setArquivoNumeracao] = useState(null); // Foto do Número de Série
+  // Campos específicos para Novo Rádio Comunicador
+  const [radioMarca, setRadioMarca] = useState("");
+  const [radioModelo, setRadioModelo] = useState("");
+  const [radioSerie, setRadioSerie] = useState("");
+  const [radioIdentificacao, setRadioIdentificacao] = useState("");
+  const [radioTombo, setRadioTombo] = useState("");
+  const [radioLocalizacao, setRadioLocalizacao] =
+    useState("Estoque da Reserva");
+  const [radioObs, setRadioObs] = useState("");
 
-  const [arquivoColeteFrente, setArquivoColeteFrente] = useState(null); // Foto Rótulo Frente (Colete)
-  const [arquivoColeteVerso, setArquivoColeteVerso] = useState(null); // Foto Rótulo Verso (Colete)
-
-  const [arquivoMunicaoGeral, setArquivoMunicaoGeral] = useState(null); // Foto das Munições
-  const [arquivoMunicaoCaixa, setArquivoMunicaoCaixa] = useState(null); // Foto da Caixa
+  // Estados para arquivos e upload restaurados
+  const [arquivoArma, setArquivoArma] = useState(null);
+  const [arquivoNumeracao, setArquivoNumeracao] = useState(null);
+  const [arquivoColeteFrente, setArquivoColeteFrente] = useState(null);
+  const [arquivoColeteVerso, setArquivoColeteVerso] = useState(null);
+  const [arquivoMunicaoGeral, setArquivoMunicaoGeral] = useState(null);
+  const [arquivoMunicaoCaixa, setArquivoMunicaoCaixa] = useState(null);
+  const [arquivoRadio, setArquivoRadio] = useState(null);
 
   const [salvando, setSalvando] = useState(false);
 
@@ -86,24 +100,32 @@ export default function Inventario() {
 
   useEffect(() => {
     checkUserRole();
-    carregarInventario();
+    carregarDados();
   }, []);
 
   const isP4OrMasterOrArmeiro =
     userRole === "master" || userRole === "p4" || userRole === "armeiro";
 
-  async function carregarInventario() {
+  async function carregarDados() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data: equipData, error: equipError } = await supabase
         .from("equipamentos")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      if (data) setEquipamentos(data);
+      if (equipError) throw equipError;
+      if (equipData) setEquipamentos(equipData);
+
+      const { data: radioData, error: radioError } = await supabase
+        .from("radios")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (radioError && radioError.code !== "42P01") throw radioError;
+      if (radioData) setRadios(radioData);
     } catch (err) {
-      console.error("Erro ao carregar equipamentos:", err.message);
+      console.error("Erro ao carregar dados:", err.message);
     } finally {
       setLoading(false);
     }
@@ -132,14 +154,13 @@ export default function Inventario() {
   const handleTipoChange = (val) => {
     setNovoTipo(val);
     if (val === "colete" && !novoModelo) {
-      setNovoModelo("PROTECTA - COLETE - NÍVEL III-A");
-    }
-    if (val === "municao" && !novoModelo) {
+      setNovoModelo("PROTECTA - NÍVEL III-A");
+    } else if (val === "municao" && !novoModelo) {
       setNovoModelo("Munição 9mm / .40");
     }
   };
 
-  const handleCadastrarArmamento = async (e) => {
+  const handleCadastrarEquipamento = async (e) => {
     e.preventDefault();
     if (!isP4OrMasterOrArmeiro) {
       alert(
@@ -150,101 +171,133 @@ export default function Inventario() {
     setSalvando(true);
 
     try {
-      let foto1Url = null;
-      let foto2Url = null;
+      if (abaAtiva === "radios") {
+        const fotoRadioUrl = await fazerUploadImagem(arquivoRadio, "radio");
 
-      if (novoTipo === "armamento") {
-        foto1Url = await fazerUploadImagem(arquivoArma, "frente_arma");
-        foto2Url = await fazerUploadImagem(arquivoNumeracao, "num_serie");
-      } else if (novoTipo === "colete") {
-        foto1Url = await fazerUploadImagem(
-          arquivoColeteFrente,
-          "rotulo_frente",
-        );
-        foto2Url = await fazerUploadImagem(arquivoColeteVerso, "rotulo_verso");
-      } else if (novoTipo === "municao") {
-        foto1Url = await fazerUploadImagem(arquivoMunicaoGeral, "municoes");
-        foto2Url = await fazerUploadImagem(
-          arquivoMunicaoCaixa,
-          "caixa_municao",
-        );
-      }
+        const { error: radioErr } = await supabase.from("radios").insert([
+          {
+            marca: radioMarca.trim().toUpperCase(),
+            modelo_descricao: radioModelo.trim().toUpperCase(),
+            numero_serie: radioSerie.trim().toUpperCase(),
+            numero_identificacao: radioIdentificacao.trim().toUpperCase(),
+            tombo: radioTombo.trim() ? radioTombo.trim().toUpperCase() : null,
+            status: "disponivel",
+            localizacao_atual: radioLocalizacao,
+            foto_radio_url: fotoRadioUrl,
+            observacoes: radioObs,
+          },
+        ]);
 
-      let detalhesObj = {
-        localizacao_atual: novoLocalizacao,
-        estado_conservacao: novoEstado,
-        foto_arma_url: foto1Url,
-        foto_numeracao_url: foto2Url,
-        obs: observacoes,
-      };
+        if (radioErr) throw radioErr;
+        alert("Rádio comunicador cadastrado com sucesso!");
 
-      let serieFinal = novoSerie;
-      let patrimonioFinal = novoPatrimonio;
-
-      if (novoTipo === "colete") {
-        detalhesObj = {
-          ...detalhesObj,
-          genero: coleteGenero,
-          tamanho: coleteTamanho,
-          data_fabricacao: coleteDataFabricacao,
-          data_validade: coleteDataValidade,
-          obs: coleteObs || observacoes,
-        };
-      } else if (novoTipo === "municao") {
-        serieFinal = municaoLote
-          ? `LOTE-${municaoLote}`
-          : `LOTE-S/N-${Date.now()}`;
-        detalhesObj = {
-          ...detalhesObj,
-          lote: municaoLote || "Não Identificado",
-          quantidade: municaoQuantidade || 0,
-          obs: municaoObs || observacoes,
-        };
+        setRadioMarca("");
+        setRadioModelo("");
+        setRadioSerie("");
+        setRadioIdentificacao("");
+        setRadioTombo("");
+        setRadioObs("");
+        setArquivoRadio(null);
       } else {
-        detalhesObj.calibre = novoCalibre;
+        let foto1Url = null;
+        let foto2Url = null;
+
+        if (novoTipo === "armamento") {
+          foto1Url = await fazerUploadImagem(arquivoArma, "frente_arma");
+          foto2Url = await fazerUploadImagem(arquivoNumeracao, "num_serie");
+        } else if (novoTipo === "colete") {
+          foto1Url = await fazerUploadImagem(
+            arquivoColeteFrente,
+            "rotulo_frente",
+          );
+          foto2Url = await fazerUploadImagem(
+            arquivoColeteVerso,
+            "rotulo_verso",
+          );
+        } else if (novoTipo === "municao") {
+          foto1Url = await fazerUploadImagem(arquivoMunicaoGeral, "municoes");
+          foto2Url = await fazerUploadImagem(
+            arquivoMunicaoCaixa,
+            "caixa_municao",
+          );
+        }
+
+        let detalhesObj = {
+          localizacao_atual: novoLocalizacao,
+          estado_conservacao: novoEstado,
+          foto_arma_url: foto1Url,
+          foto_numeracao_url: foto2Url,
+          obs: observacoes,
+        };
+
+        let serieFinal = novoSerie;
+        let patrimonioFinal = novoPatrimonio;
+
+        if (novoTipo === "armamento") {
+          detalhesObj.subtipo_armamento = subtipoArmamento;
+          detalhesObj.calibre = novoCalibre;
+        } else if (novoTipo === "colete") {
+          detalhesObj = {
+            ...detalhesObj,
+            genero: coleteGenero,
+            tamanho: coleteTamanho,
+            data_fabricacao: coleteDataFabricacao,
+            data_validade: coleteDataValidade,
+          };
+        } else if (novoTipo === "municao") {
+          serieFinal = municaoLote
+            ? `LOTE-${municaoLote}`
+            : `LOTE-S/N-${Date.now()}`;
+          detalhesObj = {
+            ...detalhesObj,
+            lote: municaoLote || "Não Identificado",
+            quantidade: municaoQuantidade || 0,
+          };
+        }
+
+        const patrimonioTratado =
+          patrimonioFinal && patrimonioFinal.trim() !== ""
+            ? patrimonioFinal.trim()
+            : null;
+
+        const { error } = await supabase.from("equipamentos").insert([
+          {
+            tipo: novoTipo.toLowerCase(),
+            modelo_descricao: novoModelo,
+            num_serie: serieFinal,
+            patrimonio: patrimonioTratado,
+            status: "disponivel",
+            detalhes: detalhesObj,
+          },
+        ]);
+
+        if (error) throw error;
+        alert("Equipamento cadastrado com sucesso!");
+
+        setNovoModelo("");
+        setNovoSerie("");
+        setNovoPatrimonio("");
+        setNovoCalibre("");
+        setSubtipoArmamento("Pistola");
+        setColeteGenero("MASCULINO");
+        setColeteTamanho("M");
+        setColeteDataFabricacao("");
+        setColeteDataValidade("");
+        setMunicaoLote("");
+        setMunicaoQuantidade("");
+        setObservacoes("");
+        setNovoLocalizacao("Estoque da Reserva");
+        setNovoEstado("Bom");
+        setArquivoArma(null);
+        setArquivoNumeracao(null);
+        setArquivoColeteFrente(null);
+        setArquivoColeteVerso(null);
+        setArquivoMunicaoGeral(null);
+        setArquivoMunicaoCaixa(null);
       }
 
-      const patrimonioTratado =
-        patrimonioFinal && patrimonioFinal.trim() !== ""
-          ? patrimonioFinal.trim()
-          : null;
-
-      const { error } = await supabase.from("equipamentos").insert([
-        {
-          tipo: novoTipo.toLowerCase(),
-          modelo_descricao: novoModelo,
-          num_serie: serieFinal,
-          patrimonio: patrimonioTratado,
-          status: "disponivel",
-          detalhes: detalhesObj,
-        },
-      ]);
-
-      if (error) throw error;
-
-      setNovoModelo("");
-      setNovoSerie("");
-      setNovoPatrimonio("");
-      setNovoCalibre("");
-      setColeteGenero("MASCULINO");
-      setColeteTamanho("M");
-      setColeteDataFabricacao("");
-      setColeteDataValidade("");
-      setColeteObs("");
-      setMunicaoLote("");
-      setMunicaoQuantidade("");
-      setMunicaoObs("");
-      setObservacoes("");
-      setNovoLocalizacao("Estoque da Reserva");
-      setNovoEstado("Bom");
-      setArquivoArma(null);
-      setArquivoNumeracao(null);
-      setArquivoColeteFrente(null);
-      setArquivoColeteVerso(null);
-      setArquivoMunicaoGeral(null);
-      setArquivoMunicaoCaixa(null);
       setModalNovo(false);
-      carregarInventario();
+      carregarDados();
     } catch (err) {
       alert("Erro ao cadastrar equipamento: " + err.message);
     } finally {
@@ -252,7 +305,7 @@ export default function Inventario() {
     }
   };
 
-  // Lógica de Filtragem
+  // Lógica de Filtragem Geral
   const equipamentosFiltrados = equipamentos.filter((item) => {
     const tipoItem = String(item.tipo || "").toLowerCase();
     const modeloItem = String(
@@ -280,29 +333,60 @@ export default function Inventario() {
     return true;
   });
 
+  // Lógica de Filtragem Rádios
+  const radiosFiltrados = radios.filter((item) => {
+    const modeloItem = String(
+      item.modelo_descricao || item.marca || "",
+    ).toLowerCase();
+    const serieItem = String(
+      item.numero_serie || item.numero_identificacao || "",
+    ).toLowerCase();
+    const localizacaoItem = String(
+      item.localizacao_atual || "Estoque da Reserva",
+    ).toLowerCase();
+
+    if (filtroDescricao && !modeloItem.includes(filtroDescricao.toLowerCase()))
+      return false;
+    if (filtroSerie && !serieItem.includes(serieItem.toLowerCase()))
+      return false;
+    if (
+      filtroLocalizacao !== "todas" &&
+      localizacaoItem !== filtroLocalizacao.toLowerCase()
+    )
+      return false;
+
+    return true;
+  });
+
   const exportarExcel = () => {
     setBaixandoExcel(true);
     setTimeout(() => {
-      const dadosFormatados = equipamentosFiltrados.map((item) => ({
-        Tipo: formatarTipo(item.tipo),
-        "Modelo / Descrição": item.modelo_descricao || item.modelo || "N/I",
-        "Série / Lote": item.num_serie || item.numero_serie || "N/I",
-        Patrimônio: item.patrimonio || "—",
-        Especificações:
-          item.detalhes?.calibre ||
-          (item.tipo === "colete"
-            ? `Tam: ${item.detalhes?.tamanho}`
-            : `Qtd: ${item.detalhes?.quantidade}`),
-        Localização: item.detalhes?.localizacao_atual || "Estoque da Reserva",
-        Status: item.status,
-      }));
+      const dadosFormatados =
+        abaAtiva === "geral"
+          ? equipamentosFiltrados.map((item) => ({
+              Tipo: formatarTipo(item.tipo),
+              "Modelo / Descrição": item.modelo_descricao || "N/I",
+              Série: item.num_serie || "N/I",
+              Status: item.status,
+            }))
+          : radiosFiltrados.map((item) => ({
+              Tipo: "Rádio Comunicador",
+              "Marca / Modelo": `${item.marca} - ${item.modelo_descricao}`,
+              Série: item.numero_serie,
+              "Nº Identificação": item.numero_identificacao,
+              Status: item.status,
+            }));
 
       const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Inventario");
+      XLSX.utils.book_append_sheet(
+        workbook,
+        worksheet,
+        abaAtiva === "geral" ? "Inventario" : "Radios",
+      );
       XLSX.writeFile(
         workbook,
-        `relatorio_inventario_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        `relatorio_${abaAtiva}_${new Date().toISOString().slice(0, 10)}.xlsx`,
       );
 
       setBaixandoExcel(false);
@@ -316,26 +400,28 @@ export default function Inventario() {
     setTimeout(() => {
       const doc = new jsPDF();
       doc.setFontSize(14);
-      doc.text("LOG2CIA — RELATÓRIO DO ACERVO BÉLICO", 14, 15);
+      doc.text("LOG2CIA — RELATÓRIO DO ACERVO", 14, 15);
       doc.setFontSize(9);
       doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 21);
 
-      const colunas = [
-        "Tipo",
-        "Modelo",
-        "Série / Lote",
-        "Patrimônio",
-        "Localização",
-        "Status",
-      ];
-      const linhas = equipamentosFiltrados.map((item) => [
-        formatarTipo(item.tipo),
-        item.modelo_descricao || item.modelo || "N/I",
-        item.num_serie || item.numero_serie || "N/I",
-        item.patrimonio || "—",
-        item.detalhes?.localizacao_atual || "Estoque",
-        item.status,
-      ]);
+      const colunas =
+        abaAtiva === "geral"
+          ? ["Tipo", "Modelo", "Série", "Status"]
+          : ["Marca / Modelo", "Série", "Nº ID", "Status"];
+      const linhas =
+        abaAtiva === "geral"
+          ? equipamentosFiltrados.map((item) => [
+              formatarTipo(item.tipo),
+              item.modelo_descricao || "N/I",
+              item.num_serie || "N/I",
+              item.status,
+            ])
+          : radiosFiltrados.map((item) => [
+              `${item.marca} - ${item.modelo_descricao}`,
+              item.numero_serie,
+              item.numero_identificacao,
+              item.status,
+            ]);
 
       autoTable(doc, {
         startY: 26,
@@ -347,7 +433,7 @@ export default function Inventario() {
       });
 
       doc.save(
-        `relatorio_inventario_${new Date().toISOString().slice(0, 10)}.pdf`,
+        `relatorio_${abaAtiva}_${new Date().toISOString().slice(0, 10)}.pdf`,
       );
 
       setBaixandoPdf(false);
@@ -364,7 +450,7 @@ export default function Inventario() {
             Acervo / Inventário
           </h1>
           <p className="text-xs text-slate-500">
-            Gestão e controle de equipamentos bélicos
+            Gestão e controle de equipamentos e materiais bélicos
           </p>
         </div>
 
@@ -431,6 +517,29 @@ export default function Inventario() {
         </div>
       </div>
 
+      {/* ABAS DE NAVEGAÇÃO (GERAL x RÁDIOS) */}
+      <div className="flex bg-slate-200/70 p-1 rounded-2xl w-fit border border-slate-300/60">
+        <button
+          onClick={() => {
+            setAbaAtiva("geral");
+            setFiltroTipo("todos");
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${abaAtiva === "geral" ? "bg-white text-blue-600 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+        >
+          <Shield className="w-4 h-4" /> Armamentos, Coletes e Munições (
+          {equipamentos.length})
+        </button>
+        <button
+          onClick={() => {
+            setAbaAtiva("radios");
+            setFiltroTipo("todos");
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${abaAtiva === "radios" ? "bg-white text-blue-600 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+        >
+          <Radio className="w-4 h-4" /> Rádios Comunicadores ({radios.length})
+        </button>
+      </div>
+
       {/* BARRA DE FILTROS AVANÇADOS */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
         <div className="flex items-center gap-2 pb-2 border-b border-slate-100 text-slate-800 font-bold text-xs uppercase tracking-wide">
@@ -439,21 +548,23 @@ export default function Inventario() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="space-y-1">
-            <label className="block text-[11px] font-bold text-slate-600 uppercase">
-              Tipo de Equipamento
-            </label>
-            <select
-              value={filtroTipo}
-              onChange={(e) => setFiltroTipo(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
-            >
-              <option value="todos">Todos os Tipos</option>
-              <option value="armamento">Armamento</option>
-              <option value="colete">Colete Balístico</option>
-              <option value="municao">Munição</option>
-            </select>
-          </div>
+          {abaAtiva === "geral" && (
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                Tipo de Equipamento
+              </label>
+              <select
+                value={filtroTipo}
+                onChange={(e) => setFiltroTipo(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+              >
+                <option value="todos">Todos os Tipos</option>
+                <option value="armamento">Armamento</option>
+                <option value="colete">Colete Balístico</option>
+                <option value="municao">Munição</option>
+              </select>
+            </div>
+          )}
 
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
@@ -465,7 +576,7 @@ export default function Inventario() {
                 type="text"
                 value={filtroDescricao}
                 onChange={(e) => setFiltroDescricao(e.target.value)}
-                placeholder="Ex: Carabina, Fuzil..."
+                placeholder="Ex: Fuzil, Motorola..."
                 className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
               />
             </div>
@@ -473,7 +584,7 @@ export default function Inventario() {
 
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
-              Nº de Série / Lote
+              Nº de Série / ID
             </label>
             <input
               type="text"
@@ -510,14 +621,13 @@ export default function Inventario() {
         <div className="text-center py-10 text-slate-500 font-medium">
           Carregando acervo...
         </div>
-      ) : (
+      ) : abaAtiva === "geral" ? (
         <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold text-[11px]">
                 <th className="p-3.5">Tipo / Descrição</th>
                 <th className="p-3.5">Série / Lote</th>
-                <th className="p-3.5">Patrimônio</th>
                 <th className="p-3.5">Especificações</th>
                 <th className="p-3.5">Localização</th>
                 <th className="p-3.5">Status</th>
@@ -527,7 +637,7 @@ export default function Inventario() {
             <tbody className="divide-y divide-slate-100">
               {equipamentosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-slate-400">
+                  <td colSpan="6" className="p-8 text-center text-slate-400">
                     Nenhum equipamento encontrado com os filtros aplicados.
                   </td>
                 </tr>
@@ -537,7 +647,6 @@ export default function Inventario() {
                   const modeloVal =
                     item.modelo_descricao || item.modelo || "N/I";
                   const serieVal = item.num_serie || item.numero_serie || "N/I";
-                  const patrimonioVal = item.patrimonio || "—";
                   const localizacaoVal =
                     item.detalhes?.localizacao_atual || "Estoque da Reserva";
 
@@ -559,20 +668,13 @@ export default function Inventario() {
                       <td className="p-3.5 font-mono font-bold text-slate-700">
                         {serieVal}
                       </td>
-                      <td className="p-3.5 font-mono text-slate-600">
-                        {patrimonioVal}
-                      </td>
                       <td className="p-3.5 text-slate-600 font-medium">
                         {infoExtra || "—"}
                       </td>
                       <td className="p-3.5 text-slate-600">{localizacaoVal}</td>
                       <td className="p-3.5">
                         <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            item.status === "disponivel"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-amber-100 text-amber-800"
-                          }`}
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${item.status === "disponivel" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
                         >
                           {item.status === "disponivel"
                             ? "Disponível"
@@ -590,6 +692,60 @@ export default function Inventario() {
                     </tr>
                   );
                 })
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold text-[11px]">
+                <th className="p-3.5">Rádio / Marca / Modelo</th>
+                <th className="p-3.5">Nº de Série</th>
+                <th className="p-3.5">Nº Identificação</th>
+                <th className="p-3.5">Tombo</th>
+                <th className="p-3.5">Localização</th>
+                <th className="p-3.5">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {radiosFiltrados.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="p-8 text-center text-slate-400">
+                    Nenhum rádio comunicador cadastrado.
+                  </td>
+                </tr>
+              ) : (
+                radiosFiltrados.map((radio) => (
+                  <tr
+                    key={radio.id}
+                    className="hover:bg-slate-50/80 transition-colors"
+                  >
+                    <td className="p-3.5 font-bold text-slate-800">
+                      {radio.marca} - {radio.modelo_descricao}
+                    </td>
+                    <td className="p-3.5 font-mono font-bold text-slate-700">
+                      {radio.numero_serie}
+                    </td>
+                    <td className="p-3.5 font-mono text-blue-600 font-bold">
+                      {radio.numero_identificacao}
+                    </td>
+                    <td className="p-3.5 text-slate-600">
+                      {radio.tombo || "—"}
+                    </td>
+                    <td className="p-3.5 text-slate-600">
+                      {radio.localizacao_atual}
+                    </td>
+                    <td className="p-3.5">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${radio.status === "disponivel" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
+                      >
+                        {radio.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -612,350 +768,522 @@ export default function Inventario() {
             </div>
 
             <form
-              onSubmit={handleCadastrarArmamento}
+              onSubmit={handleCadastrarEquipamento}
               className="space-y-3 text-xs"
             >
               <div>
                 <label className="block font-bold text-slate-700 uppercase mb-1">
-                  Tipo de Equipamento
+                  Gênero / Categoria
                 </label>
                 <select
-                  value={novoTipo}
-                  onChange={(e) => handleTipoChange(e.target.value)}
+                  value={abaAtiva === "radios" ? "radio" : novoTipo}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "radio") {
+                      setAbaAtiva("radios");
+                    } else {
+                      setAbaAtiva("geral");
+                      handleTipoChange(val);
+                    }
+                  }}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="armamento">Armamento</option>
                   <option value="colete">Colete Balístico</option>
                   <option value="municao">Munição</option>
+                  <option value="radio">Rádio Comunicador</option>
                 </select>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">
-                  {novoTipo === "municao"
-                    ? "Tipo / Calibre da Munição *"
-                    : "Marca / Modelo *"}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={novoModelo}
-                  onChange={(e) => setNovoModelo(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {novoTipo === "municao" ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">
-                      Identificação do Lote
-                    </label>
-                    <input
-                      type="text"
-                      value={municaoLote}
-                      onChange={(e) => setMunicaoLote(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">
-                      Quantidade *
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      value={municaoQuantidade}
-                      onChange={(e) => setMunicaoQuantidade(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold outline-none"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">
-                      Nº de Série *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={novoSerie}
-                      onChange={(e) => setNovoSerie(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">
-                      Tombo / Patrimônio
-                    </label>
-                    <input
-                      type="text"
-                      value={novoPatrimonio}
-                      onChange={(e) => setNovoPatrimonio(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {novoTipo === "colete" && (
+              {/* FORMULÁRIO ESPECÍFICO DE RÁDIO COMUNICADOR COM FOTO */}
+              {abaAtiva === "radios" ? (
                 <>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block font-bold text-slate-700 uppercase mb-1">
-                        Gênero
+                        Marca *
                       </label>
-                      <select
-                        value={coleteGenero}
-                        onChange={(e) => setColeteGenero(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
-                      >
-                        <option value="MASCULINO">MASCULINO</option>
-                        <option value="FEMININO">FEMININO</option>
-                        <option value="UNISEX">UNISEX</option>
-                      </select>
+                      <input
+                        type="text"
+                        required
+                        value={radioMarca}
+                        onChange={(e) => setRadioMarca(e.target.value)}
+                        placeholder="Ex: Motorola"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase"
+                      />
                     </div>
                     <div>
                       <label className="block font-bold text-slate-700 uppercase mb-1">
-                        Tamanho
+                        Modelo *
                       </label>
-                      <select
-                        value={coleteTamanho}
-                        onChange={(e) => setColeteTamanho(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono"
-                      >
-                        <option value="PP">PP</option>
-                        <option value="P">P</option>
-                        <option value="M">M</option>
-                        <option value="G">G</option>
-                        <option value="GG">GG</option>
-                      </select>
+                      <input
+                        type="text"
+                        required
+                        value={radioModelo}
+                        onChange={(e) => setRadioModelo(e.target.value)}
+                        placeholder="Ex: APX 2000"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase"
+                      />
                     </div>
                   </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block font-bold text-slate-700 uppercase mb-1">
-                        Data Fabricação
+                        Nº de Série *
                       </label>
                       <input
-                        type="date"
-                        value={coleteDataFabricacao}
-                        onChange={(e) =>
-                          setColeteDataFabricacao(e.target.value)
-                        }
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                        type="text"
+                        required
+                        value={radioSerie}
+                        onChange={(e) => setRadioSerie(e.target.value)}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase font-mono"
                       />
                     </div>
                     <div>
                       <label className="block font-bold text-slate-700 uppercase mb-1">
-                        Data Validade
+                        Nº de Identificação *
                       </label>
                       <input
-                        type="date"
-                        value={coleteDataValidade}
-                        onChange={(e) => setColeteDataValidade(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                        type="text"
+                        required
+                        value={radioIdentificacao}
+                        onChange={(e) => setRadioIdentificacao(e.target.value)}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase font-mono"
                       />
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-bold text-slate-700 uppercase mb-1">
+                        Tombo / Patrimônio
+                      </label>
+                      <input
+                        type="text"
+                        value={radioTombo}
+                        onChange={(e) => setRadioTombo(e.target.value)}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 uppercase mb-1">
+                        Localização
+                      </label>
+                      <select
+                        value={radioLocalizacao}
+                        onChange={(e) => setRadioLocalizacao(e.target.value)}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                      >
+                        <option value="Estoque da Reserva">
+                          Estoque da Reserva
+                        </option>
+                        <option value="Acautelada com Policial">
+                          Acautelada com Policial
+                        </option>
+                        <option value="Manutenção">Manutenção</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Foto do Rádio
+                    </label>
+                    <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                      <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span className="truncate">
+                        {arquivoRadio ? arquivoRadio.name : "Escolher arquivo"}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => setArquivoRadio(e.target.files[0])}
+                      />
+                    </label>
+                  </div>
+                </>
+              ) : (
+                /* FORMULÁRIO GERAL (ARMAMENTO / COLETE / MUNIÇÃO) COM TODAS AS FOTOS RESTAURADAS */
+                <>
+                  {novoTipo === "armamento" && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase mb-1">
+                          Tipo de Arma *
+                        </label>
+                        <select
+                          value={subtipoArmamento}
+                          onChange={(e) => setSubtipoArmamento(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none"
+                        >
+                          <option value="Pistola">Pistola</option>
+                          <option value="Fuzil">Fuzil</option>
+                          <option value="Espingarda">Espingarda</option>
+                          <option value="Carabina Tática">
+                            Carabina Tática
+                          </option>
+                          <option value="Carabina">Carabina</option>
+                          <option value="Submetralhadora">
+                            Submetralhadora
+                          </option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase mb-1">
+                          Modelo *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={novoModelo}
+                          onChange={(e) => setNovoModelo(e.target.value)}
+                          placeholder="Ex: PT 840, T4..."
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {novoTipo !== "armamento" && (
+                    <div>
+                      <label className="block font-bold text-slate-700 uppercase mb-1">
+                        {novoTipo === "municao"
+                          ? "Tipo / Calibre da Munição *"
+                          : "Marca / Modelo *"}
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={novoModelo}
+                        onChange={(e) => setNovoModelo(e.target.value)}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                      />
+                    </div>
+                  )}
+
+                  {novoTipo === "municao" ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase mb-1">
+                          Identificação do Lote
+                        </label>
+                        <input
+                          type="text"
+                          value={municaoLote}
+                          onChange={(e) => setMunicaoLote(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase mb-1">
+                          Quantidade *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          value={municaoQuantidade}
+                          onChange={(e) => setMunicaoQuantidade(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold outline-none"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase mb-1">
+                          Nº de Série *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={novoSerie}
+                          onChange={(e) => setNovoSerie(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase mb-1">
+                          Tombo / Patrimônio
+                        </label>
+                        <input
+                          type="text"
+                          value={novoPatrimonio}
+                          onChange={(e) => setNovoPatrimonio(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {novoTipo === "colete" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block font-bold text-slate-700 uppercase mb-1">
+                            Gênero
+                          </label>
+                          <select
+                            value={coleteGenero}
+                            onChange={(e) => setColeteGenero(e.target.value)}
+                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                          >
+                            <option value="MASCULINO">MASCULINO</option>
+                            <option value="FEMININO">FEMININO</option>
+                            <option value="UNISEX">UNISEX</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block font-bold text-slate-700 uppercase mb-1">
+                            Tamanho
+                          </label>
+                          <select
+                            value={coleteTamanho}
+                            onChange={(e) => setColeteTamanho(e.target.value)}
+                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                          >
+                            <option value="PP">PP</option>
+                            <option value="P">P</option>
+                            <option value="M">M</option>
+                            <option value="G">G</option>
+                            <option value="GG">GG</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block font-bold text-slate-700 uppercase mb-1">
+                            Data Fabricação
+                          </label>
+                          <input
+                            type="date"
+                            value={coleteDataFabricacao}
+                            onChange={(e) =>
+                              setColeteDataFabricacao(e.target.value)
+                            }
+                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-slate-700 uppercase mb-1">
+                            Data Validade
+                          </label>
+                          <input
+                            type="date"
+                            value={coleteDataValidade}
+                            onChange={(e) =>
+                              setColeteDataValidade(e.target.value)
+                            }
+                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {novoTipo === "armamento" && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase mb-1">
+                          Calibre
+                        </label>
+                        <input
+                          type="text"
+                          value={novoCalibre}
+                          onChange={(e) => setNovoCalibre(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase mb-1">
+                          Estado
+                        </label>
+                        <select
+                          value={novoEstado}
+                          onChange={(e) => setNovoEstado(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                        >
+                          <option value="Novo">Novo</option>
+                          <option value="Bom">Bom</option>
+                          <option value="Regular">Regular</option>
+                          <option value="Danificado">Danificado</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">
+                      Localização Atual
+                    </label>
+                    <select
+                      value={novoLocalizacao}
+                      onChange={(e) => setNovoLocalizacao(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                    >
+                      <option value="Estoque da Reserva">
+                        Estoque da Reserva
+                      </option>
+                      <option value="Acautelada com Policial">
+                        Acautelada com Policial
+                      </option>
+                      <option value="Apreendida">Apreendida</option>
+                      <option value="Em Perícia">Em Perícia</option>
+                      <option value="Manutenção">Manutenção</option>
+                    </select>
+                  </div>
+
+                  {/* SEÇÃO DE UPLOAD DE FOTOS CONDICIONAIS RESTAURADA */}
+                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                    <span className="block font-bold text-slate-700 uppercase text-[10px]">
+                      Anexos de Imagens / Fotos
+                    </span>
+
+                    {novoTipo === "armamento" && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                            Foto da Frente da Arma
+                          </label>
+                          <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                            <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="truncate">
+                              {arquivoArma
+                                ? arquivoArma.name
+                                : "Escolher arquivo"}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) =>
+                                setArquivoArma(e.target.files[0])
+                              }
+                            />
+                          </label>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                            Foto do Nº de Série
+                          </label>
+                          <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                            <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="truncate">
+                              {arquivoNumeracao
+                                ? arquivoNumeracao.name
+                                : "Escolher arquivo"}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) =>
+                                setArquivoNumeracao(e.target.files[0])
+                              }
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
+                    {novoTipo === "colete" && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                            Foto Rótulo da Frente
+                          </label>
+                          <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                            <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="truncate">
+                              {arquivoColeteFrente
+                                ? arquivoColeteFrente.name
+                                : "Escolher arquivo"}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) =>
+                                setArquivoColeteFrente(e.target.files[0])
+                              }
+                            />
+                          </label>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                            Foto Rótulo do Verso
+                          </label>
+                          <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                            <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="truncate">
+                              {arquivoColeteVerso
+                                ? arquivoColeteVerso.name
+                                : "Escolher arquivo"}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) =>
+                                setArquivoColeteVerso(e.target.files[0])
+                              }
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
+                    {novoTipo === "municao" && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                            Foto das Munições
+                          </label>
+                          <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                            <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="truncate">
+                              {arquivoMunicaoGeral
+                                ? arquivoMunicaoGeral.name
+                                : "Escolher arquivo"}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) =>
+                                setArquivoMunicaoGeral(e.target.files[0])
+                              }
+                            />
+                          </label>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                            Foto da Caixa (se houver)
+                          </label>
+                          <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                            <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="truncate">
+                              {arquivoMunicaoCaixa
+                                ? arquivoMunicaoCaixa.name
+                                : "Escolher arquivo"}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) =>
+                                setArquivoMunicaoCaixa(e.target.files[0])
+                              }
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
-
-              {novoTipo === "armamento" && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">
-                      Calibre
-                    </label>
-                    <input
-                      type="text"
-                      value={novoCalibre}
-                      onChange={(e) => setNovoCalibre(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">
-                      Estado
-                    </label>
-                    <select
-                      value={novoEstado}
-                      onChange={(e) => setNovoEstado(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
-                    >
-                      <option value="Novo">Novo</option>
-                      <option value="Bom">Bom</option>
-                      <option value="Regular">Regular</option>
-                      <option value="Danificado">Danificado</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">
-                  Localização Atual
-                </label>
-                <select
-                  value={novoLocalizacao}
-                  onChange={(e) => setNovoLocalizacao(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
-                >
-                  <option value="Estoque da Reserva">Estoque da Reserva</option>
-                  <option value="Acautelada com Policial">
-                    Acautelada com Policial
-                  </option>
-                  <option value="Apreendida">Apreendida</option>
-                  <option value="Em Perícia">Em Perícia</option>
-                  <option value="Manutenção">Manutenção</option>
-                </select>
-              </div>
-
-              {/* SEÇÃO DE UPLOAD DE FOTOS CONDICIONAIS POR TIPO */}
-              <div className="pt-2 border-t border-slate-100 space-y-2">
-                <span className="block font-bold text-slate-700 uppercase text-[10px]">
-                  Anexos de Imagens / Fotos
-                </span>
-
-                {novoTipo === "armamento" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Foto da Frente da Arma
-                      </label>
-                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
-                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                        <span className="truncate">
-                          {arquivoArma ? arquivoArma.name : "Escolher arquivo"}
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => setArquivoArma(e.target.files[0])}
-                        />
-                      </label>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Foto do Nº de Série
-                      </label>
-                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
-                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                        <span className="truncate">
-                          {arquivoNumeracao
-                            ? arquivoNumeracao.name
-                            : "Escolher arquivo"}
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) =>
-                            setArquivoNumeracao(e.target.files[0])
-                          }
-                        />
-                      </label>
-                    </div>
-                  </div>
-                )}
-
-                {novoTipo === "colete" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Foto Rótulo da Frente
-                      </label>
-                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
-                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                        <span className="truncate">
-                          {arquivoColeteFrente
-                            ? arquivoColeteFrente.name
-                            : "Escolher arquivo"}
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) =>
-                            setArquivoColeteFrente(e.target.files[0])
-                          }
-                        />
-                      </label>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Foto Rótulo do Verso
-                      </label>
-                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
-                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                        <span className="truncate">
-                          {arquivoColeteVerso
-                            ? arquivoColeteVerso.name
-                            : "Escolher arquivo"}
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) =>
-                            setArquivoColeteVerso(e.target.files[0])
-                          }
-                        />
-                      </label>
-                    </div>
-                  </div>
-                )}
-
-                {novoTipo === "municao" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Foto das Munições
-                      </label>
-                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
-                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                        <span className="truncate">
-                          {arquivoMunicaoGeral
-                            ? arquivoMunicaoGeral.name
-                            : "Escolher arquivo"}
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) =>
-                            setArquivoMunicaoGeral(e.target.files[0])
-                          }
-                        />
-                      </label>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Foto da Caixa (se houver)
-                      </label>
-                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
-                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                        <span className="truncate">
-                          {arquivoMunicaoCaixa
-                            ? arquivoMunicaoCaixa.name
-                            : "Escolher arquivo"}
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) =>
-                            setArquivoMunicaoCaixa(e.target.files[0])
-                          }
-                        />
-                      </label>
-                    </div>
-                  </div>
-                )}
-              </div>
 
               <div>
                 <label className="block font-bold text-slate-700 uppercase mb-1">
@@ -996,7 +1324,7 @@ export default function Inventario() {
           userRole={userRole}
           onClose={() => setArmaSelecionada(null)}
           onUpdateSuccess={() => {
-            carregarInventario();
+            carregarDados();
             setArmaSelecionada(null);
           }}
         />
