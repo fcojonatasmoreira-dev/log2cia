@@ -58,7 +58,9 @@ export default function Inventario() {
     carregarInventario();
   }, []);
 
-  const isP4OrMaster = userRole === "master" || userRole === "p4";
+  // Liberado para Master, P4 e Armeiro
+  const isP4OrMasterOrArmeiro =
+    userRole === "master" || userRole === "p4" || userRole === "armeiro";
 
   async function carregarInventario() {
     setLoading(true);
@@ -77,21 +79,22 @@ export default function Inventario() {
     }
   }
 
-  // Função auxiliar para upload de imagem no bucket "documentos-segurança"
+  // Função auxiliar para upload de imagem no bucket correto ("documentos-seguranca")
   async function fazerUploadImagem(file, prefixo) {
     if (!file) return null;
     const fileExt = file.name.split(".").pop();
     const fileName = `${prefixo}_${Date.now()}.${fileExt}`;
     const filePath = `equipamentos/${fileName}`;
+    const nomeBucket = "documentos-seguranca";
 
     const { error: uploadError } = await supabase.storage
-      .from("documentos-segurança")
+      .from(nomeBucket)
       .upload(filePath, file);
 
     if (uploadError) throw uploadError;
 
     const { data: publicUrlData } = supabase.storage
-      .from("documentos-segurança")
+      .from(nomeBucket)
       .getPublicUrl(filePath);
 
     return publicUrlData.publicUrl;
@@ -110,9 +113,9 @@ export default function Inventario() {
 
   const handleCadastrarArmamento = async (e) => {
     e.preventDefault();
-    if (!isP4OrMaster) {
+    if (!isP4OrMasterOrArmeiro) {
       alert(
-        "Acesso negado: Apenas perfis P4 ou Master podem cadastrar novos equipamentos.",
+        "Acesso negado: Apenas Armeiro, P4 ou Master podem cadastrar novos equipamentos.",
       );
       return;
     }
@@ -206,7 +209,7 @@ export default function Inventario() {
           </p>
         </div>
 
-        {isP4OrMaster && (
+        {isP4OrMasterOrArmeiro && (
           <button
             type="button"
             onClick={() => setModalNovo(true)}
@@ -307,8 +310,7 @@ export default function Inventario() {
         </div>
       )}
 
-      {/* Modal de Cadastro Dinâmico */}
-      {modalNovo && isP4OrMaster && (
+      {modalNovo && isP4OrMasterOrArmeiro && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 space-y-4 my-8">
             <div className="flex justify-between items-center border-b pb-3">
@@ -364,7 +366,6 @@ export default function Inventario() {
                 />
               </div>
 
-              {/* SE FOR MUNIÇÃO: EXIBE CAMPOS DE LOTE E QUANTIDADE */}
               {novoTipo === "municao" ? (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -424,7 +425,6 @@ export default function Inventario() {
                 </div>
               )}
 
-              {/* CAMPOS ESPECÍFICOS DE COLETE */}
               {novoTipo === "colete" && (
                 <>
                   <div className="grid grid-cols-2 gap-2">
@@ -504,7 +504,6 @@ export default function Inventario() {
                 </>
               )}
 
-              {/* SE FOR MUNIÇÃO: CAMPO DE OBSERVAÇÕES */}
               {novoTipo === "municao" && (
                 <div>
                   <label className="block font-bold text-gray-700 uppercase mb-1">
@@ -520,7 +519,6 @@ export default function Inventario() {
                 </div>
               )}
 
-              {/* SE FOR ARMAMENTO: CALIBRE E ESTADO */}
               {novoTipo === "armamento" && (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -573,7 +571,6 @@ export default function Inventario() {
                 </select>
               </div>
 
-              {/* Seção de Upload de Imagens */}
               <div className="grid grid-cols-2 gap-2 border-t pt-2">
                 <div>
                   <label className="block font-bold text-gray-700 uppercase mb-1">
@@ -620,7 +617,6 @@ export default function Inventario() {
         </div>
       )}
 
-      {/* Modal de Visualização/Edição Avançada */}
       {armaSelecionada && (
         <ModalDetalhesArma
           arma={armaSelecionada}

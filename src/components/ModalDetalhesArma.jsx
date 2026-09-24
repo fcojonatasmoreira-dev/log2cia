@@ -15,7 +15,7 @@ export default function ModalDetalhesArma({
 }) {
   const printRef = useRef();
 
-  // Verifica o nível de permissão baseado no userRole passado ou recuperado do localStorage
+  // Verifica o nível de permissão (incluindo armeiro)
   const [podeEditar, setPodeEditar] = useState(false);
   const [modoEdicao, setModoEdicao] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -68,7 +68,8 @@ export default function ModalDetalhesArma({
     }
 
     const nivel = String(cargo || "").toLowerCase();
-    if (nivel === "p4" || nivel === "master") {
+    // Liberado para P4, Master e Armeiro
+    if (nivel === "p4" || nivel === "master" || nivel === "armeiro") {
       setPodeEditar(true);
     } else {
       setPodeEditar(false);
@@ -83,14 +84,17 @@ export default function ModalDetalhesArma({
     const fileName = `${prefixo}_${Date.now()}.${fileExt}`;
     const filePath = `equipamentos/${fileName}`;
 
+    // Bucket correto criado no Supabase
+    const nomeBucket = "documentos-seguranca";
+
     const { error: uploadError } = await supabase.storage
-      .from("documentos-segurança")
+      .from(nomeBucket)
       .upload(filePath, file);
 
     if (uploadError) throw uploadError;
 
     const { data: publicUrlData } = supabase.storage
-      .from("documentos-segurança")
+      .from(nomeBucket)
       .getPublicUrl(filePath);
 
     return publicUrlData.publicUrl;
@@ -98,7 +102,9 @@ export default function ModalDetalhesArma({
 
   const handleSalvarEdicao = async () => {
     if (!podeEditar) {
-      alert("Acesso negado: Apenas P4 ou Master podem editar equipamentos.");
+      alert(
+        "Acesso negado: Apenas Armeiro, P4 ou Master podem editar equipamentos.",
+      );
       return;
     }
 
@@ -158,7 +164,9 @@ export default function ModalDetalhesArma({
 
   const handleExcluirArmamento = async () => {
     if (!podeEditar) {
-      alert("Acesso negado: Apenas P4 ou Master podem excluir equipamentos.");
+      alert(
+        "Acesso negado: Apenas Armeiro, P4 ou Master podem excluir equipamentos.",
+      );
       return;
     }
 
@@ -214,13 +222,11 @@ export default function ModalDetalhesArma({
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 overflow-y-auto">
       <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-gray-100 space-y-3 my-auto max-h-[90vh] overflow-y-auto">
-        {/* Cabeçalho */}
         <div className="flex justify-between items-center border-b pb-2">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold text-gray-800">
               Ficha do Equipamento / Armamento
             </h2>
-            {/* O botão Editar aparece se podeEditar for true (P4 ou Master) */}
             {podeEditar && !modoEdicao && (
               <button
                 type="button"
@@ -251,7 +257,6 @@ export default function ModalDetalhesArma({
           </div>
         )}
 
-        {/* Formulário / Exibição compacta */}
         <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-3 rounded-lg border border-slate-200">
           <div>
             <label className="text-gray-500 block uppercase font-semibold text-[10px]">
@@ -422,7 +427,6 @@ export default function ModalDetalhesArma({
           </div>
         </div>
 
-        {/* Seção de Fotos */}
         {modoEdicao ? (
           <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 p-2.5 rounded-lg border">
             <div>
@@ -489,7 +493,6 @@ export default function ModalDetalhesArma({
           </div>
         )}
 
-        {/* Botão de Exibição de QR Code Ocultável */}
         <div className="text-center">
           <button
             type="button"
@@ -520,7 +523,6 @@ export default function ModalDetalhesArma({
           )}
         </div>
 
-        {/* Ações e Botão Excluir (Disponível para P4 e Master) */}
         <div className="flex flex-col gap-2 pt-2 border-t">
           <div className="flex gap-2">
             {modoEdicao ? (
@@ -562,7 +564,6 @@ export default function ModalDetalhesArma({
             )}
           </div>
 
-          {/* Botão de Excluir visível para P4 e Master */}
           {podeEditar && !modoEdicao && (
             <button
               type="button"
