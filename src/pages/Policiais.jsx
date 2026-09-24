@@ -58,6 +58,12 @@ export default function Policiais() {
   const [filtroRole, setFiltroRole] = useState("todos");
   const [filtroStatus, setFiltroStatus] = useState("todos");
 
+  // Estados de Download / Relatório
+  const [baixandoExcel, setBaixandoExcel] = useState(false);
+  const [baixandoPdf, setBaixandoPdf] = useState(false);
+  const [sucessoExcel, setSucessoExcel] = useState(false);
+  const [sucessoPdf, setSucessoPdf] = useState(false);
+
   // Modais e Permissões
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -339,61 +345,77 @@ export default function Policiais() {
     return true;
   });
 
-  // Funções de Exportação para Efetivo
+  // Funções de Exportação com Delay e Feedback Visual
   const exportarExcel = () => {
-    const dadosFormatados = filteredPoliciais.map((p) => ({
-      "Posto / Graduação": p.posto_graduacao,
-      "Nome de Guerra": p.nome_guerra,
-      Matrícula: p.matricula || "N/I",
-      "Nome Completo": p.nome_completo,
-      Numeral: p.numeral || "—",
-      Perfil: p.role || "policial",
-      Situação: p.status,
-    }));
+    setBaixandoExcel(true);
+    setTimeout(() => {
+      const dadosFormatados = filteredPoliciais.map((p) => ({
+        "Posto / Graduação": p.posto_graduacao,
+        "Nome de Guerra": p.nome_guerra,
+        Matrícula: p.matricula || "N/I",
+        "Nome Completo": p.nome_completo,
+        Numeral: p.numeral || "—",
+        Perfil: p.role || "policial",
+        Situação: p.status,
+      }));
 
-    const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Efetivo");
-    XLSX.writeFile(
-      workbook,
-      `relatorio_efetivo_${new Date().toISOString().slice(0, 10)}.xlsx`,
-    );
+      const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Efetivo");
+      XLSX.writeFile(
+        workbook,
+        `relatorio_efetivo_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+
+      setBaixandoExcel(false);
+      setSucessoExcel(true);
+      setTimeout(() => setSucessoExcel(false), 3000);
+    }, 3000);
   };
 
   const exportarPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(14);
-    doc.text("LOG2CIA — RELATÓRIO DE EFETIVO MILITAR", 14, 15);
-    doc.setFontSize(9);
-    doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 21);
+    setBaixandoPdf(true);
+    setTimeout(() => {
+      const doc = new jsPDF();
+      doc.setFontSize(14);
+      doc.text("LOG2CIA — RELATÓRIO DE EFETIVO MILITAR", 14, 15);
+      doc.setFontSize(9);
+      doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 21);
 
-    const colunas = [
-      "Posto / Grad.",
-      "Guerra",
-      "Matrícula",
-      "Nome Completo",
-      "Numeral",
-      "Situação",
-    ];
-    const linhas = filteredPoliciais.map((p) => [
-      p.posto_graduacao,
-      p.nome_guerra,
-      p.matricula || "N/I",
-      p.nome_completo,
-      p.numeral || "—",
-      p.status,
-    ]);
+      const colunas = [
+        "Posto / Grad.",
+        "Guerra",
+        "Matrícula",
+        "Nome Completo",
+        "Numeral",
+        "Situação",
+      ];
+      const linhas = filteredPoliciais.map((p) => [
+        p.posto_graduacao,
+        p.nome_guerra,
+        p.matricula || "N/I",
+        p.nome_completo,
+        p.numeral || "—",
+        p.status,
+      ]);
 
-    autoTable(doc, {
-      startY: 26,
-      head: [colunas],
-      body: linhas,
-      theme: "grid",
-      headStyles: { fillColor: [30, 41, 59] },
-      styles: { fontSize: 7 },
-    });
+      autoTable(doc, {
+        startY: 26,
+        head: [colunas],
+        body: linhas,
+        theme: "grid",
+        headStyles: { fillColor: [30, 41, 59] },
+        styles: { fontSize: 7 },
+      });
 
-    doc.save(`relatorio_efetivo_${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(
+        `relatorio_efetivo_${new Date().toISOString().slice(0, 10)}.pdf`,
+      );
+
+      setBaixandoPdf(false);
+      setSucessoPdf(true);
+      setTimeout(() => setSucessoPdf(false), 3000);
+    }, 3000);
   };
 
   const totalColunas = isMaster ? 8 : 7;
@@ -414,18 +436,51 @@ export default function Policiais() {
           <button
             type="button"
             onClick={exportarExcel}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all"
+            disabled={baixandoExcel || sucessoExcel}
+            className={`font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all disabled:opacity-80 ${
+              sucessoExcel
+                ? "bg-emerald-800 text-white"
+                : "bg-emerald-600 hover:bg-emerald-700 text-white"
+            }`}
           >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Excel</span>
+            {baixandoExcel ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Gerando...</span>
+              </>
+            ) : sucessoExcel ? (
+              <span>✓ Relatório Baixado</span>
+            ) : (
+              <>
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Excel</span>
+              </>
+            )}
           </button>
+
           <button
             type="button"
             onClick={exportarPDF}
-            className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all"
+            disabled={baixandoPdf || sucessoPdf}
+            className={`font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all disabled:opacity-80 ${
+              sucessoPdf
+                ? "bg-rose-900 text-white"
+                : "bg-rose-600 hover:bg-rose-700 text-white"
+            }`}
           >
-            <FileText className="w-4 h-4" />
-            <span>PDF</span>
+            {baixandoPdf ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Gerando...</span>
+              </>
+            ) : sucessoPdf ? (
+              <span>✓ Relatório Baixado</span>
+            ) : (
+              <>
+                <FileText className="w-4 h-4" />
+                <span>PDF</span>
+              </>
+            )}
           </button>
 
           {isP4OrMaster && (

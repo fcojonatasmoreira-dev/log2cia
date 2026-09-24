@@ -1,7 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import ModalDetalhesArma from "../components/ModalDetalhesArma";
-import { Filter, Search, FileSpreadsheet, FileText } from "lucide-react";
+import {
+  Filter,
+  Search,
+  FileSpreadsheet,
+  FileText,
+  RefreshCw,
+} from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -23,6 +29,12 @@ export default function Inventario() {
   const [filtroDescricao, setFiltroDescricao] = useState("");
   const [filtroSerie, setFiltroSerie] = useState("");
   const [filtroLocalizacao, setFiltroLocalizacao] = useState("todas");
+
+  // Estados de Download / Relatório
+  const [baixandoExcel, setBaixandoExcel] = useState(false);
+  const [baixandoPdf, setBaixandoPdf] = useState(false);
+  const [sucessoExcel, setSucessoExcel] = useState(false);
+  const [sucessoPdf, setSucessoPdf] = useState(false);
 
   // Campos gerais do formulário de cadastro
   const [novoTipo, setNovoTipo] = useState("armamento");
@@ -238,67 +250,81 @@ export default function Inventario() {
     return true;
   });
 
-  // Funções de Exportação (Excel e PDF)
+  // Funções de Exportação com Delay e Feedback Visual
   const exportarExcel = () => {
-    const dadosFormatados = equipamentosFiltrados.map((item) => ({
-      Tipo: formatarTipo(item.tipo),
-      "Modelo / Descrição": item.modelo_descricao || item.modelo || "N/I",
-      "Série / Lote": item.num_serie || item.numero_serie || "N/I",
-      Patrimônio: item.patrimonio || "—",
-      Especificações:
-        item.detalhes?.calibre ||
-        (item.tipo === "colete"
-          ? `Tam: ${item.detalhes?.tamanho}`
-          : `Qtd: ${item.detalhes?.quantidade}`),
-      Localização: item.detalhes?.localizacao_atual || "Estoque da Reserva",
-      Status: item.status,
-    }));
+    setBaixandoExcel(true);
+    setTimeout(() => {
+      const dadosFormatados = equipamentosFiltrados.map((item) => ({
+        Tipo: formatarTipo(item.tipo),
+        "Modelo / Descrição": item.modelo_descricao || item.modelo || "N/I",
+        "Série / Lote": item.num_serie || item.numero_serie || "N/I",
+        Patrimônio: item.patrimonio || "—",
+        Especificações:
+          item.detalhes?.calibre ||
+          (item.tipo === "colete"
+            ? `Tam: ${item.detalhes?.tamanho}`
+            : `Qtd: ${item.detalhes?.quantidade}`),
+        Localização: item.detalhes?.localizacao_atual || "Estoque da Reserva",
+        Status: item.status,
+      }));
 
-    const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventario");
-    XLSX.writeFile(
-      workbook,
-      `relatorio_inventario_${new Date().toISOString().slice(0, 10)}.xlsx`,
-    );
+      const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Inventario");
+      XLSX.writeFile(
+        workbook,
+        `relatorio_inventario_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+
+      setBaixandoExcel(false);
+      setSucessoExcel(true);
+      setTimeout(() => setSucessoExcel(false), 3000);
+    }, 3000);
   };
 
   const exportarPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(14);
-    doc.text("LOG2CIA — RELATÓRIO DO ACERVO BÉLICO", 14, 15);
-    doc.setFontSize(9);
-    doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 21);
+    setBaixandoPdf(true);
+    setTimeout(() => {
+      const doc = new jsPDF();
+      doc.setFontSize(14);
+      doc.text("LOG2CIA — RELATÓRIO DO ACERVO BÉLICO", 14, 15);
+      doc.setFontSize(9);
+      doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 21);
 
-    const colunas = [
-      "Tipo",
-      "Modelo",
-      "Série / Lote",
-      "Patrimônio",
-      "Localização",
-      "Status",
-    ];
-    const linhas = equipamentosFiltrados.map((item) => [
-      formatarTipo(item.tipo),
-      item.modelo_descricao || item.modelo || "N/I",
-      item.num_serie || item.numero_serie || "N/I",
-      item.patrimonio || "—",
-      item.detalhes?.localizacao_atual || "Estoque",
-      item.status,
-    ]);
+      const colunas = [
+        "Tipo",
+        "Modelo",
+        "Série / Lote",
+        "Patrimônio",
+        "Localização",
+        "Status",
+      ];
+      const linhas = equipamentosFiltrados.map((item) => [
+        formatarTipo(item.tipo),
+        item.modelo_descricao || item.modelo || "N/I",
+        item.num_serie || item.numero_serie || "N/I",
+        item.patrimonio || "—",
+        item.detalhes?.localizacao_atual || "Estoque",
+        item.status,
+      ]);
 
-    autoTable(doc, {
-      startY: 26,
-      head: [colunas],
-      body: linhas,
-      theme: "grid",
-      headStyles: { fillColor: [30, 41, 59] },
-      styles: { fontSize: 7 },
-    });
+      autoTable(doc, {
+        startY: 26,
+        head: [colunas],
+        body: linhas,
+        theme: "grid",
+        headStyles: { fillColor: [30, 41, 59] },
+        styles: { fontSize: 7 },
+      });
 
-    doc.save(
-      `relatorio_inventario_${new Date().toISOString().slice(0, 10)}.pdf`,
-    );
+      doc.save(
+        `relatorio_inventario_${new Date().toISOString().slice(0, 10)}.pdf`,
+      );
+
+      setBaixandoPdf(false);
+      setSucessoPdf(true);
+      setTimeout(() => setSucessoPdf(false), 3000);
+    }, 3000);
   };
 
   return (
@@ -317,18 +343,51 @@ export default function Inventario() {
           <button
             type="button"
             onClick={exportarExcel}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all"
+            disabled={baixandoExcel || sucessoExcel}
+            className={`font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all disabled:opacity-80 ${
+              sucessoExcel
+                ? "bg-emerald-800 text-white"
+                : "bg-emerald-600 hover:bg-emerald-700 text-white"
+            }`}
           >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Excel</span>
+            {baixandoExcel ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Gerando...</span>
+              </>
+            ) : sucessoExcel ? (
+              <span>✓ Relatório Baixado</span>
+            ) : (
+              <>
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Excel</span>
+              </>
+            )}
           </button>
+
           <button
             type="button"
             onClick={exportarPDF}
-            className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all"
+            disabled={baixandoPdf || sucessoPdf}
+            className={`font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all disabled:opacity-80 ${
+              sucessoPdf
+                ? "bg-rose-900 text-white"
+                : "bg-rose-600 hover:bg-rose-700 text-white"
+            }`}
           >
-            <FileText className="w-4 h-4" />
-            <span>PDF</span>
+            {baixandoPdf ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Gerando...</span>
+              </>
+            ) : sucessoPdf ? (
+              <span>✓ Relatório Baixado</span>
+            ) : (
+              <>
+                <FileText className="w-4 h-4" />
+                <span>PDF</span>
+              </>
+            )}
           </button>
 
           {isP4OrMasterOrArmeiro && (
