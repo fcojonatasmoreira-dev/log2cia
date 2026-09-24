@@ -13,6 +13,7 @@ import {
   Trash2,
   Edit3,
   X,
+  ShieldCheck,
 } from "lucide-react";
 
 export default function Cautelas() {
@@ -120,7 +121,9 @@ export default function Cautelas() {
           data_cautela,
           data_devolucao,
           alteracoes,
-          hash_assinatura,
+          hash_emissao,
+          hash_aceite,
+          hash_devolucao,
           armeiro_id,
           armeiro_baixa_id,
           policial_id,
@@ -182,10 +185,15 @@ export default function Cautelas() {
     }
   }
 
-  // Função para gerar Hash SHA-256 criptográfico para Validade Jurídica (Lei 14.063/2020)
-  const gerarHashSeguro = async (cautelaId, matriculaPolicial, dataStr) => {
+  // Função criptográfica universal para gerar Hash SHA-256 por etapa (Trilha de Auditoria)
+  const gerarHashEtapa = async (
+    cautelaId,
+    identificadorAtor,
+    etapa,
+    dataStr,
+  ) => {
     try {
-      const msg = `${cautelaId}-${matriculaPolicial}-${dataStr}-LOG2CIA-SECURE-HASH`;
+      const msg = `LOG2CIA-AUDIT-${etapa}-${cautelaId}-${identificadorAtor}-${dataStr}`;
       const msgBuffer = new TextEncoder().encode(msg);
       const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -195,27 +203,40 @@ export default function Cautelas() {
         .toUpperCase();
       return hashHex;
     } catch (e) {
-      return `HASH-FALLBACK-${Date.now().toString(16).toUpperCase()}`;
+      return `HASH-FALLBACK-${etapa}-${Date.now().toString(16).toUpperCase()}`;
     }
   };
 
-  const handleAceitarCautela = async (cautelaId) => {
+  const handleAceitarCautela = async (cautelaObj) => {
     setProcessando(true);
     try {
+      const dataHoraAtual = new Date().toISOString();
+      const matriculaPolicial = cautelaObj.policial?.matricula || "MILITAR";
+      const hashAceiteGerado = await gerarHashEtapa(
+        cautelaObj.id,
+        matriculaPolicial,
+        "ACEITE",
+        dataHoraAtual,
+      );
+
       const { error } = await supabase
         .from("cautelas")
-        .update({ status_aceite: "aceito" })
-        .eq("id", cautelaId);
+        .update({
+          status_aceite: "aceito",
+          hash_aceite: hashAceiteGerado,
+        })
+        .eq("id", cautelaObj.id);
 
       if (error) throw error;
-      alert("Cautela aceita com sucesso!");
+      alert("Cautela aceita e validada eletronicamente com sucesso!");
       const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
       await carregarCautelas(temAcessoTotal, userId);
 
-      if (cautelaVisualizando && cautelaVisualizando.id === cautelaId) {
+      if (cautelaVisualizando && cautelaVisualizando.id === cautelaObj.id) {
         setCautelaVisualizando((prev) => ({
           ...prev,
           status_aceite: "aceito",
+          hash_aceite: hashAceiteGerado,
         }));
       }
     } catch (err) {
@@ -292,18 +313,23 @@ export default function Cautelas() {
 
     try {
       let armeiroBaixaIdFinal = userId;
-      if (!armeiroBaixaIdFinal) {
-        const usuarioSalvo = localStorage.getItem("log2cia_user");
-        if (usuarioSalvo) {
-          const dadosUser = JSON.parse(usuarioSalvo);
-          if (dadosUser?.matricula) {
-            const { data: polData } = await supabase
-              .from("policiais")
-              .select("id")
-              .eq("matricula", dadosUser.matricula)
-              .maybeSingle();
-            if (polData) armeiroBaixaIdFinal = polData.id;
-          }
+      let matriculaArmeiroBaixa = "ARMEIRO";
+
+      const usuarioSalvo = localStorage.getItem("log2cia_user");
+      if (usuarioSalvo) {
+        const dadosUser = JSON.parse(usuarioSalvo);
+        if (dadosUser?.matricula) matriculaArmeiroBaixa = dadosUser.matricula;
+      }
+
+      if (!armeiroBaixaIdFinal && usuarioSalvo) {
+        const dadosUser = JSON.parse(usuarioSalvo);
+        if (dadosUser?.matricula) {
+          const { data: polData } = await supabase
+            .from("policiais")
+            .select("id")
+            .eq("matricula", dadosUser.matricula)
+            .maybeSingle();
+          if (polData) armeiroBaixaIdFinal = polData.id;
         }
       }
 
@@ -313,12 +339,11 @@ export default function Cautelas() {
       const checklistStatus = `ARMA:${checkArma ? "OK" : "NOK"}|CARREGADORES:${checkCarregadores ? "OK" : "NOK"}|MUNICAO:${checkMunicao ? "OK" : "NOK"}`;
       const relatorioFormatado = `${checklistStatus} | OBS:${campoAlteracoes ? campoAlteracoes.trim() : "Sem alterações"}`;
 
-      // Gerar Hash de Integridade para Validade Jurídica no Fechamento
-      const matriculaPolicial =
-        cautelaDevolvendo.policial?.matricula || "S-MAT";
-      const hashGerado = await gerarHashSeguro(
+      // Gerar Hash criptográfico de Devolução
+      const hashDevolucaoGerado = await gerarHashEtapa(
         cautelaDevolvendo.id,
-        matriculaPolicial,
+        matriculaArmeiroBaixa,
+        "DEVOLUCAO",
         dataHoraAtual,
       );
 
@@ -326,7 +351,7 @@ export default function Cautelas() {
         status: "finalizada",
         data_devolucao: dataHoraAtual,
         alteracoes: relatorioFormatado,
-        hash_assinatura: hashGerado,
+        hash_devolucao: hashDevolucaoGerado,
       };
 
       if (armeiroBaixaIdFinal) {
@@ -348,7 +373,9 @@ export default function Cautelas() {
       }
 
       setCautelaDevolvendo(null);
-      alert("Devolução homologada com sucesso e assinada eletronicamente!");
+      alert(
+        "Devolução homologada e trilha de auditoria criptografada com sucesso!",
+      );
       const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
       await carregarCautelas(temAcessoTotal, userId);
       await carregarEquipamentosDisponiveis();
@@ -498,60 +525,55 @@ export default function Cautelas() {
     const dataHoraEmissao = new Date().toLocaleString("pt-BR");
     const infoRelatorio = parseRelatorio(cautela.alteracoes);
 
-    // Garante que o PDF exiba o hash salvo ou gere um temporário se ainda estiver ativa
-    let hashExibicao = cautela.hash_assinatura;
-    if (!hashExibicao) {
-      hashExibicao = await gerarHashSeguro(
-        cautela.id,
-        pol.matricula || "S-MAT",
-        cautela.data_cautela || new Date().toISOString(),
-      );
-    }
+    // Garante hashes para exibição no PDF
+    let hashEmissaoShow = cautela.hash_emissao || "Aguardando selo";
+    let hashAceiteShow = cautela.hash_aceite || "Aguardando aceite";
+    let hashDevolucaoShow = cautela.hash_devolucao || "Aguardando baixa";
 
     const element = document.createElement("div");
     element.innerHTML = `
-      <div style="font-family: Arial, sans-serif; padding: 25px; color: #0f172a; line-height: 1.4; background: #ffffff; font-size: 11px;">
-        <div style="text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px;">
-          <h1 style="margin: 0; font-size: 14px; text-transform: uppercase; font-weight: bold;">POLÍCIA MILITAR DO CEARÁ</h1>
-          <h2 style="margin: 3px 0; font-size: 11px; color: #334155; font-weight: normal;">6º CRPM • 15º BATALHÃO • 2ª COMPANHIA</h2>
-          <h3 style="margin-top: 6px; font-size: 12px; font-weight: bold; text-transform: uppercase; background: #f1f5f9; padding: 4px; border: 1px solid #cbd5e1;">TERMO DE CAUTELA BÉLICA — ASSINATURA ELETRÔNICA AVANÇADA</h3>
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #0f172a; line-height: 1.4; background: #ffffff; font-size: 10.5px;">
+        <div style="text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px;">
+          <h1 style="margin: 0; font-size: 13px; text-transform: uppercase; font-weight: bold;">POLÍCIA MILITAR DO CEARÁ</h1>
+          <h2 style="margin: 2px 0; font-size: 10px; color: #334155; font-weight: normal;">6º CRPM • 15º BATALHÃO • 2ª COMPANHIA</h2>
+          <h3 style="margin-top: 5px; font-size: 11px; font-weight: bold; text-transform: uppercase; background: #f1f5f9; padding: 3px; border: 1px solid #cbd5e1;">TERMO DE CAUTELA E TRILHA DE AUDITORIA CRIPTOGRÁFICA</h3>
         </div>
 
-        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
-          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">1. Dados do Policial / Servidor (Signatário)</div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 5px; padding: 8px; margin-bottom: 8px;">
+          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 3px; color: #1e293b; font-size: 9.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">1. Dados do Policial / Servidor</div>
           <div><strong>Militar:</strong> ${pol.posto_graduacao || ""} ${pol.nome_guerra || "N/I"} (${pol.nome_completo || ""})</div>
           <div><strong>Matrícula:</strong> ${pol.matricula || "N/I"}</div>
-          <div><strong>Forma de Autenticação:</strong> Credencial Pessoal Intransigível (Login Seguro no Sistema Log2CIA)</div>
         </div>
 
-        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
-          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">2. Controle Operacional (Duplo Armeiro)</div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 5px; padding: 8px; margin-bottom: 8px;">
+          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 3px; color: #1e293b; font-size: 9.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">2. Período e Responsáveis (Operação)</div>
           <div><strong>Data/Hora Cautela (Saída):</strong> ${dataCautelaFormatada} | <strong>Armeiro Saída:</strong> ${nomeArmeiroSaida}</div>
           <div><strong>Data/Hora Devolução:</strong> ${dataDevolucaoFormatada} | <strong>Armeiro Baixa:</strong> ${isAtiva ? "Pendente" : nomeArmeiroBaixa}</div>
-          <div><strong>Status do Acervo:</strong> ${isAtiva ? "EM CAUTELA (Ativa)" : "DEVOLVIDO E HOMOLOGADO (Finalizada)"}</div>
+          <div><strong>Status Atual:</strong> ${isAtiva ? "EM CAUTELA (Ativa)" : "DEVOLVIDO (Finalizada)"}</div>
         </div>
 
-        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
-          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">3. Material Bélico Acautelado</div>
-          <div><strong>Tipo / Descrição:</strong> ${eq.tipo?.toUpperCase() || "ARMAMENTO"} - ${eq.modelo_descricao || "N/I"}</div>
-          <div><strong>Número de Série:</strong> ${eq.num_serie || "N/I"} | <strong>Patrimônio:</strong> ${eq.patrimonio || "N/I"}</div>
-          <div><strong>Itens Vinculados:</strong> ${item.quantidade_carregadores || 0} carregador(es) | ${item.quantidade_municao || 0} munição(ões) calibre ${item.tipo_municao || "N/I"}</div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 5px; padding: 8px; margin-bottom: 8px;">
+          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 3px; color: #1e293b; font-size: 9.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">3. Material Bélico Acautelado</div>
+          <div><strong>Tipo / Modelo:</strong> ${eq.tipo?.toUpperCase() || "ARMAMENTO"} - ${eq.modelo_descricao || "N/I"}</div>
+          <div><strong>Número de Série:</strong> ${eq.num_serie || "N/I"}</div>
+          <div><strong>Acessórios:</strong> ${item.quantidade_carregadores || 0} carregador(es) | ${item.quantidade_municao || 0} munição(ões) calibre ${item.tipo_municao || "N/I"}</div>
         </div>
 
-        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 15px;">
-          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">4. Relatório de Conferência / Avarias</div>
+        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 5px; padding: 8px; margin-bottom: 10px;">
+          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 3px; color: #1e293b; font-size: 9.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">4. Conferência / Avarias</div>
           <div>${infoRelatorio.obs}</div>
         </div>
 
-        <!-- Bloco de Validade Jurídica (Art. 4º da Lei 14.063/2020) -->
-        <div style="border: 1px solid #94a3b8; background: #f1f5f9; border-radius: 6px; padding: 10px; font-size: 9.5px; color: #1e293b; margin-top: 15px;">
-          <p style="margin: 0 0 5px 0; font-weight: bold; text-transform: uppercase;">Validade Jurídica e Integridade Eletrônica:</p>
-          <p style="margin: 0 0 4px 0;">Documento assinado eletronicamente com base no art. 4º da <strong>Lei nº 14.063/2020</strong>, por meio de autenticação digital segura no sistema Log2CIA. A autoria e a integridade deste termo são garantidas por registros de auditoria e carimbo de tempo criptográfico.</p>
-          <p style="margin: 0; font-family: monospace; color: #475569;"><strong>Chave de Integridade (Hash SHA-256):</strong> ${hashExibicao}</p>
+        <!-- Bloco de Trilha de Auditoria Criptográfica por Etapas -->
+        <div style="border: 1px solid #94a3b8; background: #f1f5f9; border-radius: 5px; padding: 8px; font-size: 9px; color: #1e293b; margin-top: 10px;">
+          <p style="margin: 0 0 4px 0; font-weight: bold; text-transform: uppercase;">Trilha de Auditoria e Hashes de Integridade (Lei 14.063/2020):</p>
+          <div style="margin-bottom: 3px; font-family: monospace;">• <strong>Hash Emissão (Saída):</strong> ${hashEmissaoShow}</div>
+          <div style="margin-bottom: 3px; font-family: monospace;">• <strong>Hash Aceite (Policial):</strong> ${hashAceiteShow}</div>
+          <div style="font-family: monospace;">• <strong>Hash Devolução (Baixa):</strong> ${hashDevolucaoShow}</div>
         </div>
 
-        <div style="margin-top: 20px; text-align: center; font-size: 9.5px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
-          <p style="margin: 2px 0;">Emitido eletronicamente em ${dataHoraEmissao} • Subunidade / 15º BPM</p>
+        <div style="margin-top: 15px; text-align: center; font-size: 9px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 6px;">
+          <p style="margin: 2px 0;">Documento gerado eletronicamente em ${dataHoraEmissao} • Sistema Log2CIA</p>
         </div>
       </div>
     `;
@@ -863,7 +885,7 @@ export default function Cautelas() {
                           statusAceite === "pendente" &&
                           isMeuRegistro && (
                             <button
-                              onClick={() => handleAceitarCautela(c.id)}
+                              onClick={() => handleAceitarCautela(c)}
                               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-xs"
                             >
                               ✓ Aceitar
@@ -885,7 +907,7 @@ export default function Cautelas() {
         </div>
       )}
 
-      {/* MODAL DE VISUALIZAÇÃO */}
+      {/* MODAL DE VISUALIZAÇÃO COM TRILHA DE AUDITORIA */}
       {cautelaVisualizando &&
         (() => {
           const isAtiva = cautelaVisualizando.status === "ativa";
@@ -926,12 +948,10 @@ export default function Cautelas() {
                 <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                   <div>
                     <h2 className="text-base font-bold text-slate-800">
-                      Detalhes da Cautela Bélica
+                      Detalhes da Cautela e Auditoria
                     </h2>
                     <p className="text-[11px] text-slate-500">
-                      {isAtiva
-                        ? "Registro em aberto"
-                        : "Comprovante de devolução concluída"}
+                      Trilha de custódia e selos criptográficos por etapa
                     </p>
                   </div>
                   <span
@@ -944,16 +964,16 @@ export default function Cautelas() {
                 <div className="space-y-3 text-xs">
                   {isAtiva && statusAceite === "pendente" && (
                     <div className="p-3 bg-orange-50 border border-orange-200 text-orange-800 rounded-xl flex items-center justify-between">
-                      <span>⚠️ Esta cautela aguarda aceite.</span>
+                      <span>⚠️ Esta cautela aguarda aceite digital.</span>
                       {isOwnerPolicial && (
                         <button
                           type="button"
                           onClick={() =>
-                            handleAceitarCautela(cautelaVisualizando.id)
+                            handleAceitarCautela(cautelaVisualizando)
                           }
                           className="px-3 py-1 bg-blue-600 text-white font-bold rounded-lg text-xs hover:bg-blue-700 shrink-0 ml-2"
                         >
-                          Aceitar
+                          Aceitar Agora
                         </button>
                       )}
                     </div>
@@ -988,25 +1008,6 @@ export default function Cautelas() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <span className="text-slate-500 block text-[10px] uppercase font-bold">
-                        Armeiro Saída
-                      </span>
-                      <span className="font-bold text-slate-800 block">
-                        {nomeArmeiroSaida}
-                      </span>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <span className="text-slate-500 block text-[10px] uppercase font-bold">
-                        Armeiro Baixa
-                      </span>
-                      <span className="font-bold text-slate-800 block">
-                        {nomeArmeiroBaixa}
-                      </span>
-                    </div>
-                  </div>
-
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <span className="text-slate-500 block text-[10px] uppercase font-bold">
                       Policial Cautelado
@@ -1037,6 +1038,40 @@ export default function Cautelas() {
                       <strong>{item.quantidade_carregadores || 0}</strong> |
                       Munição: <strong>{item.quantidade_municao || 0}</strong> (
                       {item.tipo_municao || "N/I"})
+                    </div>
+                  </div>
+
+                  {/* BLOCO DA TRILHA DE AUDITORIA NO MODAL */}
+                  <div className="p-3.5 bg-slate-900 text-slate-100 rounded-xl space-y-2 text-[10.5px]">
+                    <div className="flex items-center gap-1.5 font-bold uppercase text-blue-400 border-b border-slate-800 pb-1.5">
+                      <ShieldCheck className="w-4 h-4 text-blue-400" />
+                      <span>Trilha de Auditoria Criptográfica (SHA-256)</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-bold">
+                        1. Hash de Emissão (Saída):
+                      </span>
+                      <span className="font-mono text-emerald-400 break-all">
+                        {cautelaVisualizando.hash_emissao || "Não gerado"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-bold">
+                        2. Hash de Aceite (Militar):
+                      </span>
+                      <span className="font-mono text-blue-300 break-all">
+                        {cautelaVisualizando.hash_aceite ||
+                          "Aguardando aceite do militar"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-bold">
+                        3. Hash de Devolução (Baixa):
+                      </span>
+                      <span className="font-mono text-amber-300 break-all">
+                        {cautelaVisualizando.hash_devolucao ||
+                          "Pendente (Cautela em aberto)"}
+                      </span>
                     </div>
                   </div>
 

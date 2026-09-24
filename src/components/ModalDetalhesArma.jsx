@@ -42,6 +42,7 @@ export default function ModalDetalhesArma({
   const [estadoConservacao, setEstadoConservacao] = useState(
     arma?.detalhes?.estado_conservacao || "Bom",
   );
+  const [obs, setObs] = useState(arma?.detalhes?.obs || ""); // <--- Estado para Observações
 
   // Fotos atuais e novos arquivos
   const [fotoArmaUrl, setFotoArmaUrl] = useState(
@@ -137,6 +138,7 @@ export default function ModalDetalhesArma({
           calibre: calibre,
           localizacao_atual: localizacao,
           estado_conservacao: estadoConservacao,
+          obs: obs, // <--- Salvando o campo de observações atualizado
           foto_arma_url: novaFotoArma,
           foto_numeracao_url: novaFotoNum,
         },
@@ -429,6 +431,26 @@ export default function ModalDetalhesArma({
               </span>
             )}
           </div>
+        </div>
+
+        {/* CAMPO DE OBSERVAÇÕES (VISUALIZAÇÃO / EDIÇÃO) */}
+        <div className="text-xs bg-slate-50 p-3 rounded-lg border border-slate-200">
+          <label className="text-gray-500 block uppercase font-semibold text-[10px] mb-1">
+            Observações / Detalhes Adicionais
+          </label>
+          {modoEdicao ? (
+            <textarea
+              rows="2"
+              value={obs}
+              onChange={(e) => setObs(e.target.value)}
+              placeholder="Observações do equipamento..."
+              className="w-full p-1.5 bg-white border border-gray-300 rounded text-xs outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          ) : (
+            <span className="font-medium text-gray-800 text-xs block">
+              {obs || "Nenhuma observação registrada."}
+            </span>
+          )}
         </div>
 
         {modoEdicao ? (
