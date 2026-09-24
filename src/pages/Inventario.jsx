@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import ModalDetalhesArma from "../components/ModalDetalhesArma";
-import { Filter, Search } from "lucide-react";
+import { Filter, Search, FileSpreadsheet, FileText } from "lucide-react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 function formatarTipo(texto) {
   if (!texto) return "Armamento";
@@ -48,7 +51,6 @@ export default function Inventario() {
   const [arquivoNumeracao, setArquivoNumeracao] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
-  // Verifica o cargo do usuário logado no localStorage
   const checkUserRole = () => {
     try {
       const usuarioSalvo = localStorage.getItem("log2cia_user");
@@ -66,7 +68,6 @@ export default function Inventario() {
     carregarInventario();
   }, []);
 
-  // Liberado para Master, P4 e Armeiro
   const isP4OrMasterOrArmeiro =
     userRole === "master" || userRole === "p4" || userRole === "armeiro";
 
@@ -183,7 +184,6 @@ export default function Inventario() {
 
       if (error) throw error;
 
-      // Limpa formulário
       setNovoModelo("");
       setNovoSerie("");
       setNovoPatrimonio("");
@@ -210,7 +210,7 @@ export default function Inventario() {
     }
   };
 
-  // Lógica de Filtragem dos Equipamentos
+  // Lógica de Filtragem
   const equipamentosFiltrados = equipamentos.filter((item) => {
     const tipoItem = String(item.tipo || "").toLowerCase();
     const modeloItem = String(
@@ -223,38 +223,87 @@ export default function Inventario() {
       item.detalhes?.localizacao_atual || "Estoque da Reserva",
     ).toLowerCase();
 
-    // Filtro por Tipo
-    if (filtroTipo !== "todos" && tipoItem !== filtroTipo.toLowerCase()) {
+    if (filtroTipo !== "todos" && tipoItem !== filtroTipo.toLowerCase())
       return false;
-    }
-
-    // Filtro por Descrição / Modelo (ex: carabina, fuzil, espingarda)
-    if (
-      filtroDescricao &&
-      !modeloItem.includes(filtroDescricao.toLowerCase())
-    ) {
+    if (filtroDescricao && !modeloItem.includes(filtroDescricao.toLowerCase()))
       return false;
-    }
-
-    // Filtro por Número de Série / Lote
-    if (filtroSerie && !serieItem.includes(filtroSerie.toLowerCase())) {
+    if (filtroSerie && !serieItem.includes(filtroSerie.toLowerCase()))
       return false;
-    }
-
-    // Filtro por Localização
     if (
       filtroLocalizacao !== "todas" &&
       localizacaoItem !== filtroLocalizacao.toLowerCase()
-    ) {
+    )
       return false;
-    }
 
     return true;
   });
 
+  // Funções de Exportação (Excel e PDF)
+  const exportarExcel = () => {
+    const dadosFormatados = equipamentosFiltrados.map((item) => ({
+      Tipo: formatarTipo(item.tipo),
+      "Modelo / Descrição": item.modelo_descricao || item.modelo || "N/I",
+      "Série / Lote": item.num_serie || item.numero_serie || "N/I",
+      Patrimônio: item.patrimonio || "—",
+      Especificações:
+        item.detalhes?.calibre ||
+        (item.tipo === "colete"
+          ? `Tam: ${item.detalhes?.tamanho}`
+          : `Qtd: ${item.detalhes?.quantidade}`),
+      Localização: item.detalhes?.localizacao_atual || "Estoque da Reserva",
+      Status: item.status,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventario");
+    XLSX.writeFile(
+      workbook,
+      `relatorio_inventario_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+  };
+
+  const exportarPDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(14);
+    doc.text("LOG2CIA — RELATÓRIO DO ACERVO BÉLICO", 14, 15);
+    doc.setFontSize(9);
+    doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 21);
+
+    const colunas = [
+      "Tipo",
+      "Modelo",
+      "Série / Lote",
+      "Patrimônio",
+      "Localização",
+      "Status",
+    ];
+    const linhas = equipamentosFiltrados.map((item) => [
+      formatarTipo(item.tipo),
+      item.modelo_descricao || item.modelo || "N/I",
+      item.num_serie || item.numero_serie || "N/I",
+      item.patrimonio || "—",
+      item.detalhes?.localizacao_atual || "Estoque",
+      item.status,
+    ]);
+
+    autoTable(doc, {
+      startY: 26,
+      head: [colunas],
+      body: linhas,
+      theme: "grid",
+      headStyles: { fillColor: [30, 41, 59] },
+      styles: { fontSize: 7 },
+    });
+
+    doc.save(
+      `relatorio_inventario_${new Date().toISOString().slice(0, 10)}.pdf`,
+    );
+  };
+
   return (
     <div className="p-4 space-y-4 max-w-6xl mx-auto font-sans">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">
             Acervo / Inventário
@@ -264,15 +313,34 @@ export default function Inventario() {
           </p>
         </div>
 
-        {isP4OrMasterOrArmeiro && (
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setModalNovo(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl shadow-md text-xs flex items-center gap-2 transition-all"
+            onClick={exportarExcel}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all"
           >
-            <span>+</span> Novo Equipamento
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Excel</span>
           </button>
-        )}
+          <button
+            type="button"
+            onClick={exportarPDF}
+            className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all"
+          >
+            <FileText className="w-4 h-4" />
+            <span>PDF</span>
+          </button>
+
+          {isP4OrMasterOrArmeiro && (
+            <button
+              type="button"
+              onClick={() => setModalNovo(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl shadow-md text-xs flex items-center gap-1.5 transition-all ml-1"
+            >
+              <span>+</span> Novo Equipamento
+            </button>
+          )}
+        </div>
       </div>
 
       {/* BARRA DE FILTROS AVANÇADOS */}
@@ -283,7 +351,6 @@ export default function Inventario() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Filtro por Tipo */}
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
               Tipo de Equipamento
@@ -300,7 +367,6 @@ export default function Inventario() {
             </select>
           </div>
 
-          {/* Busca por Descrição */}
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
               Modelo / Descrição
@@ -311,13 +377,12 @@ export default function Inventario() {
                 type="text"
                 value={filtroDescricao}
                 onChange={(e) => setFiltroDescricao(e.target.value)}
-                placeholder="Ex: Carabina, Fuzil, Glock..."
+                placeholder="Ex: Carabina, Fuzil..."
                 className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
               />
             </div>
           </div>
 
-          {/* Busca por Número de Série */}
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
               Nº de Série / Lote
@@ -326,12 +391,11 @@ export default function Inventario() {
               type="text"
               value={filtroSerie}
               onChange={(e) => setFiltroSerie(e.target.value)}
-              placeholder="Ex: LX02876, 556..."
+              placeholder="Ex: LX02876..."
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-mono"
             />
           </div>
 
-          {/* Filtro por Localização */}
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
               Localização Atual
@@ -487,13 +551,6 @@ export default function Inventario() {
                 <input
                   type="text"
                   required
-                  placeholder={
-                    novoTipo === "colete"
-                      ? "Ex: PROTECTA - COLETE - NÍVEL III-A"
-                      : novoTipo === "municao"
-                        ? "Ex: Munição 9mm Luger / .40 S&W"
-                        : "Ex: PT 840, Glock G22"
-                  }
                   value={novoModelo}
                   onChange={(e) => setNovoModelo(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
@@ -504,28 +561,26 @@ export default function Inventario() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">
-                      Identificação do Lote (Opcional)
+                      Identificação do Lote
                     </label>
                     <input
                       type="text"
-                      placeholder="Ex: LOTE-9923"
                       value={municaoLote}
                       onChange={(e) => setMunicaoLote(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
                     />
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">
-                      Quantidade / Saldo *
+                      Quantidade *
                     </label>
                     <input
                       type="number"
                       required
                       min="1"
-                      placeholder="Ex: 50"
                       value={municaoQuantidade}
                       onChange={(e) => setMunicaoQuantidade(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold outline-none"
                     />
                   </div>
                 </div>
@@ -538,10 +593,9 @@ export default function Inventario() {
                     <input
                       type="text"
                       required
-                      placeholder="Ex: ABC12345"
                       value={novoSerie}
                       onChange={(e) => setNovoSerie(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
                     />
                   </div>
                   <div>
@@ -550,10 +604,9 @@ export default function Inventario() {
                     </label>
                     <input
                       type="text"
-                      placeholder="Ex: PAT-9920"
                       value={novoPatrimonio}
                       onChange={(e) => setNovoPatrimonio(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
                     />
                   </div>
                 </div>
@@ -569,7 +622,7 @@ export default function Inventario() {
                       <select
                         value={coleteGenero}
                         onChange={(e) => setColeteGenero(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                       >
                         <option value="MASCULINO">MASCULINO</option>
                         <option value="FEMININO">FEMININO</option>
@@ -583,23 +636,20 @@ export default function Inventario() {
                       <select
                         value={coleteTamanho}
                         onChange={(e) => setColeteTamanho(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium font-mono outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono"
                       >
                         <option value="PP">PP</option>
                         <option value="P">P</option>
-                        <option value="P1">P1</option>
                         <option value="M">M</option>
-                        <option value="M2">M2</option>
                         <option value="G">G</option>
                         <option value="GG">GG</option>
                       </select>
                     </div>
                   </div>
-
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block font-bold text-slate-700 uppercase mb-1">
-                        Data de Fabricação
+                        Data Fabricação
                       </label>
                       <input
                         type="date"
@@ -607,18 +657,18 @@ export default function Inventario() {
                         onChange={(e) =>
                           setColeteDataFabricacao(e.target.value)
                         }
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                       />
                     </div>
                     <div>
                       <label className="block font-bold text-slate-700 uppercase mb-1">
-                        Data de Validade (Fim)
+                        Data Validade
                       </label>
                       <input
                         type="date"
                         value={coleteDataValidade}
                         onChange={(e) => setColeteDataValidade(e.target.value)}
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                       />
                     </div>
                   </div>
@@ -629,30 +679,28 @@ export default function Inventario() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">
-                      Calibre / Detalhe
+                      Calibre
                     </label>
                     <input
                       type="text"
-                      placeholder="Ex: .40 S&W, 9mm"
                       value={novoCalibre}
                       onChange={(e) => setNovoCalibre(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                     />
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">
-                      Estado de Conservação
+                      Estado
                     </label>
                     <select
                       value={novoEstado}
                       onChange={(e) => setNovoEstado(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                     >
                       <option value="Novo">Novo</option>
                       <option value="Bom">Bom</option>
                       <option value="Regular">Regular</option>
                       <option value="Danificado">Danificado</option>
-                      <option value="Manutenção">Em Manutenção</option>
                     </select>
                   </div>
                 </div>
@@ -665,7 +713,7 @@ export default function Inventario() {
                 <select
                   value={novoLocalizacao}
                   onChange={(e) => setNovoLocalizacao(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                 >
                   <option value="Estoque da Reserva">Estoque da Reserva</option>
                   <option value="Acautelada com Policial">
@@ -679,54 +727,28 @@ export default function Inventario() {
 
               <div>
                 <label className="block font-bold text-slate-700 uppercase mb-1">
-                  Observações / Detalhes Adicionais (OBS)
+                  Observações
                 </label>
                 <textarea
                   rows="2"
                   value={observacoes}
                   onChange={(e) => setObservacoes(e.target.value)}
-                  placeholder="Ex: Acessórios inclusos, marcas de uso, etc..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl resize-none outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl resize-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-2">
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1 text-[10px]">
-                    Foto Geral
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setArquivoArma(e.target.files[0])}
-                    className="w-full text-[10px] text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-xl file:border-0 file:text-[10px] file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1 text-[10px]">
-                    Foto do Detalhe / Caixa
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setArquivoNumeracao(e.target.files[0])}
-                    className="w-full text-[10px] text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-xl file:border-0 file:text-[10px] file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-3 border-t border-slate-100">
+              <div className="flex gap-2 pt-3 border-t">
                 <button
                   type="button"
                   onClick={() => setModalNovo(false)}
-                  className="w-1/3 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200"
+                  className="w-1/3 py-2.5 bg-slate-100 font-bold rounded-xl"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={salvando}
-                  className="w-2/3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md disabled:opacity-50"
+                  className="w-2/3 py-2.5 bg-blue-600 text-white font-bold rounded-xl shadow-md"
                 >
                   {salvando ? "Salvando..." : "Salvar Equipamento"}
                 </button>

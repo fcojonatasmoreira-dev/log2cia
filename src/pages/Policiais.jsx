@@ -12,6 +12,8 @@ import {
   Package,
   KeyRound,
   Filter,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
 import {
   getPoliciais,
@@ -20,8 +22,10 @@ import {
   deletePolicial,
 } from "../services/policiaisService";
 import { supabase } from "../lib/supabaseClient";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
-// Listas auxiliares para categorização de postos/graduações
 const postosOficiais = [
   "ASPIRANTE",
   "2º TENENTE",
@@ -49,7 +53,7 @@ export default function Policiais() {
 
   // Estados de Filtros Avançados
   const [filtroBusca, setFiltroBusca] = useState(initialSearch);
-  const [filtroCategoria, setFiltroCategoria] = useState("todas"); // "oficial" ou "praca"
+  const [filtroCategoria, setFiltroCategoria] = useState("todas");
   const [filtroPosto, setFiltroPosto] = useState("todos");
   const [filtroRole, setFiltroRole] = useState("todos");
   const [filtroStatus, setFiltroStatus] = useState("todos");
@@ -155,7 +159,7 @@ export default function Policiais() {
 
     if (
       !confirm(
-        "Confirma o reset da senha deste militar? A senha voltará a ser o padrão (Numeral ou 4 últimos dígitos da matrícula) e ele precisará redefini-la no próximo acesso.",
+        "Confirma o reset da senha deste militar? A senha voltará a ser o padrão e ele precisará redefini-la no próximo acesso.",
       )
     ) {
       return;
@@ -172,13 +176,10 @@ export default function Policiais() {
 
       if (error) throw error;
 
-      alert(
-        "Senha resetada com sucesso! O militar agora está em regime de primeiro acesso.",
-      );
+      alert("Senha resetada com sucesso!");
       setIsModalOpen(false);
       loadPoliciais();
     } catch (err) {
-      console.error("Erro ao resetar senha:", err);
       alert("Erro ao resetar senha: " + err.message);
     }
   };
@@ -217,7 +218,6 @@ export default function Policiais() {
 
       setCautelasAtivas(cautelasComEquipamentos);
     } catch (err) {
-      console.error("Erro ao carregar cautelas do policial:", err);
       setCautelasAtivas([]);
     } finally {
       setLoadingCautelas(false);
@@ -225,12 +225,7 @@ export default function Policiais() {
   };
 
   const handleDelete = async (id, nomeGuerra) => {
-    if (
-      !confirm(
-        `Confirma a exclusão do policial ${nomeGuerra}? Esta ação não pode ser desfeita.`,
-      )
-    )
-      return;
+    if (!confirm(`Confirma a exclusão do policial ${nomeGuerra}?`)) return;
     try {
       await deletePolicial(id);
       loadPoliciais();
@@ -250,15 +245,13 @@ export default function Policiais() {
           ["master", "p4"].includes(String(policialAlvo.role).toLowerCase())
         ) {
           alert(
-            "Acesso negado: Usuários P4 não possuem privilégios para alterar dados de perfis Master ou P4.",
+            "Acesso negado: Usuários P4 não podem alterar perfis Master ou P4.",
           );
           return;
         }
       }
       if (formData.role !== "policial") {
-        alert(
-          "Acesso negado: Usuários P4 só podem definir o perfil como policial comum.",
-        );
+        alert("Acesso negado: Usuários P4 só podem definir perfil policial.");
         return;
       }
     }
@@ -283,22 +276,6 @@ export default function Policiais() {
 
       if (editingId) {
         await updatePolicial(editingId, dadosParaSalvar);
-
-        const usuarioSalvo = localStorage.getItem("log2cia_user");
-        if (usuarioSalvo) {
-          const usuarioAtual = JSON.parse(usuarioSalvo);
-          if (
-            usuarioAtual.id === editingId ||
-            usuarioAtual.matricula === formData.matricula
-          ) {
-            const usuarioAtualizado = { ...usuarioAtual, ...dadosParaSalvar };
-            localStorage.setItem(
-              "log2cia_user",
-              JSON.stringify(usuarioAtualizado),
-            );
-            window.dispatchEvent(new Event("usuarioAtualizado"));
-          }
-        }
       } else {
         const dadosNovos =
           userRole === "p4"
@@ -309,7 +286,7 @@ export default function Policiais() {
       setIsModalOpen(false);
       loadPoliciais();
     } catch (err) {
-      alert(`Erro ao salvar dados do policial: ${err.message}`);
+      alert(`Erro ao salvar dados: ${err.message}`);
     }
   };
 
@@ -325,7 +302,6 @@ export default function Policiais() {
     const roleItem = String(p.role || "policial").toLowerCase();
     const statusItem = String(p.status || "").toLowerCase();
 
-    // 1. Busca por Matrícula ou Nome de Guerra / Completo
     if (filtroBusca) {
       const termo = filtroBusca.toLowerCase();
       const matchBusca =
@@ -335,14 +311,12 @@ export default function Policiais() {
       if (!matchBusca) return false;
     }
 
-    // 2. Filtro Categoria (Oficial vs Praça)
     const ehOficial = postosOficiais.some(
       (op) => op.toLowerCase() === posto.toLowerCase(),
     );
     if (filtroCategoria === "oficial" && !ehOficial) return false;
     if (filtroCategoria === "praca" && ehOficial) return false;
 
-    // 3. Filtro Posto ou Graduação Específico
     if (
       filtroPosto !== "todos" &&
       posto.toLowerCase() !== filtroPosto.toLowerCase()
@@ -350,7 +324,6 @@ export default function Policiais() {
       return false;
     }
 
-    // 4. Filtro por Perfil (Role) - Apenas Master
     if (
       isMaster &&
       filtroRole !== "todos" &&
@@ -359,7 +332,6 @@ export default function Policiais() {
       return false;
     }
 
-    // 5. Filtro por Situação
     if (filtroStatus !== "todos" && statusItem !== filtroStatus.toLowerCase()) {
       return false;
     }
@@ -367,11 +339,67 @@ export default function Policiais() {
     return true;
   });
 
+  // Funções de Exportação para Efetivo
+  const exportarExcel = () => {
+    const dadosFormatados = filteredPoliciais.map((p) => ({
+      "Posto / Graduação": p.posto_graduacao,
+      "Nome de Guerra": p.nome_guerra,
+      Matrícula: p.matricula || "N/I",
+      "Nome Completo": p.nome_completo,
+      Numeral: p.numeral || "—",
+      Perfil: p.role || "policial",
+      Situação: p.status,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Efetivo");
+    XLSX.writeFile(
+      workbook,
+      `relatorio_efetivo_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+  };
+
+  const exportarPDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(14);
+    doc.text("LOG2CIA — RELATÓRIO DE EFETIVO MILITAR", 14, 15);
+    doc.setFontSize(9);
+    doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 21);
+
+    const colunas = [
+      "Posto / Grad.",
+      "Guerra",
+      "Matrícula",
+      "Nome Completo",
+      "Numeral",
+      "Situação",
+    ];
+    const linhas = filteredPoliciais.map((p) => [
+      p.posto_graduacao,
+      p.nome_guerra,
+      p.matricula || "N/I",
+      p.nome_completo,
+      p.numeral || "—",
+      p.status,
+    ]);
+
+    autoTable(doc, {
+      startY: 26,
+      head: [colunas],
+      body: linhas,
+      theme: "grid",
+      headStyles: { fillColor: [30, 41, 59] },
+      styles: { fontSize: 7 },
+    });
+
+    doc.save(`relatorio_efetivo_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   const totalColunas = isMaster ? 8 : 7;
 
   return (
     <div className="space-y-4 max-w-6xl mx-auto font-sans p-4">
-      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
@@ -381,16 +409,36 @@ export default function Policiais() {
             Cadastro e acompanhamento de policiais da unidade.
           </p>
         </div>
-        {isP4OrMaster && (
+
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={handleOpenModalNew}
-            className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl transition-colors shadow-xs text-xs"
+            onClick={exportarExcel}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all"
           >
-            <Plus className="w-4 h-4" />
-            <span>Novo Policial</span>
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Excel</span>
           </button>
-        )}
+          <button
+            type="button"
+            onClick={exportarPDF}
+            className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-2 rounded-xl shadow-xs text-xs flex items-center gap-1.5 transition-all"
+          >
+            <FileText className="w-4 h-4" />
+            <span>PDF</span>
+          </button>
+
+          {isP4OrMaster && (
+            <button
+              type="button"
+              onClick={handleOpenModalNew}
+              className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl transition-colors shadow-xs text-xs ml-1"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Novo Policial</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* BARRA DE FILTROS AVANÇADOS */}
@@ -401,7 +449,6 @@ export default function Policiais() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Busca por Matrícula ou Nome */}
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
               Busca (Nome / Matrícula)
@@ -418,7 +465,6 @@ export default function Policiais() {
             </div>
           </div>
 
-          {/* Categoria (Oficial ou Praça) */}
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
               Círculo Hierárquico
@@ -434,7 +480,6 @@ export default function Policiais() {
             </select>
           </div>
 
-          {/* Posto ou Graduação */}
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
               Posto / Graduação
@@ -461,7 +506,6 @@ export default function Policiais() {
             </select>
           </div>
 
-          {/* Perfil de Acesso (Exclusivo para Master) */}
           {isMaster ? (
             <div className="space-y-1">
               <label className="block text-[11px] font-bold text-slate-600 uppercase">
@@ -498,7 +542,6 @@ export default function Policiais() {
             </div>
           )}
 
-          {/* Situação (Caso seja Master) ou Atualizar */}
           {isMaster ? (
             <div className="space-y-1">
               <label className="block text-[11px] font-bold text-slate-600 uppercase">
@@ -532,7 +575,6 @@ export default function Policiais() {
         </div>
       </div>
 
-      {/* Tabela de Dados */}
       {error ? (
         <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl flex items-center space-x-3">
           <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
@@ -760,7 +802,7 @@ export default function Policiais() {
               <button
                 type="button"
                 onClick={() => setIsViewModalOpen(false)}
-                className="px-4 py-2 text-sm font-bold bg-slate-800 hover:bg-slate-900 text-white rounded-xl transition-colors"
+                className="px-4 py-2 text-sm font-bold bg-slate-800 text-white rounded-xl"
               >
                 Fechar
               </button>
@@ -784,7 +826,6 @@ export default function Policiais() {
                   type="button"
                   onClick={handleResetarSenha}
                   className="flex items-center space-x-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-lg transition-colors shadow-sm"
-                  title="Reseta a senha para o padrão"
                 >
                   <KeyRound className="w-4 h-4" />
                   <span>Resetar Senha</span>
@@ -804,7 +845,7 @@ export default function Policiais() {
                   onChange={(e) =>
                     setFormData({ ...formData, nome_completo: e.target.value })
                   }
-                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs outline-none"
                 />
               </div>
 
@@ -820,7 +861,7 @@ export default function Policiais() {
                     onChange={(e) =>
                       setFormData({ ...formData, nome_guerra: e.target.value })
                     }
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs outline-none"
                   />
                 </div>
                 <div>
@@ -834,7 +875,7 @@ export default function Policiais() {
                     onChange={(e) =>
                       setFormData({ ...formData, matricula: e.target.value })
                     }
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 font-mono outline-none"
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono outline-none"
                   />
                 </div>
               </div>
@@ -852,7 +893,7 @@ export default function Policiais() {
                         posto_graduacao: e.target.value,
                       })
                     }
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium"
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs bg-white font-medium"
                   >
                     <option value="SOLDADO">SOLDADO</option>
                     <option value="CABO">CABO</option>
@@ -912,7 +953,7 @@ export default function Policiais() {
                       onChange={(e) =>
                         setFormData({ ...formData, role: e.target.value })
                       }
-                      className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold"
+                      className="w-full p-2.5 border border-slate-300 rounded-xl text-xs bg-white font-bold"
                     >
                       <option value="policial">Policial</option>
                       <option value="armeiro">Armeiro</option>
@@ -930,7 +971,7 @@ export default function Policiais() {
                     onChange={(e) =>
                       setFormData({ ...formData, status: e.target.value })
                     }
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs bg-white"
                   >
                     <option value="EM ATIVIDADE">EM ATIVIDADE</option>
                     <option value="FÉRIAS">FÉRIAS</option>
@@ -944,13 +985,13 @@ export default function Policiais() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                  className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors shadow"
+                  className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow"
                 >
                   {editingId ? "Atualizar Dados" : "Salvar Cadastro"}
                 </button>
