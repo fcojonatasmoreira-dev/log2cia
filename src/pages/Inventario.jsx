@@ -7,6 +7,8 @@ import {
   FileSpreadsheet,
   FileText,
   RefreshCw,
+  Upload,
+  Image as ImageIcon,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -58,9 +60,16 @@ export default function Inventario() {
   const [municaoQuantidade, setMunicaoQuantidade] = useState("");
   const [municaoObs, setMunicaoObs] = useState("");
 
-  // Estados para arquivos e upload
-  const [arquivoArma, setArquivoArma] = useState(null);
-  const [arquivoNumeracao, setArquivoNumeracao] = useState(null);
+  // Estados para arquivos e upload específicos por tipo
+  const [arquivoArma, setArquivoArma] = useState(null); // Foto da Frente da Arma
+  const [arquivoNumeracao, setArquivoNumeracao] = useState(null); // Foto do Número de Série
+
+  const [arquivoColeteFrente, setArquivoColeteFrente] = useState(null); // Foto Rótulo Frente (Colete)
+  const [arquivoColeteVerso, setArquivoColeteVerso] = useState(null); // Foto Rótulo Verso (Colete)
+
+  const [arquivoMunicaoGeral, setArquivoMunicaoGeral] = useState(null); // Foto das Munições
+  const [arquivoMunicaoCaixa, setArquivoMunicaoCaixa] = useState(null); // Foto da Caixa
+
   const [salvando, setSalvando] = useState(false);
 
   const checkUserRole = () => {
@@ -141,14 +150,31 @@ export default function Inventario() {
     setSalvando(true);
 
     try {
-      const fotoArmaUrl = await fazerUploadImagem(arquivoArma, "item");
-      const fotoNumeracaoUrl = await fazerUploadImagem(arquivoNumeracao, "det");
+      let foto1Url = null;
+      let foto2Url = null;
+
+      if (novoTipo === "armamento") {
+        foto1Url = await fazerUploadImagem(arquivoArma, "frente_arma");
+        foto2Url = await fazerUploadImagem(arquivoNumeracao, "num_serie");
+      } else if (novoTipo === "colete") {
+        foto1Url = await fazerUploadImagem(
+          arquivoColeteFrente,
+          "rotulo_frente",
+        );
+        foto2Url = await fazerUploadImagem(arquivoColeteVerso, "rotulo_verso");
+      } else if (novoTipo === "municao") {
+        foto1Url = await fazerUploadImagem(arquivoMunicaoGeral, "municoes");
+        foto2Url = await fazerUploadImagem(
+          arquivoMunicaoCaixa,
+          "caixa_municao",
+        );
+      }
 
       let detalhesObj = {
         localizacao_atual: novoLocalizacao,
         estado_conservacao: novoEstado,
-        foto_arma_url: fotoArmaUrl,
-        foto_numeracao_url: fotoNumeracaoUrl,
+        foto_arma_url: foto1Url,
+        foto_numeracao_url: foto2Url,
         obs: observacoes,
       };
 
@@ -213,6 +239,10 @@ export default function Inventario() {
       setNovoEstado("Bom");
       setArquivoArma(null);
       setArquivoNumeracao(null);
+      setArquivoColeteFrente(null);
+      setArquivoColeteVerso(null);
+      setArquivoMunicaoGeral(null);
+      setArquivoMunicaoCaixa(null);
       setModalNovo(false);
       carregarInventario();
     } catch (err) {
@@ -250,7 +280,6 @@ export default function Inventario() {
     return true;
   });
 
-  // Funções de Exportação com Delay e Feedback Visual
   const exportarExcel = () => {
     setBaixandoExcel(true);
     setTimeout(() => {
@@ -782,6 +811,150 @@ export default function Inventario() {
                   <option value="Em Perícia">Em Perícia</option>
                   <option value="Manutenção">Manutenção</option>
                 </select>
+              </div>
+
+              {/* SEÇÃO DE UPLOAD DE FOTOS CONDICIONAIS POR TIPO */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <span className="block font-bold text-slate-700 uppercase text-[10px]">
+                  Anexos de Imagens / Fotos
+                </span>
+
+                {novoTipo === "armamento" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Foto da Frente da Arma
+                      </label>
+                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span className="truncate">
+                          {arquivoArma ? arquivoArma.name : "Escolher arquivo"}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => setArquivoArma(e.target.files[0])}
+                        />
+                      </label>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Foto do Nº de Série
+                      </label>
+                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span className="truncate">
+                          {arquivoNumeracao
+                            ? arquivoNumeracao.name
+                            : "Escolher arquivo"}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            setArquivoNumeracao(e.target.files[0])
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {novoTipo === "colete" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Foto Rótulo da Frente
+                      </label>
+                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span className="truncate">
+                          {arquivoColeteFrente
+                            ? arquivoColeteFrente.name
+                            : "Escolher arquivo"}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            setArquivoColeteFrente(e.target.files[0])
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Foto Rótulo do Verso
+                      </label>
+                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span className="truncate">
+                          {arquivoColeteVerso
+                            ? arquivoColeteVerso.name
+                            : "Escolher arquivo"}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            setArquivoColeteVerso(e.target.files[0])
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {novoTipo === "municao" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Foto das Munições
+                      </label>
+                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span className="truncate">
+                          {arquivoMunicaoGeral
+                            ? arquivoMunicaoGeral.name
+                            : "Escolher arquivo"}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            setArquivoMunicaoGeral(e.target.files[0])
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Foto da Caixa (se houver)
+                      </label>
+                      <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer hover:bg-slate-100 transition-all truncate">
+                        <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span className="truncate">
+                          {arquivoMunicaoCaixa
+                            ? arquivoMunicaoCaixa.name
+                            : "Escolher arquivo"}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            setArquivoMunicaoCaixa(e.target.files[0])
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
