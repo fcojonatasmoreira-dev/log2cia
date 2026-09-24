@@ -48,10 +48,32 @@ export default function PainelMaster() {
     }
   }
 
+  // Lista de postos que NÃO possuem numeral (Subtenente pra cima)
+  const postosSemNumeral = [
+    "Subtenente",
+    "Aspirante",
+    "2º Tenente",
+    "1º Tenente",
+    "Capitão",
+    "Major",
+    "Tenente Coronel",
+    "Coronel",
+  ];
+
+  const ehPostoSemNumeral = postosSemNumeral.includes(postoGraduacao);
+
+  // Se mudar para um posto sem numeral, limpa o estado do numeral automaticamente
+  const handlePostoChange = (novoPosto) => {
+    setPostoGraduacao(novoPosto);
+    if (postosSemNumeral.includes(novoPosto)) {
+      setNumeral("");
+    }
+  };
+
   const handleAprovarReset = async (solicitacao) => {
     if (
       !confirm(
-        `Confirma a aprovação de reset de senha para o militar ${solicitacao.nome_guerra} (Mat: ${solicitacao.matricula})? A senha voltará a ser o numeral e ele será obrigado a redefinir no próximo acesso.`,
+        `Confirma a aprovação de reset de senha para o militar ${solicitacao.nome_guerra} (Mat: ${solicitacao.matricula})? A senha voltará a ser o padrão e ele será obrigado a redefinir no próximo acesso.`,
       )
     ) {
       return;
@@ -93,7 +115,10 @@ export default function PainelMaster() {
         nome_completo: nomeCompleto.trim(),
         nome_guerra: nomeGuerra.trim(),
         matricula: matricula.trim(),
-        numeral: numeral ? String(numeral).trim() : null, // numeral é do tipo text na base
+        numeral:
+          !ehPostoSemNumeral && numeral && numeral.trim() !== ""
+            ? numeral.trim()
+            : null,
         posto_graduacao: postoGraduacao,
         role: role.toLowerCase(),
         unidade: unidade.trim(),
@@ -147,7 +172,6 @@ export default function PainelMaster() {
         </button>
       </div>
 
-      {/* Modal de Cadastro de Operador */}
       {modalOperador && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-gray-100 space-y-4 my-8">
@@ -214,24 +238,11 @@ export default function PainelMaster() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-bold text-slate-700 uppercase mb-1">
-                    Numeral *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: 31929"
-                    value={numeral}
-                    onChange={(e) => setNumeral(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">
                     Posto / Graduação
                   </label>
                   <select
                     value={postoGraduacao}
-                    onChange={(e) => setPostoGraduacao(e.target.value)}
+                    onChange={(e) => handlePostoChange(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium"
                   >
                     <option value="Soldado">Soldado</option>
@@ -248,6 +259,26 @@ export default function PainelMaster() {
                     <option value="Tenente Coronel">Tenente Coronel</option>
                     <option value="Coronel">Coronel</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Numeral {ehPostoSemNumeral ? "(Não Aplicável)" : "*"}
+                  </label>
+                  <input
+                    type="text"
+                    required={!ehPostoSemNumeral}
+                    disabled={ehPostoSemNumeral}
+                    placeholder={
+                      ehPostoSemNumeral ? "Não se aplica" : "Ex: 31929"
+                    }
+                    value={numeral}
+                    onChange={(e) => setNumeral(e.target.value)}
+                    className={`w-full p-2.5 border rounded-xl font-mono ${
+                      ehPostoSemNumeral
+                        ? "bg-slate-200 text-slate-400 cursor-not-allowed border-slate-300"
+                        : "bg-slate-50 border-slate-300"
+                    }`}
+                  />
                 </div>
               </div>
 
@@ -280,7 +311,6 @@ export default function PainelMaster() {
                 </div>
               </div>
 
-              {/* Checkbox de Primeiro Acesso */}
               <div className="flex items-center gap-2 pt-2">
                 <input
                   type="checkbox"
@@ -293,8 +323,8 @@ export default function PainelMaster() {
                   htmlFor="primeiroAcessoCheck"
                   className="font-semibold text-slate-700 cursor-pointer"
                 >
-                  Exigir alteração de senha no primeiro acesso (Senha inicial:
-                  Numeral)
+                  Exigir alteração de senha no primeiro acesso (Senha inicial
+                  automática)
                 </label>
               </div>
 
@@ -319,7 +349,6 @@ export default function PainelMaster() {
         </div>
       )}
 
-      {/* Seção de Solicitações Pendentes de Senha */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
@@ -335,7 +364,7 @@ export default function PainelMaster() {
 
         {loading ? (
           <p className="text-center py-6 text-slate-400 text-xs">
-            Carregando solicitações...
+            Carregando...
           </p>
         ) : solicitacoes.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center text-slate-500 text-xs">

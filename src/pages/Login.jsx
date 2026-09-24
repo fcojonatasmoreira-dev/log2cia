@@ -9,6 +9,17 @@ import {
   HelpCircle,
 } from "lucide-react";
 
+// Função utilitária inteligente para senha padrão
+function obterSenhaPadrao(policial) {
+  const numeral = String(policial?.numeral || "").trim();
+  const matricula = String(policial?.matricula || "").trim();
+
+  if (numeral && numeral !== "" && numeral !== "—") {
+    return numeral;
+  }
+  return matricula.length >= 4 ? matricula.slice(-4) : matricula;
+}
+
 export default function Login() {
   const [matricula, setMatricula] = useState("");
   const [senha, setSenha] = useState("");
@@ -43,12 +54,12 @@ export default function Login() {
 
       const policial = policiais[0];
 
-      // Se a senha estiver vazia ou for primeiro acesso, a senha padrão é o numeral
+      // Se a senha estiver vazia ou for primeiro acesso, usa a senha padrão inteligente
       const senhaInformada = senha.trim();
       const senhaCorreta =
         policial.senha && policial.senha.trim() !== ""
           ? policial.senha.trim()
-          : String(policial.numeral).trim();
+          : obterSenhaPadrao(policial);
 
       if (senhaInformada !== senhaCorreta) {
         throw new Error("Senha incorreta. Tente novamente.");
@@ -65,7 +76,7 @@ export default function Login() {
       }
     } catch (err) {
       setErro(err.message);
-      setCarregando(false); // Destrava o botão caso ocorra erro
+      setCarregando(false);
     }
   };
 
@@ -80,7 +91,6 @@ export default function Login() {
     try {
       const matriculaLimpa = matriculaRecuperacao.trim();
 
-      // Busca o policial pela matrícula
       const { data: policiais, error: errBusca } = await supabase
         .from("policiais")
         .select("id, nome_guerra, matricula")
@@ -92,7 +102,6 @@ export default function Login() {
 
       const policial = policiais[0];
 
-      // Registra a solicitação para o painel do Master
       const { error: errInsert } = await supabase
         .from("solicitacoes_senha")
         .insert([
@@ -121,7 +130,6 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-8 shadow-2xl space-y-6">
-        {/* Logo / Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex p-3 bg-blue-600/10 border border-blue-500/20 rounded-2xl text-blue-500 mb-1">
             <Shield className="w-10 h-10" />
@@ -196,7 +204,6 @@ export default function Login() {
         </form>
       </div>
 
-      {/* Modal de Solicitação de Esqueci a Senha */}
       {isEsqueciModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
@@ -235,7 +242,7 @@ export default function Login() {
                 <textarea
                   required
                   rows="3"
-                  placeholder="Descreva o motivo (ex: Esqueci a senha cadastrada, bloqueio de conta...)"
+                  placeholder="Descreva o motivo..."
                   value={motivoRecuperacao}
                   onChange={(e) => setMotivoRecuperacao(e.target.value)}
                   className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white resize-none"

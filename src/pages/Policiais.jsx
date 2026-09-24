@@ -56,7 +56,6 @@ export default function Policiais() {
     status: "EM ATIVIDADE",
   });
 
-  // Verificar o cargo do usuário logado pelo localStorage
   const checkUserRole = () => {
     try {
       const usuarioSalvo = localStorage.getItem("log2cia_user");
@@ -131,7 +130,7 @@ export default function Policiais() {
 
     if (
       !confirm(
-        "Confirma o reset da senha deste militar? A senha voltará a ser o numeral e ele precisará redefini-la no próximo acesso.",
+        "Confirma o reset da senha deste militar? A senha voltará a ser o padrão (Numeral ou 4 últimos dígitos da matrícula) e ele precisará redefini-la no próximo acesso.",
       )
     ) {
       return;
@@ -240,8 +239,14 @@ export default function Policiais() {
     }
 
     try {
-      const dadosParaSalvar = { ...formData };
-      // Se não for master, garante que a role não seja alterada indevidamente
+      const dadosParaSalvar = {
+        ...formData,
+        numeral:
+          formData.numeral && formData.numeral.trim() !== ""
+            ? formData.numeral.trim()
+            : null,
+      };
+
       if (!isMaster && editingId) {
         delete dadosParaSalvar.role;
       }
@@ -266,7 +271,9 @@ export default function Policiais() {
         }
       } else {
         const dadosNovos =
-          userRole === "p4" ? { ...formData, role: "policial" } : formData;
+          userRole === "p4"
+            ? { ...dadosParaSalvar, role: "policial" }
+            : dadosParaSalvar;
         await createPolicial(dadosNovos);
       }
       setIsModalOpen(false);
@@ -288,12 +295,10 @@ export default function Policiais() {
       (p.matricula && p.matricula.includes(searchTerm)),
   );
 
-  // Calcula o total de colunas para o colSpan de carregamento/vazio dinamicamente (7 se não for master, 8 se for master)
   const totalColunas = isMaster ? 8 : 7;
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
@@ -315,7 +320,6 @@ export default function Policiais() {
         )}
       </div>
 
-      {/* Barra de Filtros */}
       <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -336,7 +340,6 @@ export default function Policiais() {
         </button>
       </div>
 
-      {/* Tabela de Dados */}
       {error ? (
         <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl flex items-center space-x-3">
           <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
@@ -353,7 +356,6 @@ export default function Policiais() {
                   <th className="px-6 py-3.5">Matrícula</th>
                   <th className="px-6 py-3.5">Nome Completo</th>
                   <th className="px-6 py-3.5">Numeral</th>
-                  {/* COLUNA PERFIL EXCLUSIVA PARA MASTER */}
                   {isMaster && <th className="px-6 py-3.5">Perfil</th>}
                   <th className="px-6 py-3.5">Situação</th>
                   <th className="px-6 py-3.5 text-right">Ações</th>
@@ -408,7 +410,6 @@ export default function Policiais() {
                         <td className="px-6 py-4 font-mono text-slate-600">
                           {p.numeral || "—"}
                         </td>
-                        {/* CÉLULA PERFIL EXCLUSIVA PARA MASTER */}
                         {isMaster && (
                           <td className="px-6 py-4">
                             <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-blue-200">
@@ -431,7 +432,7 @@ export default function Policiais() {
                           <button
                             onClick={() => handleOpenModalView(p)}
                             className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors inline-flex"
-                            title="Visualizar detalhes e acautelamentos"
+                            title="Visualizar detalhes"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
@@ -466,7 +467,6 @@ export default function Policiais() {
         </div>
       )}
 
-      {/* MODAL DE VISUALIZAR POLICIAL E CAUTELAS */}
       {isViewModalOpen && policialSelecionado && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full p-6 space-y-5">
@@ -502,7 +502,6 @@ export default function Policiais() {
                   {policialSelecionado.numeral || "—"}
                 </p>
               </div>
-              {/* CAMPO PERFIL NO MODAL VISUALIZAR EXCLUSIVO PARA MASTER */}
               {isMaster && (
                 <div>
                   <p className="text-slate-400 uppercase font-semibold">
@@ -523,7 +522,6 @@ export default function Policiais() {
               </div>
             </div>
 
-            {/* Seção de Armamentos e Equipamentos Acautelados */}
             <div className="space-y-3">
               <h3 className="text-xs font-bold text-slate-700 uppercase flex items-center gap-2">
                 <Package className="w-4 h-4 text-blue-600" />
@@ -532,7 +530,7 @@ export default function Policiais() {
 
               {loadingCautelas ? (
                 <p className="text-xs text-slate-400 text-center py-4">
-                  Carregando acautelamentos...
+                  Carregando...
                 </p>
               ) : cautelasAtivas.length === 0 ? (
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-slate-500 text-xs">
@@ -547,20 +545,12 @@ export default function Policiais() {
                     >
                       <div>
                         <p className="font-bold text-slate-900">
-                          {cautela.equipamentos?.tipo ||
-                            cautela.equipamentos?.nome ||
-                            "Armamento / Equipamento"}{" "}
-                          —{" "}
-                          {cautela.equipamentos?.modelo ||
-                            cautela.equipamentos?.modelo_descricao ||
-                            ""}
+                          {cautela.equipamentos?.tipo || "Equipamento"} —{" "}
+                          {cautela.equipamentos?.modelo_descricao || ""}
                         </p>
                         <p className="text-slate-500 font-mono mt-0.5">
                           Série/Tombo:{" "}
-                          {cautela.equipamentos?.numero_serie ||
-                            cautela.equipamentos?.num_serie ||
-                            cautela.equipamentos?.tombo ||
-                            "N/I"}
+                          {cautela.equipamentos?.num_serie || "N/I"}
                         </p>
                       </div>
                       <span className="bg-emerald-600 text-white font-bold px-2.5 py-1 rounded-lg text-[10px]">
@@ -585,7 +575,6 @@ export default function Policiais() {
         </div>
       )}
 
-      {/* Modal de Cadastro / Edição */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
@@ -600,7 +589,7 @@ export default function Policiais() {
                   type="button"
                   onClick={handleResetarSenha}
                   className="flex items-center space-x-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-lg transition-colors shadow-sm"
-                  title="Reseta a senha para o numeral e força primeiro acesso"
+                  title="Reseta a senha para o padrão"
                 >
                   <KeyRound className="w-4 h-4" />
                   <span>Resetar Senha</span>
@@ -676,20 +665,22 @@ export default function Policiais() {
                     <option value="2º SARGENTO">2º SARGENTO</option>
                     <option value="1º SARGENTO">1º SARGENTO</option>
                     <option value="SUBTENENTE">SUBTENENTE</option>
+                    <option value="ASPIRANTE">ASPIRANTE</option>
                     <option value="2º TENENTE">2º TENENTE</option>
                     <option value="1º TENENTE">1º TENENTE</option>
                     <option value="CAPITÃO">CAPITÃO</option>
                     <option value="MAJOR">MAJOR</option>
+                    <option value="TENENTE CORONEL">TENENTE CORONEL</option>
+                    <option value="CORONEL">CORONEL</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Numeral de Identificação
+                    Numeral de Identificação (Opcional para Oficiais)
                   </label>
                   <input
                     type="text"
-                    required
-                    placeholder="Ex: 31929"
+                    placeholder="Ex: 31929 (Vazio se não houver)"
                     value={formData.numeral}
                     onChange={(e) =>
                       setFormData({ ...formData, numeral: e.target.value })
@@ -700,7 +691,6 @@ export default function Policiais() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                {/* CAMPO DE SELEÇÃO DE PERFIL NO MODAL EXCLUSIVO PARA MASTER */}
                 {isMaster && (
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
