@@ -11,6 +11,7 @@ import {
   Shield,
   Package,
   KeyRound,
+  Filter,
 } from "lucide-react";
 import {
   getPoliciais,
@@ -20,6 +21,24 @@ import {
 } from "../services/policiaisService";
 import { supabase } from "../lib/supabaseClient";
 
+// Listas auxiliares para categorização de postos/graduações
+const postosOficiais = [
+  "ASPIRANTE",
+  "2º TENENTE",
+  "1º TENENTE",
+  "CAPITÃO",
+  "MAJOR",
+  "TENENTE CORONEL",
+  "CORONEL",
+  "Aspirante",
+  "2º Tenente",
+  "1º Tenente",
+  "Capitão",
+  "Major",
+  "Tenente Coronel",
+  "Coronel",
+];
+
 export default function Policiais() {
   const [searchParams] = useSearchParams();
   const initialSearch = searchParams.get("search") || "";
@@ -27,7 +46,13 @@ export default function Policiais() {
   const [policiais, setPoliciais] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState(initialSearch);
+
+  // Estados de Filtros Avançados
+  const [filtroBusca, setFiltroBusca] = useState(initialSearch);
+  const [filtroCategoria, setFiltroCategoria] = useState("todas"); // "oficial" ou "praca"
+  const [filtroPosto, setFiltroPosto] = useState("todos");
+  const [filtroRole, setFiltroRole] = useState("todos");
+  const [filtroStatus, setFiltroStatus] = useState("todos");
 
   // Modais e Permissões
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -41,7 +66,7 @@ export default function Policiais() {
   useEffect(() => {
     const query = searchParams.get("search");
     if (query !== null) {
-      setSearchTerm(query);
+      setFiltroBusca(query);
     }
   }, [searchParams]);
 
@@ -239,10 +264,15 @@ export default function Policiais() {
     }
 
     try {
+      const isOficialOrSub =
+        postosOficiais.includes(formData.posto_graduacao) ||
+        formData.posto_graduacao === "SUBTENENTE" ||
+        formData.posto_graduacao === "Subtenente";
+
       const dadosParaSalvar = {
         ...formData,
         numeral:
-          formData.numeral && formData.numeral.trim() !== ""
+          !isOficialOrSub && formData.numeral && formData.numeral.trim() !== ""
             ? formData.numeral.trim()
             : null,
       };
@@ -286,25 +316,68 @@ export default function Policiais() {
   const isMaster = userRole === "master";
   const isP4OrMaster = userRole === "master" || userRole === "p4";
 
-  const filteredPoliciais = policiais.filter(
-    (p) =>
-      (p.nome_guerra &&
-        p.nome_guerra.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (p.nome_completo &&
-        p.nome_completo.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (p.matricula && p.matricula.includes(searchTerm)),
-  );
+  // Lógica de Filtragem Avançada
+  const filteredPoliciais = policiais.filter((p) => {
+    const nomeGuerra = String(p.nome_guerra || "").toLowerCase();
+    const nomeCompleto = String(p.nome_completo || "").toLowerCase();
+    const matricula = String(p.matricula || "").toLowerCase();
+    const posto = String(p.posto_graduacao || "").trim();
+    const roleItem = String(p.role || "policial").toLowerCase();
+    const statusItem = String(p.status || "").toLowerCase();
+
+    // 1. Busca por Matrícula ou Nome de Guerra / Completo
+    if (filtroBusca) {
+      const termo = filtroBusca.toLowerCase();
+      const matchBusca =
+        nomeGuerra.includes(termo) ||
+        nomeCompleto.includes(termo) ||
+        matricula.includes(termo);
+      if (!matchBusca) return false;
+    }
+
+    // 2. Filtro Categoria (Oficial vs Praça)
+    const ehOficial = postosOficiais.some(
+      (op) => op.toLowerCase() === posto.toLowerCase(),
+    );
+    if (filtroCategoria === "oficial" && !ehOficial) return false;
+    if (filtroCategoria === "praca" && ehOficial) return false;
+
+    // 3. Filtro Posto ou Graduação Específico
+    if (
+      filtroPosto !== "todos" &&
+      posto.toLowerCase() !== filtroPosto.toLowerCase()
+    ) {
+      return false;
+    }
+
+    // 4. Filtro por Perfil (Role) - Apenas Master
+    if (
+      isMaster &&
+      filtroRole !== "todos" &&
+      roleItem !== filtroRole.toLowerCase()
+    ) {
+      return false;
+    }
+
+    // 5. Filtro por Situação
+    if (filtroStatus !== "todos" && statusItem !== filtroStatus.toLowerCase()) {
+      return false;
+    }
+
+    return true;
+  });
 
   const totalColunas = isMaster ? 8 : 7;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 max-w-6xl mx-auto font-sans p-4">
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
             Gestão de Efetivo
           </h1>
-          <p className="text-sm text-slate-500">
+          <p className="text-xs text-slate-500">
             Cadastro e acompanhamento de policiais da unidade.
           </p>
         </div>
@@ -312,56 +385,176 @@ export default function Policiais() {
           <button
             type="button"
             onClick={handleOpenModalNew}
-            className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2.5 rounded-lg transition-colors shadow-xs"
+            className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl transition-colors shadow-xs text-xs"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="w-4 h-4" />
             <span>Novo Policial</span>
           </button>
         )}
       </div>
 
-      <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-        <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por Nome de Guerra, Completo ou Matrícula..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
-          />
+      {/* BARRA DE FILTROS AVANÇADOS */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-100 text-slate-800 font-bold text-xs uppercase tracking-wide">
+          <Filter className="w-4 h-4 text-blue-600" />
+          <span>Filtros e Busca no Efetivo</span>
         </div>
-        <button
-          onClick={loadPoliciais}
-          className="p-2 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors"
-          title="Atualizar dados"
-        >
-          <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
-        </button>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* Busca por Matrícula ou Nome */}
+          <div className="space-y-1">
+            <label className="block text-[11px] font-bold text-slate-600 uppercase">
+              Busca (Nome / Matrícula)
+            </label>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="Ex: Silva, 135728..."
+                value={filtroBusca}
+                onChange={(e) => setFiltroBusca(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Categoria (Oficial ou Praça) */}
+          <div className="space-y-1">
+            <label className="block text-[11px] font-bold text-slate-600 uppercase">
+              Círculo Hierárquico
+            </label>
+            <select
+              value={filtroCategoria}
+              onChange={(e) => setFiltroCategoria(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+            >
+              <option value="todas">Todos (Oficiais e Praças)</option>
+              <option value="oficial">Apenas Oficiais</option>
+              <option value="praca">Apenas Praças</option>
+            </select>
+          </div>
+
+          {/* Posto ou Graduação */}
+          <div className="space-y-1">
+            <label className="block text-[11px] font-bold text-slate-600 uppercase">
+              Posto / Graduação
+            </label>
+            <select
+              value={filtroPosto}
+              onChange={(e) => setFiltroPosto(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+            >
+              <option value="todos">Todos os Postos</option>
+              <option value="SOLDADO">Soldado</option>
+              <option value="CABO">Cabo</option>
+              <option value="3º SARGENTO">3º Sargento</option>
+              <option value="2º SARGENTO">2º Sargento</option>
+              <option value="1º SARGENTO">1º Sargento</option>
+              <option value="SUBTENENTE">Subtenente</option>
+              <option value="ASPIRANTE">Aspirante</option>
+              <option value="2º TENENTE">2º Tenente</option>
+              <option value="1º TENENTE">1º Tenente</option>
+              <option value="CAPITÃO">Capitão</option>
+              <option value="MAJOR">Major</option>
+              <option value="TENENTE CORONEL">Tenente Coronel</option>
+              <option value="CORONEL">Coronel</option>
+            </select>
+          </div>
+
+          {/* Perfil de Acesso (Exclusivo para Master) */}
+          {isMaster ? (
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                Perfil de Acesso
+              </label>
+              <select
+                value={filtroRole}
+                onChange={(e) => setFiltroRole(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+              >
+                <option value="todos">Todos os Perfis</option>
+                <option value="policial">Policial</option>
+                <option value="armeiro">Armeiro</option>
+                <option value="p4">P4</option>
+                <option value="master">Master</option>
+              </select>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                Situação
+              </label>
+              <select
+                value={filtroStatus}
+                onChange={(e) => setFiltroStatus(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+              >
+                <option value="todos">Todas as Situações</option>
+                <option value="em atividade">Em Atividade</option>
+                <option value="férias">Férias</option>
+                <option value="licença">Licença</option>
+                <option value="agregado">Agregado</option>
+              </select>
+            </div>
+          )}
+
+          {/* Situação (Caso seja Master) ou Atualizar */}
+          {isMaster ? (
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                Situação
+              </label>
+              <select
+                value={filtroStatus}
+                onChange={(e) => setFiltroStatus(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+              >
+                <option value="todos">Todas as Situações</option>
+                <option value="em atividade">Em Atividade</option>
+                <option value="férias">Férias</option>
+                <option value="licença">Licença</option>
+                <option value="agregado">Agregado</option>
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-end">
+              <button
+                onClick={loadPoliciais}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 border border-slate-200"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+                />
+                <span>Atualizar Efetivo</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* Tabela de Dados */}
       {error ? (
         <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl flex items-center space-x-3">
           <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
           <p className="text-sm">{error}</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  <th className="px-6 py-3.5">Posto / Grad.</th>
-                  <th className="px-6 py-3.5">Nome de Guerra</th>
-                  <th className="px-6 py-3.5">Matrícula</th>
-                  <th className="px-6 py-3.5">Nome Completo</th>
-                  <th className="px-6 py-3.5">Numeral</th>
-                  {isMaster && <th className="px-6 py-3.5">Perfil</th>}
-                  <th className="px-6 py-3.5">Situação</th>
-                  <th className="px-6 py-3.5 text-right">Ações</th>
+                <tr className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-500 uppercase tracking-wider text-[11px]">
+                  <th className="p-3.5">Posto / Grad.</th>
+                  <th className="p-3.5">Nome de Guerra</th>
+                  <th className="p-3.5">Matrícula</th>
+                  <th className="p-3.5">Nome Completo</th>
+                  <th className="p-3.5">Numeral</th>
+                  {isMaster && <th className="p-3.5">Perfil</th>}
+                  <th className="p-3.5">Situação</th>
+                  <th className="p-3.5 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 text-sm font-medium text-slate-700">
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {loading ? (
                   <tr>
                     <td
@@ -377,7 +570,7 @@ export default function Policiais() {
                       colSpan={totalColunas}
                       className="text-center py-8 text-slate-400"
                     >
-                      Nenhum policial encontrado.
+                      Nenhum policial encontrado com os filtros aplicados.
                     </td>
                   </tr>
                 ) : (
@@ -393,33 +586,33 @@ export default function Policiais() {
                         key={p.id}
                         className="hover:bg-slate-50/80 transition-colors"
                       >
-                        <td className="px-6 py-4">
-                          <span className="font-semibold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md text-xs border border-slate-200">
+                        <td className="p-3.5">
+                          <span className="font-semibold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md text-[11px] border border-slate-200">
                             {p.posto_graduacao}
                           </span>
                         </td>
-                        <td className="px-6 py-4 font-bold text-slate-900">
+                        <td className="p-3.5 font-bold text-slate-900">
                           {p.nome_guerra}
                         </td>
-                        <td className="px-6 py-4 font-mono text-slate-600">
+                        <td className="p-3.5 font-mono text-slate-600">
                           {p.matricula || "N/I"}
                         </td>
-                        <td className="px-6 py-4 text-slate-800">
+                        <td className="p-3.5 text-slate-800">
                           {p.nome_completo}
                         </td>
-                        <td className="px-6 py-4 font-mono text-slate-600">
+                        <td className="p-3.5 font-mono text-slate-600">
                           {p.numeral || "—"}
                         </td>
                         {isMaster && (
-                          <td className="px-6 py-4">
-                            <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-blue-200">
+                          <td className="p-3.5">
+                            <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase border border-blue-200">
                               {p.role || "policial"}
                             </span>
                           </td>
                         )}
-                        <td className="px-6 py-4">
+                        <td className="p-3.5">
                           <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                               p.status === "EM ATIVIDADE"
                                 ? "bg-emerald-100 text-emerald-800"
                                 : "bg-amber-100 text-amber-800"
@@ -428,7 +621,7 @@ export default function Policiais() {
                             {p.status}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right space-x-1">
+                        <td className="p-3.5 text-right space-x-1">
                           <button
                             onClick={() => handleOpenModalView(p)}
                             className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors inline-flex"
@@ -467,9 +660,10 @@ export default function Policiais() {
         </div>
       )}
 
+      {/* MODAL DE VISUALIZAR POLICIAL */}
       {isViewModalOpen && policialSelecionado && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full p-6 space-y-5">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full p-6 space-y-5">
             <div className="flex justify-between items-start border-b pb-3">
               <div>
                 <span className="bg-slate-100 text-slate-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase border">
@@ -575,11 +769,12 @@ export default function Policiais() {
         </div>
       )}
 
+      {/* Modal de Cadastro / Edição */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-slate-900">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 my-8">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h2 className="text-base font-bold text-slate-900">
                 {editingId
                   ? "Editar Policial"
                   : "Cadastrar Policial / Servidor"}
@@ -597,10 +792,10 @@ export default function Policiais() {
               )}
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-3 text-xs">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                  Nome Completo
+                <label className="block font-bold text-slate-700 uppercase mb-1">
+                  Nome Completo *
                 </label>
                 <input
                   type="text"
@@ -609,14 +804,14 @@ export default function Policiais() {
                   onChange={(e) =>
                     setFormData({ ...formData, nome_completo: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Nome de Guerra
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Nome de Guerra *
                   </label>
                   <input
                     type="text"
@@ -625,12 +820,12 @@ export default function Policiais() {
                     onChange={(e) =>
                       setFormData({ ...formData, nome_guerra: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Matrícula / RE
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Matrícula / RE *
                   </label>
                   <input
                     type="text"
@@ -639,14 +834,14 @@ export default function Policiais() {
                     onChange={(e) =>
                       setFormData({ ...formData, matricula: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 font-mono outline-none"
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 font-mono outline-none"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
                     Posto / Graduação
                   </label>
                   <select
@@ -657,7 +852,7 @@ export default function Policiais() {
                         posto_graduacao: e.target.value,
                       })
                     }
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium"
                   >
                     <option value="SOLDADO">SOLDADO</option>
                     <option value="CABO">CABO</option>
@@ -675,25 +870,41 @@ export default function Policiais() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                    Numeral de Identificação (Opcional para Oficiais)
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Numeral de Identificação
                   </label>
                   <input
                     type="text"
-                    placeholder="Ex: 31929 (Vazio se não houver)"
+                    disabled={
+                      postosOficiais.includes(formData.posto_graduacao) ||
+                      formData.posto_graduacao === "SUBTENENTE" ||
+                      formData.posto_graduacao === "Subtenente"
+                    }
+                    placeholder={
+                      postosOficiais.includes(formData.posto_graduacao) ||
+                      formData.posto_graduacao === "SUBTENENTE"
+                        ? "Não aplicável"
+                        : "Ex: 31929"
+                    }
                     value={formData.numeral}
                     onChange={(e) =>
                       setFormData({ ...formData, numeral: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 font-mono outline-none"
+                    className={`w-full p-2.5 border rounded-xl text-xs font-mono outline-none ${
+                      postosOficiais.includes(formData.posto_graduacao) ||
+                      formData.posto_graduacao === "SUBTENENTE" ||
+                      formData.posto_graduacao === "Subtenente"
+                        ? "bg-slate-200 text-slate-400 cursor-not-allowed border-slate-300"
+                        : "bg-slate-50 border-slate-300"
+                    }`}
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-2">
                 {isMaster && (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                    <label className="block font-bold text-slate-700 uppercase mb-1">
                       Perfil de Acesso (Role)
                     </label>
                     <select
@@ -701,7 +912,7 @@ export default function Policiais() {
                       onChange={(e) =>
                         setFormData({ ...formData, role: e.target.value })
                       }
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold"
+                      className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold"
                     >
                       <option value="policial">Policial</option>
                       <option value="armeiro">Armeiro</option>
@@ -711,7 +922,7 @@ export default function Policiais() {
                   </div>
                 )}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
                     Situação
                   </label>
                   <select
@@ -719,7 +930,7 @@ export default function Policiais() {
                     onChange={(e) =>
                       setFormData({ ...formData, status: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                   >
                     <option value="EM ATIVIDADE">EM ATIVIDADE</option>
                     <option value="FÉRIAS">FÉRIAS</option>
@@ -729,17 +940,17 @@ export default function Policiais() {
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-3 pt-4 border-t">
+              <div className="flex justify-end space-x-2 pt-3 border-t">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                  className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow"
+                  className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors shadow"
                 >
                   {editingId ? "Atualizar Dados" : "Salvar Cadastro"}
                 </button>
