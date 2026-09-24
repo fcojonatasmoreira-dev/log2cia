@@ -122,11 +122,15 @@ export default function ModalDetalhesArma({
         novaFotoNum = await fazerUploadImagem(arquivoNumeracao, "num");
       }
 
+      // Trata o patrimônio para enviar null se estiver vazio
+      const patrimonioTratado =
+        patrimonio && patrimonio.trim() !== "" ? patrimonio.trim() : null;
+
       const payload = {
         tipo: tipo.toLowerCase(),
         modelo_descricao: modelo,
         num_serie: numSerie,
-        patrimonio: patrimonio,
+        patrimonio: patrimonioTratado,
         status: status,
         detalhes: {
           ...(arma.detalhes || {}),

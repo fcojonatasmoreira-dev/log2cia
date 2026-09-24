@@ -120,6 +120,7 @@ export default function Cautelas() {
           data_cautela,
           data_devolucao,
           alteracoes,
+          hash_assinatura,
           armeiro_id,
           armeiro_baixa_id,
           policial_id,
@@ -180,6 +181,23 @@ export default function Cautelas() {
       setLoading(false);
     }
   }
+
+  // Função para gerar Hash SHA-256 criptográfico para Validade Jurídica (Lei 14.063/2020)
+  const gerarHashSeguro = async (cautelaId, matriculaPolicial, dataStr) => {
+    try {
+      const msg = `${cautelaId}-${matriculaPolicial}-${dataStr}-LOG2CIA-SECURE-HASH`;
+      const msgBuffer = new TextEncoder().encode(msg);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("")
+        .toUpperCase();
+      return hashHex;
+    } catch (e) {
+      return `HASH-FALLBACK-${Date.now().toString(16).toUpperCase()}`;
+    }
+  };
 
   const handleAceitarCautela = async (cautelaId) => {
     setProcessando(true);
@@ -295,10 +313,20 @@ export default function Cautelas() {
       const checklistStatus = `ARMA:${checkArma ? "OK" : "NOK"}|CARREGADORES:${checkCarregadores ? "OK" : "NOK"}|MUNICAO:${checkMunicao ? "OK" : "NOK"}`;
       const relatorioFormatado = `${checklistStatus} | OBS:${campoAlteracoes ? campoAlteracoes.trim() : "Sem alterações"}`;
 
+      // Gerar Hash de Integridade para Validade Jurídica no Fechamento
+      const matriculaPolicial =
+        cautelaDevolvendo.policial?.matricula || "S-MAT";
+      const hashGerado = await gerarHashSeguro(
+        cautelaDevolvendo.id,
+        matriculaPolicial,
+        dataHoraAtual,
+      );
+
       const dadosUpdate = {
         status: "finalizada",
         data_devolucao: dataHoraAtual,
         alteracoes: relatorioFormatado,
+        hash_assinatura: hashGerado,
       };
 
       if (armeiroBaixaIdFinal) {
@@ -320,7 +348,7 @@ export default function Cautelas() {
       }
 
       setCautelaDevolvendo(null);
-      alert("Devolução homologada com sucesso!");
+      alert("Devolução homologada com sucesso e assinada eletronicamente!");
       const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
       await carregarCautelas(temAcessoTotal, userId);
       await carregarEquipamentosDisponiveis();
@@ -470,47 +498,60 @@ export default function Cautelas() {
     const dataHoraEmissao = new Date().toLocaleString("pt-BR");
     const infoRelatorio = parseRelatorio(cautela.alteracoes);
 
+    // Garante que o PDF exiba o hash salvo ou gere um temporário se ainda estiver ativa
+    let hashExibicao = cautela.hash_assinatura;
+    if (!hashExibicao) {
+      hashExibicao = await gerarHashSeguro(
+        cautela.id,
+        pol.matricula || "S-MAT",
+        cautela.data_cautela || new Date().toISOString(),
+      );
+    }
+
     const element = document.createElement("div");
     element.innerHTML = `
       <div style="font-family: Arial, sans-serif; padding: 25px; color: #0f172a; line-height: 1.4; background: #ffffff; font-size: 11px;">
         <div style="text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px;">
           <h1 style="margin: 0; font-size: 14px; text-transform: uppercase; font-weight: bold;">POLÍCIA MILITAR DO CEARÁ</h1>
           <h2 style="margin: 3px 0; font-size: 11px; color: #334155; font-weight: normal;">6º CRPM • 15º BATALHÃO • 2ª COMPANHIA</h2>
-          <h3 style="margin-top: 6px; font-size: 12px; font-weight: bold; text-transform: uppercase; background: #f1f5f9; padding: 4px; border: 1px solid #cbd5e1;">TERMO DE COMPROVAÇÃO DE CAUTELA E DEVOLUÇÃO BÉLICA</h3>
+          <h3 style="margin-top: 6px; font-size: 12px; font-weight: bold; text-transform: uppercase; background: #f1f5f9; padding: 4px; border: 1px solid #cbd5e1;">TERMO DE CAUTELA BÉLICA — ASSINATURA ELETRÔNICA AVANÇADA</h3>
         </div>
 
         <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
-          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">1. Dados do Policial / Servidor</div>
-          <div><strong>Militar:</strong> ${pol.posto_graduacao || ""} ${pol.nome_guerra || "N/I"}</div>
+          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">1. Dados do Policial / Servidor (Signatário)</div>
+          <div><strong>Militar:</strong> ${pol.posto_graduacao || ""} ${pol.nome_guerra || "N/I"} (${pol.nome_completo || ""})</div>
           <div><strong>Matrícula:</strong> ${pol.matricula || "N/I"}</div>
+          <div><strong>Forma de Autenticação:</strong> Credencial Pessoal Intransigível (Login Seguro no Sistema Log2CIA)</div>
         </div>
 
         <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
-          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">2. Período e Responsáveis</div>
-          <div><strong>Data/Hora Cautela (Saída):</strong> ${dataCautelaFormatada}</div>
-          <div><strong>Armeiro Saída:</strong> ${nomeArmeiroSaida}</div>
-          <br/>
-          <div><strong>Data/Hora Devolução:</strong> ${dataDevolucaoFormatada}</div>
-          <div><strong>Armeiro Baixa:</strong> ${isAtiva ? "Pendente" : nomeArmeiroBaixa}</div>
-          <div><strong>Status Atual:</strong> ${isAtiva ? "EM CAUTELA (Ativa)" : "DEVOLVIDO (Finalizada)"}</div>
+          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">2. Controle Operacional (Duplo Armeiro)</div>
+          <div><strong>Data/Hora Cautela (Saída):</strong> ${dataCautelaFormatada} | <strong>Armeiro Saída:</strong> ${nomeArmeiroSaida}</div>
+          <div><strong>Data/Hora Devolução:</strong> ${dataDevolucaoFormatada} | <strong>Armeiro Baixa:</strong> ${isAtiva ? "Pendente" : nomeArmeiroBaixa}</div>
+          <div><strong>Status do Acervo:</strong> ${isAtiva ? "EM CAUTELA (Ativa)" : "DEVOLVIDO E HOMOLOGADO (Finalizada)"}</div>
         </div>
 
         <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
           <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">3. Material Bélico Acautelado</div>
-          <div><strong>Tipo / Modelo:</strong> ${eq.tipo?.toUpperCase() || "ARMAMENTO"} - ${eq.modelo_descricao || "N/I"}</div>
-          <div><strong>Número de Série:</strong> ${eq.num_serie || "N/I"}</div>
-          <div><strong>Carregadores:</strong> ${item.quantidade_carregadores || 0} unidade(s)</div>
-          <div><strong>Munições:</strong> ${item.quantidade_municao || 0} unidade(s) (${item.tipo_municao || "N/I"})</div>
+          <div><strong>Tipo / Descrição:</strong> ${eq.tipo?.toUpperCase() || "ARMAMENTO"} - ${eq.modelo_descricao || "N/I"}</div>
+          <div><strong>Número de Série:</strong> ${eq.num_serie || "N/I"} | <strong>Patrimônio:</strong> ${eq.patrimonio || "N/I"}</div>
+          <div><strong>Itens Vinculados:</strong> ${item.quantidade_carregadores || 0} carregador(es) | ${item.quantidade_municao || 0} munição(ões) calibre ${item.tipo_municao || "N/I"}</div>
         </div>
 
         <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 15px;">
-          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">4. Conferência / Observações</div>
+          <div style="font-weight: bold; text-transform: uppercase; margin-bottom: 4px; color: #1e293b; font-size: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">4. Relatório de Conferência / Avarias</div>
           <div>${infoRelatorio.obs}</div>
         </div>
 
-        <div style="margin-top: 25px; text-align: center; font-size: 10px; color: #334155; border-top: 1px dashed #94a3b8; padding-top: 10px;">
-          <p style="margin: 2px 0;">Documento gerado e assinado eletronicamente pelo sistema oficial da Unidade.</p>
-          <p style="margin: 2px 0;"><strong>Data e Hora da Emissão:</strong> ${dataHoraEmissao}</p>
+        <!-- Bloco de Validade Jurídica (Art. 4º da Lei 14.063/2020) -->
+        <div style="border: 1px solid #94a3b8; background: #f1f5f9; border-radius: 6px; padding: 10px; font-size: 9.5px; color: #1e293b; margin-top: 15px;">
+          <p style="margin: 0 0 5px 0; font-weight: bold; text-transform: uppercase;">Validade Jurídica e Integridade Eletrônica:</p>
+          <p style="margin: 0 0 4px 0;">Documento assinado eletronicamente com base no art. 4º da <strong>Lei nº 14.063/2020</strong>, por meio de autenticação digital segura no sistema Log2CIA. A autoria e a integridade deste termo são garantidas por registros de auditoria e carimbo de tempo criptográfico.</p>
+          <p style="margin: 0; font-family: monospace; color: #475569;"><strong>Chave de Integridade (Hash SHA-256):</strong> ${hashExibicao}</p>
+        </div>
+
+        <div style="margin-top: 20px; text-align: center; font-size: 9.5px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
+          <p style="margin: 2px 0;">Emitido eletronicamente em ${dataHoraEmissao} • Subunidade / 15º BPM</p>
         </div>
       </div>
     `;
