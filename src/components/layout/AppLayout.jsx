@@ -59,7 +59,7 @@ export default function AppLayout() {
     .trim()
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\\u0300-\\u036f]/g, "");
+    .replace(/[\u0300-\u036f]/g, "");
   const isMaster = userRole === "master" || usuario?.is_master === true;
   const isArmeiroOrAdmin = isMaster || ["p4", "armeiro"].includes(userRole);
 
