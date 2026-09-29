@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa do Projeto - Módulo P1 (Livro Digital da Permanência)</title>
+    <style>
+        :root {
+            --primary: #1e293b;
+            --secondary: #2563eb;
+            --accent: #0f172a;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --border: #e2e8f0;
+            --text: #334155;
+            --text-light: #64748b;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        }
+        h1, h2, h3 {
+            color: var(--primary);
+        }
+        h1 {
+            border-bottom: 3px solid var(--secondary);
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        .section {
+            margin-bottom: 40px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 20px;
+            border-radius: 12px;
+        }
+        .card h3 {
+            margin-top: 0;
+            color: var(--secondary);
+            font-size: 1.1rem;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+        th, td {
+            border: 1px solid var(--border);
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: var(--primary);
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        .flow-container {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            overflow-x: auto;
+        }
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            background: #e0f2fe;
+            color: #0369a1;
+            border-radius: 6px;
+        }
+        .design-spec {
+            background: #eff6ff;
+            border-left: 4px solid var(--secondary);
+            padding: 15px;
+            margin-top: 10px;
+            border-radius: 0 8px 8px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Mapa de Arquitetura e Layout — Módulo P1 (Livro Digital)</h1>
+    <p><strong>Unidade:</strong> 2ª CIA / 15º BPM (Cascavel-CE) | <strong>Sistema:</strong> Log2Cia</p>
+
+    <!-- FLUXOGRAMA VISUAL -->
+    <div class="section">
+        <h2>1. Fluxograma Operacional do Livro Digital</h2>
+        <div class="flow-container">
+            <svg width="100%" height="160" viewBox="0 0 900 160" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <marker id="arrow" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto">
+                        <path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/>
+                    </marker>
+                </defs>
+                <rect x="10" y="40" width="160" height="80" rx="10" fill="#f1f5f9" stroke="#2563eb" stroke-width="2"/>
+                <text x="90" y="75" font-family="Segoe UI" font-size="12" font-weight="bold" text-anchor="middle" fill="#1e293b">1. Preenchimento</text>
+                <text x="90" y="95" font-family="Segoe UI" font-size="10" text-anchor="middle" fill="#64748b">Busca inteligente de efetivo</text>
+
+                <line x1="170" y1="80" x2="220" y2="80" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+
+                <rect x="220" y="40" width="160" height="80" rx="10" fill="#f1f5f9" stroke="#2563eb" stroke-width="2"/>
+                <text x="300" y="75" font-family="Segoe UI" font-size="12" font-weight="bold" text-anchor="middle" fill="#1e293b">2. Geração PDF</text>
+                <text x="300" y="95" font-family="Segoe UI" font-size="10" text-anchor="middle" fill="#64748b">Sistema compila o padrão</text>
+
+                <line x1="380" y1="80" x2="430" y2="80" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+
+                <rect x="430" y="40" width="160" height="80" rx="10" fill="#f1f5f9" stroke="#2563eb" stroke-width="2"/>
+                <text x="510" y="75" font-family="Segoe UI" font-size="12" font-weight="bold" text-anchor="middle" fill="#1e293b">3. Assinatura Gov.br</text>
+                <text x="510" y="95" font-family="Segoe UI" font-size="10" text-anchor="middle" fill="#64748b">Policial assina externamente</text>
+
+                <line x1="590" y1="80" x2="640" y2="80" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+
+                <rect x="640" y="40" width="240" height="80" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+                <text x="760" y="70" font-family="Segoe UI" font-size="12" font-weight="bold" text-anchor="middle" fill="#1e293b">4. Upload & Servidor Local</text>
+                <text x="760" y="90" font-family="Segoe UI" font-size="10" text-anchor="middle" fill="#1e293b">Envia PDF assinado para a pasta</text>
+                <text x="760" y="105" font-family="Segoe UI" font-size="9" text-anchor="middle" fill="#64748b">compartilhada / Google Drive</text>
+            </svg>
+        </div>
+    </div>
+
+    <!-- ESPECIFICAÇÃO DE DESIGN IMUTÁVEL (UI/UX) -->
+    <div class="section">
+        <h2>2. Design System e Padrão Visual (Imutável)</h2>
+        <p>Estes parâmetros visuais definem a identidade gráfica oficial do Módulo P1. Nenhuma alteração de espaçamento, cor ou estrutura de componentes deve ser feita sem prévia solicitação:</p>
+        
+        <div class="grid">
+            <div class="card">
+                <h3>Paleta de Cores Oficial</h3>
+                <ul>
+                    <li><strong>Primária (Fundo/Headers):</strong> Slate 900 <code>#0f172a</code> / Slate 800 <code>#1e293b</code></li>
+                    <li><strong>Destaque / Ação (Botões):</strong> Blue 600 <code>#2563eb</code> (Hover: Blue 700 <code>#1d4ed8</code>)</li>
+                    <li><strong>Status Assinado:</strong> Emerald 100/800 <code>#dcfce7</code> / <code>#166534</code></li>
+                    <li><strong>Status Pendente:</strong> Amber 100/800 <code>#fef3c7</code> / <code>#92400e</code></li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h3>Tipografia e Espaçamentos</h3>
+                <ul>
+                    <li><strong>Fonte Principal:</strong> <code>'Segoe UI', sans-serif</code></li>
+                    <li><strong>Títulos de Seção:</strong> <code>text-xs font-bold uppercase tracking-wide text-slate-700</code></li>
+                    <li><strong>Arredondamento de Bordas (Border Radius):</strong> <code>rounded-xl</code> (12px) para inputs, cards e botões.</li>
+                    <li><strong>Modais:</strong> Centralizados, com fundo escurecido e efeito de desFOCO leve (<code>backdrop-blur-xs</code>).</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h3>Componentes de Interação</h3>
+                <ul>
+                    <li><strong>Busca de Efetivo:</strong> Campo com ícone de lupa fixo à esquerda, exibindo lista flutuante absoluta com destaque no hover (<code>bg-blue-50</code>).</li>
+                    <li><strong>Tabelas de Lançamento (Viaturas/Ocorrências):</strong> Blocos internos em fundo branco <code>bg-white p-3 rounded-xl border border-slate-200</code> com botão de exclusão em destaque suave (<code>bg-rose-100 text-rose-700</code>).</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- HIERARQUIA E PERMISSÕES -->
+    <div class="section">
+        <h2>3. Regras de Acesso e Permissões (Roles)</h2>
+        <div class="grid">
+            <div class="card">
+                <h3>Permanente da Guarda</h3>
+                <p>Operador direto do Turno A (06h-18h) ou Turno B (18h-06h). Preenche o livro utilizando a busca inteligente de efetivo, registra viaturas e ocorrências, gera o PDF, assina via Gov.br e faz o upload.</p>
+            </div>
+            <div class="card">
+                <h3>P1 (Chefe de Secretaria / DP)</h3>
+                <p>Supervisor do setor. Possui acesso de fiscalização, auditoria e acompanhamento de todos os livros diários da unidade gerados pela permanência.</p>
+            </div>
+            <div class="card">
+                <h3>Master</h3>
+                <p>Possui acesso irrestrito, total e administrativo a todas as funções e visualizações de qualquer setor do sistema, incluindo P1 e P4.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ESTRUTURA DO BANCO DE DADOS -->
+    <div class="section">
+        <h2>4. Arquitetura das Tabelas do Banco de Dados (Supabase / PostgreSQL)</h2>
+        <p>Abaixo os scripts SQL oficiais para criação das tabelas no Supabase:</p>
+
+        <pre style="background: var(--primary); color: #f8fafc; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem;">
+-- 1. Tabela Principal do Livro da Permanência
+create table if not exists livros_permanencia (
+  id uuid default gen_random_uuid() primary key,
+  data_servico date not null,
+  turno varchar(10) not null, -- 'A' ou 'B'
+  permanente_nome text not null,
+  antecessor_nome text,
+  substituto_nome text,
+  status varchar(30) default 'abrito', -- 'abrito', 'aguardando_assinatura', 'assinado'
+  arquivo_assinado_url text, -- Caminho ou URL do PDF assinado salvo no servidor/Drive
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 2. Tabela de Controle de Viaturas do Livro
+create table if not exists livro_viaturas (
+  id uuid default gen_random_uuid() primary key,
+  livro_id uuid references livros_permanencia(id) on delete cascade,
+  viatura text not null,
+  km_inicial numeric,
+  km_final numeric,
+  km_abastecimento numeric,
+  litros numeric,
+  valor numeric,
+  saldo numeric,
+  status_viatura text default 'disponivel', -- 'disponivel', 'baixada'
+  motivo_baixa text,
+  local_baixa text,
+  motorista text,
+  destino text
+);
+
+-- 3. Tabela de Ocorrências do Livro
+create table if not exists livro_ocorrencias (
+  id uuid default gen_random_uuid() primary key,
+  livro_id uuid references livros_permanencia(id) on delete cascade,
+  horario time not null,
+  descricao text not null
+);
+        </pre>
+    </div>
+
+</div>
+
+</body>
+</html>

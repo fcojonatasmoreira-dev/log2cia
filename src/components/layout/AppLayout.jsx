@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LogOut, Key, Shield } from "lucide-react";
+import { LogOut, Key, Shield, BookOpen } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 
 export default function AppLayout() {
@@ -55,9 +55,18 @@ export default function AppLayout() {
     setSidebarAberta(false);
   };
 
-  const userRole = String(usuario?.role || "").toLowerCase();
-  const isMaster = userRole === "master";
-  const isArmeiroOrAdmin = ["master", "p4", "armeiro"].includes(userRole);
+  const userRole = String(usuario?.role || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\\u0300-\\u036f]/g, "");
+  const isMaster = userRole === "master" || usuario?.is_master === true;
+  const isArmeiroOrAdmin = isMaster || ["p4", "armeiro"].includes(userRole);
+
+  // Livro da Permanência: mantém os perfis já autorizados e inclui Permanente da Guarda.
+  const isP1OrAuthorized =
+    isMaster ||
+    ["p1", "permanente", "permanente da guarda", "armeiro"].includes(userRole);
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-100">
@@ -84,7 +93,7 @@ export default function AppLayout() {
         />
       )}
 
-      {/* Sidebar Lateral (Agora limpa, sem os botões de rodapé) */}
+      {/* Sidebar Lateral */}
       <aside
         className={`
         fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-white flex flex-col justify-between p-4 transition-transform duration-300 ease-in-out md:static md:translate-x-0 shrink-0
@@ -115,6 +124,17 @@ export default function AppLayout() {
             >
               <span>🔄</span> Cautelas
             </button>
+
+            {/* LIVRO DA PERMANÊNCIA (MÓDULO P1) */}
+            {isP1OrAuthorized && (
+              <button
+                onClick={() => navegarPara("/livro-permanencia")}
+                className={`w-full ${getLinkClass("/livro-permanencia")}`}
+              >
+                <BookOpen className="w-4 h-4 text-blue-400" /> Livro Permanência
+                (P1)
+              </button>
+            )}
 
             {/* ACERVO / INVENTÁRIO - EXCLUSIVO PARA ARMEIRO, P4 E MASTER */}
             {isArmeiroOrAdmin && (
@@ -152,7 +172,7 @@ export default function AppLayout() {
           </nav>
         </div>
 
-        {/* Rodapé da Sidebar vazio ou com copyright opcional */}
+        {/* Rodapé da Sidebar */}
         <div className="border-t border-slate-800/60 pt-3 text-center">
           <span className="text-[10px] text-slate-500 font-mono">
             PMCE • 2ªCIA / 15ºBPM

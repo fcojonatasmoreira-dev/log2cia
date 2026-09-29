@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      PROJECT_MAP - Log2CIA | Regras de Negócio, Assinatura Eletrônica, P1 &
+      Arquitetura
+    </title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  </head>
+  <body class="bg-slate-900 text-slate-100 font-sans p-6 md:p-12 antialiased">
+    <main
+      class="max-w-5xl mx-auto bg-slate-800 border border-slate-700 rounded-2xl p-6 md:p-10 shadow-2xl space-y-10"
+    >
+      <!-- Cabeçalho -->
+      <header class="border-b border-slate-700 pb-6 space-y-2">
+        <div class="flex items-center gap-3">
+          <span class="text-3xl">🛡️</span>
+          <h1 class="text-2xl md:text-3xl font-bold tracking-tight text-white">
+            PROJECT_MAP — Log2CIA | Regras, Assinatura, P1 & Arquitetura
+          </h1>
+        </div>
+        <p class="text-sm text-slate-400">
+          Documentação oficial unificada contendo o mapeamento completo das
+          regras de negócio, restrições RBAC, inventário P4, duplo controle de
+          armeiros, o novo
+          <strong>Módulo P1 (Livro Digital da Permanência)</strong> com upload
+          em servidor local/Drive, Assinatura Eletrônica Avançada e os padrões
+          visuais imutáveis.
+        </p>
+      </header>
+
+      <!-- Seção 1: Passo a Passo Operacional do Sistema -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          1. Passo a Passo Funcional: Como o Sistema Opera (End-to-End)
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+          <div
+            class="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-2"
+          >
+            <span
+              class="text-blue-400 font-bold uppercase text-[10px] tracking-wider block"
+              >Passo 1</span
+            >
+            <h3 class="font-bold text-white text-sm">Autenticação & Acesso</h3>
+            <p class="text-slate-300 leading-relaxed">
+              O efetivo realiza login utilizando a <strong>Matrícula</strong>.
+              No primeiro acesso, praças utilizam o numeral e
+              Oficiais/Subtenentes os 4 últimos dígitos da matrícula.
+            </p>
+          </div>
+
+          <div
+            class="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-2"
+          >
+            <span
+              class="text-blue-400 font-bold uppercase text-[10px] tracking-wider block"
+              >Passo 2</span
+            >
+            <h3 class="font-bold text-white text-sm">
+              P4: Cautela & Duplo Armeiro
+            </h3>
+            <p class="text-slate-300 leading-relaxed">
+              O armeiro registra a saída do material. A tabela armazena quem
+              liberou e quem deu baixa. O militar realiza o aceite digital e
+              confere os hashes SHA-256 no PDF.
+            </p>
+          </div>
+
+          <div
+            class="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-2"
+          >
+            <span
+              class="text-blue-400 font-bold uppercase text-[10px] tracking-wider block"
+              >Passo 3</span
+            >
+            <h3 class="font-bold text-white text-sm">
+              P1: Livro Digital da Permanência
+            </h3>
+            <p class="text-slate-300 leading-relaxed">
+              O permanente do turno (A: 06h-18h ou B: 18h-06h) preenche dados,
+              escala, viaturas e ocorrências utilizando busca inteligente de
+              efetivo por nome de guerra ou matrícula.
+            </p>
+          </div>
+
+          <div
+            class="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-2"
+          >
+            <span
+              class="text-blue-400 font-bold uppercase text-[10px] tracking-wider block"
+              >Passo 4</span
+            >
+            <h3 class="font-bold text-white text-sm">Governança & Gov.br</h3>
+            <p class="text-slate-300 leading-relaxed">
+              Geração do PDF oficial nos moldes da PMCE, assinatura externa no
+              Gov.br e upload para o servidor local / Google Drive, permitindo
+              auditoria instantânea pelo P1 e Master.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seção 2: Arquitetura do Módulo P1 (Livro Digital) -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          2. Arquitetura Operacional do Módulo P1 (Livro Digital)
+        </h2>
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-slate-700 space-y-3 text-xs"
+        >
+          <p class="text-slate-300 leading-relaxed">
+            O Módulo P1 digitaliza o tradicional Livro da Permanência da 2ª CIA
+            / 15º BPM (Cascavel-CE), eliminando erros de digitação e formatação
+            do Word:
+          </p>
+          <ul
+            class="list-disc list-inside text-slate-300 space-y-2 leading-relaxed"
+          >
+            <li>
+              <strong>Turnos Operacionais:</strong> Turno A (06:00 às 18:00) e
+              Turno B (18:00 às 06:00).
+            </li>
+            <li>
+              <strong>Busca Inteligente de Efetivo:</strong> Todos os campos de
+              nomes (Permanente, Antecessor e Substituto) possuem autocomplete
+              conectado diretamente à tabela de policiais por nome de guerra ou
+              matrícula.
+            </li>
+            <li>
+              <strong>As 6 Partes do Livro:</strong> Cabeçalho/Turno, Escala de
+              Serviço, Controle de Quilometragem de Viaturas, Justiça e
+              Disciplina, Ocorrências do Turno e Passagem de Serviço.
+            </li>
+            <li>
+              <strong>Armazenamento Híbrido de Documentos:</strong> O PDF
+              assinado via Gov.br é descarregado para a pasta compartilhada do
+              servidor local (sincronizada com o Google Drive) e sua URL pública
+              é referenciada no sistema para visualização em 1 clique.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Seção 3: Matriz RBAC & Design System Imutável -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          3. Matriz RBAC & Design System (Layout Imutável)
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+          <div
+            class="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-3"
+          >
+            <h3
+              class="font-bold text-amber-400 text-sm flex items-center gap-2"
+            >
+              <span>👤</span> Alçadas de Acesso (RBAC)
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>Permanente da Guarda:</strong> Operador do turno,
+                preenche o livro, registra viaturas/ocorrências, gera o PDF e
+                faz o upload do arquivo assinado.
+              </li>
+              <li>
+                <strong>P1 / P4 / Armeiro:</strong> Gestores setoriais. P1
+                audita e supervisiona os livros diários; Armeiro/P4 gerenciam o
+                acervo bélico e cautelas.
+              </li>
+              <li>
+                <strong>Master:</strong> Acesso administrativo irrestrito a
+                todos os módulos, governança de senhas e papéis.
+              </li>
+            </ul>
+          </div>
+
+          <div
+            class="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-3"
+          >
+            <h3
+              class="font-bold text-emerald-400 text-sm flex items-center gap-2"
+            >
+              <span>🎨</span> Design System & UI (Padrão Imutável)
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>Paleta Base:</strong> Fundo geral <code>#0f172a</code> /
+                <code>#1e293b</code> (Slate), botões de ação primária em Blue
+                600 <code>#2563eb</code>.
+              </li>
+              <li>
+                <strong>Geometria & Espaçamento:</strong> Cantos arredondados
+                padronizados em <code>rounded-xl</code> (12px) e inputs com
+                espaçamento interno confortável.
+              </li>
+              <li>
+                <strong>Modais & Tabelas:</strong> Modais centralizados com
+                desfoque de fundo e tabelas com linhas alternadas para leitura
+                tática rápida.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seção 4: Schema Atualizado do Banco de Dados (Supabase) -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          4. Schema Atualizado do Banco de Dados (Supabase / Postgres)
+        </h2>
+        <div class="space-y-3 text-xs">
+          <div
+            class="bg-slate-950 p-4 rounded-xl border border-slate-700 space-y-2"
+          >
+            <h3 class="font-bold text-amber-300 text-sm font-mono">
+              🛡️ Tabelas do Módulo P1 (Livro Digital)
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1 font-mono text-[11px]"
+            >
+              <li>
+                <strong>public.livros_permanencia:</strong> id (UUID, PK),
+                data_servico (date), turno (varchar), permanente_nome,
+                antecessor_nome, substituto_nome, status, arquivo_assinado_url.
+              </li>
+              <li>
+                <strong>public.livro_viaturas:</strong> livro_id (FK), viatura,
+                km_inicial, km_final, km_abastecimento, litros, valor, saldo,
+                status_viatura, motorista, destino.
+              </li>
+              <li>
+                <strong>public.livro_ocorrencias:</strong> livro_id (FK),
+                horario (time), descricao (text).
+              </li>
+            </ul>
+          </div>
+
+          <div
+            class="bg-slate-950 p-4 rounded-xl border border-slate-700 space-y-2"
+          >
+            <h3 class="font-bold text-amber-300 text-sm font-mono">
+              📦 Tabelas do Módulo P4 & Efetivo
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1 font-mono text-[11px]"
+            >
+              <li>
+                <strong>public.cautelas:</strong> Controle de termos, status,
+                aceite e hashes SHA-256 (<code>hash_emissao</code>,
+                <code>hash_aceite</code>, <code>hash_devolucao</code>).
+              </li>
+              <li>
+                <strong>public.policiais:</strong> Efetivo, credenciais e papéis
+                RBAC (policial, armeiro, p4, p1, master).
+              </li>
+              <li>
+                <strong>public.equipamentos & radios:</strong> Tabelas dedicadas
+                para armamentos, coletes, munições e rádios comunicadores.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seção 5: Mapeamento de Pastas -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          5. Mapeamento Arquitetural de Pastas e Componentes
+        </h2>
+        <div
+          class="bg-slate-950 p-4 rounded-xl text-xs font-mono text-slate-300 overflow-x-auto border border-slate-700 leading-relaxed"
+        >
+          src/<br />
+          ├── components/<br />
+          │ ├── layout/AppLayout.jsx # Orquestrador de layout e restrição RBAC
+          na sidebar<br />
+          │ ├── p1/<br />
+          │ │ └── ModalNovoLivro.jsx # Modal interativo do Livro Digital com
+          busca inteligente de efetivo<br />
+          │ └── ModalDetalhesArma.jsx # Ficha técnica dinâmica e QR Code<br />
+          ├── pages/<br />
+          │ ├── p1/<br />
+          │ │ └── LivroPermanencia.jsx # Página principal de listagem, download
+          PDF e visualização de assinaturas P1<br />
+          │ ├── Login.jsx # Autenticação inteligente (Numeral vs 4 dígitos)<br />
+          │ ├── AlterarSenhaObrigatoria.jsx # Troca obrigatória de senha<br />
+          │ ├── Dashboard.jsx # Métricas condicionais<br />
+          │ ├── Policiais.jsx # Gestão de efetivo<br />
+          │ ├── Cautelas.jsx # Gestão de cautelas, aceite e hashes SHA-256<br />
+          │ ├── Inventario.jsx # Acervo bélico e rádios comunicadores<br />
+          │ └── PainelMaster.jsx # Governança e papéis RBAC<br />
+          ├── lib/supabaseClient.js # Conector oficial Supabase<br />
+          └── AppRoutes.jsx # Rotas protegidas (incluindo /livro-permanencia)
+        </div>
+      </section>
+
+      <!-- Seção 6: Mapeamento Detalhado de Telas — Módulo P1 -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          6. Mapeamento de Telas & Layout (Módulo P1 — Imutável)
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+          <div
+            class="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-3"
+          >
+            <h3 class="font-bold text-blue-300 text-sm flex items-center gap-2">
+              <span>🖥️</span> Tela 1: Listagem Principal
+              (<code>LivroPermanencia.jsx</code>)
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>Cabeçalho:</strong> Título principal "Livro Digital da
+                Permanência", subtítulo descritivo e botão azul de ação "+ Novo
+                Livro de Turno" (visível apenas para Master, P1 e Permanente).
+              </li>
+              <li>
+                <strong>Tabela de Registros:</strong> Colunas padronizadas
+                contendo Data do Serviço, Turno (A ou B em destaque azul),
+                Permanente Responsável, Antecessor, Status dinâmico (Badge Verde
+                para "Assinado via Gov.br" e Amarelo para "Aguardando
+                Assinatura").
+              </li>
+              <li>
+                <strong>Ações por Linha:</strong> Botões de "Baixar PDF Oficial"
+                (gerado via jsPDF nos moldes da PMCE) e "Ver Assinado" (link
+                externo direto para o arquivo armazenado no servidor
+                local/Drive).
+              </li>
+            </ul>
+          </div>
+
+          <div
+            class="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-3"
+          >
+            <h3 class="font-bold text-blue-300 text-sm flex items-center gap-2">
+              <span>📝</span> Tela 2: Modal de Cadastro
+              (<code>ModalNovoLivro.jsx</code>)
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>Bloco 1 (Cabeçalho & Turno):</strong> Seletores de Data,
+                Turno (A/B) e campo de busca inteligente de efetivo para o
+                Permanente Responsável, Antecessor e Substituto Legal (com
+                autocomplete por nome de guerra ou matrícula).
+              </li>
+              <li>
+                <strong>Bloco 2 (3ª Parte - Viaturas):</strong> Tabela
+                interativa para lançamento de Vtr, KM Inicial, KM Final,
+                Motorista e Destino, com botão dinâmico para adicionar ou
+                remover linhas.
+              </li>
+              <li>
+                <strong>Bloco 3 (5ª Parte - Ocorrências):</strong> Campos
+                estruturados por Horário e Descrição do Fato / Ocorrência em
+                texto corrido.
+              </li>
+              <li>
+                <strong>Bloco 4 (Anexo & Ações):</strong> Campo de upload em
+                área tracejada para anexar o PDF assinado via Gov.br e botões de
+                rodapé "Cancelar" e "Salvar Livro Completo".
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+      <!-- Seção 7: Mapeamento de Telas dos Demais Módulos (P4, Cautelas, Master, Efetivo) -->
+      <!-- Seção 7: Mapeamento de Telas dos Demais Módulos (P4, Cautelas, Master, Efetivo) -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          7. Mapeamento de Telas & Layout (Demais Módulos — Imutável)
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+          <div
+            class="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-3"
+          >
+            <div class="border-b border-slate-800 pb-2">
+              <h3
+                class="font-bold text-blue-300 text-sm flex items-center gap-2"
+              >
+                <span>📊</span> 1. Dashboard
+              </h3>
+              <span class="text-[11px] font-mono text-slate-400 block mt-0.5"
+                >Dashboard.jsx</span
+              >
+            </div>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>Métricas Condicionais:</strong> Blocos de resumo com
+                contagem de equipamentos disponíveis, cautelas ativas e
+                pendências, ajustando-se conforme o perfil de acesso (RBAC).
+              </li>
+              <li>
+                <strong>Visualização Tática:</strong> Atalhos rápidos para
+                emissão de cautelas e auditoria imediata.
+              </li>
+            </ul>
+          </div>
+
+          <div
+            class="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-3"
+          >
+            <div class="border-b border-slate-800 pb-2">
+              <h3
+                class="font-bold text-blue-300 text-sm flex items-center gap-2"
+              >
+                <span>🔄</span> 2. Cautelas & Devoluções
+              </h3>
+              <span class="text-[11px] font-mono text-slate-400 block mt-0.5"
+                >Cautelas.jsx, NovaCautela.jsx, Devolucao.jsx</span
+              >
+            </div>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>Gestão Unificada:</strong> Listagem de cautelas com
+                status, aceite digital do policial e o duplo controle de
+                armeiros (armeiro de saída e armeiro de baixa visíveis em tela).
+              </li>
+              <li>
+                <strong>Termo Oficial PDF:</strong> Geração de comprovante com
+                hashes criptográficos SHA-256 e feedback visual em tempo real
+                (spinner de carregamento).
+              </li>
+            </ul>
+          </div>
+
+          <div
+            class="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-3"
+          >
+            <div class="border-b border-slate-800 pb-2">
+              <h3
+                class="font-bold text-blue-300 text-sm flex items-center gap-2"
+              >
+                <span>📦</span> 3. Acervo, Inventário & Rádios
+              </h3>
+              <span class="text-[11px] font-mono text-slate-400 block mt-0.5"
+                >Inventario.jsx, ModalDetalhesArma.jsx</span
+              >
+            </div>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>Abas Dedicadas:</strong> Navegação limpa entre
+                "Armamentos, Coletes e Munições" e "Rádios Comunicadores".
+              </li>
+              <li>
+                <strong>Filtros Avançados:</strong> Busca por tipo, modelo,
+                número de série/patrimônio e localização atual.
+              </li>
+              <li>
+                <strong>Ficha Técnica & Fotos:</strong> Modal detalhado com
+                uploads de imagens para cada categoria e QR Code gerado por
+                item.
+              </li>
+            </ul>
+          </div>
+
+          <div
+            class="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-3"
+          >
+            <div class="border-b border-slate-800 pb-2">
+              <h3
+                class="font-bold text-blue-300 text-sm flex items-center gap-2"
+              >
+                <span>👥</span> 4. Policiais & Painel Master
+              </h3>
+              <span class="text-[11px] font-mono text-slate-400 block mt-0.5"
+                >Policiais.jsx, PainelMaster.jsx</span
+              >
+            </div>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>Gestão de Efetivo:</strong> Tabela completa de militares
+                com graduação, nome de guerra, matrícula, numeral e papéis RBAC.
+              </li>
+              <li>
+                <strong>Governança de Cadastros:</strong> Campos inteligentes
+                com bloqueio automático do numeral para Oficiais e Subtenentes,
+                além de aprovação de redefinições de senha.
+              </li>
+            </ul>
+          </div>
+
+          <div
+            class="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-3 md:col-span-2"
+          >
+            <div class="border-b border-slate-800 pb-2">
+              <h3
+                class="font-bold text-blue-300 text-sm flex items-center gap-2"
+              >
+                <span>🔐</span> 5. Autenticação & Segurança
+              </h3>
+              <span class="text-[11px] font-mono text-slate-400 block mt-0.5"
+                >Login.jsx, AlterarSenhaObrigatoria.jsx</span
+              >
+            </div>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>Tela de Login:</strong> Design minimalista e escuro
+                (Slate 900), com foco exclusivo na inserção da Matrícula.
+              </li>
+              <li>
+                <strong>Políticas de Senha:</strong> Aplicação automática de
+                senha padrão baseada no numeral (praças) ou nos 4 últimos
+                dígitos da matrícula (oficiais/subtenentes), exigindo alteração
+                obrigatória no primeiro acesso.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Rodapé -->
+      <footer
+        class="text-center text-xs text-slate-500 border-t border-slate-700 pt-4 space-y-1"
+      >
+        <p>
+          Log2CIA • Documentação Oficial de Regras de Negócio, Assinatura
+          Eletrônica, P1 e Arquitetura
+        </p>
+        <p class="text-[10px]">
+          Dica: Pressione Ctrl + P no seu navegador para exportar este mapa
+          atualizado em formato PDF.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

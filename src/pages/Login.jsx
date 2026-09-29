@@ -65,8 +65,12 @@ export default function Login() {
         throw new Error("Senha incorreta. Tente novamente.");
       }
 
-      // Salva os dados do usuário no localStorage
-      localStorage.setItem("log2cia_user", JSON.stringify(policial));
+      // SEGURANÇA: Cria uma cópia do objeto do policial e remove a senha antes de salvar no localStorage
+      const policialSeguro = { ...policial };
+      delete policialSeguro.senha;
+
+      // Salva apenas os dados seguros e limpos no localStorage
+      localStorage.setItem("log2cia_user", JSON.stringify(policialSeguro));
 
       // Verifica se é o primeiro acesso
       if (policial.primeiro_acesso || !policial.senha) {

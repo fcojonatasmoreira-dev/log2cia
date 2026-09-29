@@ -12,6 +12,7 @@ import Policiais from "../pages/Policiais";
 import PainelMaster from "../pages/PainelMaster";
 import Login from "../pages/Login";
 import AlterarSenhaObrigatoria from "../pages/AlterarSenhaObrigatoria";
+import LivroPermanencia from "../pages/p1/LivroPermanencia";
 
 export default function AppRoutes() {
   const [usuario, setUsuario] = useState(null);
@@ -70,6 +71,26 @@ export default function AppRoutes() {
             <Route path="cautelas/nova" element={<NovaCautela />} />
             <Route path="minhas-cautelas" element={<MinhasCautelas />} />
             <Route path="devolucao" element={<Devolucao />} />
+
+            {/* Rota para o Módulo P1 - Livro da Permanência */}
+            {(usuario.is_master === true ||
+              String(usuario.role || "")
+                .trim()
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\\u0300-\\u036f]/g, "") === "master" ||
+              ["p1", "permanente", "permanente da guarda", "armeiro"].includes(
+                String(usuario.role || "")
+                  .trim()
+                  .toLowerCase()
+                  .normalize("NFD")
+                  .replace(/[\\u0300-\\u036f]/g, ""),
+              )) && (
+              <Route
+                path="livro-permanencia"
+                element={<LivroPermanencia userLogado={usuario} />}
+              />
+            )}
 
             {/* Rota para alteração de senha acessível pelo menu lateral */}
             <Route path="alterar-senha" element={<AlterarSenhaObrigatoria />} />
