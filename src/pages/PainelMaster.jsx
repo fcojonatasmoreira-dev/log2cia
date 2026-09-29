@@ -293,6 +293,9 @@ export default function PainelMaster() {
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium"
                   >
                     <option value="policial">Policial</option>
+                    <option value="permanente da guarda">
+                      Permanente da Guarda
+                    </option>
                     <option value="armeiro">Armeiro</option>
                     <option value="p4">P4</option>
                     <option value="master">Master</option>
