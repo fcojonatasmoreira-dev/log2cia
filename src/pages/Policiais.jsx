@@ -1011,6 +1011,9 @@ export default function Policiais() {
                       className="w-full p-2.5 border border-slate-300 rounded-xl text-xs bg-white font-bold"
                     >
                       <option value="policial">Policial</option>
+                      <option value="permanente da guarda">
+                        Permanente da Guarda
+                      </option>
                       <option value="armeiro">Armeiro</option>
                       <option value="p4">P4</option>
                       <option value="master">Master</option>
