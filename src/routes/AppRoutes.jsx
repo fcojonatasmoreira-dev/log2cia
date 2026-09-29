@@ -78,13 +78,13 @@ export default function AppRoutes() {
                 .trim()
                 .toLowerCase()
                 .normalize("NFD")
-                .replace(/[\\u0300-\\u036f]/g, "") === "master" ||
+                .replace(/[\u0300-\u036f]/g, "") === "master" ||
               ["p1", "permanente", "permanente da guarda", "armeiro"].includes(
                 String(usuario.role || "")
                   .trim()
                   .toLowerCase()
                   .normalize("NFD")
-                  .replace(/[\\u0300-\\u036f]/g, ""),
+                  .replace(/[\u0300-\u036f]/g, ""),
               )) && (
               <Route
                 path="livro-permanencia"

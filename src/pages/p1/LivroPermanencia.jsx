@@ -61,7 +61,7 @@ export default function LivroPermanencia({ userLogado }) {
             .trim()
             .toLowerCase()
             .normalize("NFD")
-            .replace(/[\\u0300-\\u036f]/g, ""),
+            .replace(/[\u0300-\u036f]/g, ""),
         );
 
       const ehMaster =
