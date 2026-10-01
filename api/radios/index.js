@@ -6,8 +6,13 @@ import {
 } from "../_server.js";
 
 const PERFIS_GESTAO = ["master", "p4", "armeiro"];
-
-const STATUS_VALIDOS = ["disponivel", "cautelado", "em_manutencao", "baixado"];
+const PERFIS_EDICAO_EXCLUSAO = ["master", "p4"];
+const STATUS_VALIDOS = [
+  "disponivel",
+  "cautelado",
+  "em_manutencao",
+  "baixado",
+];
 
 function texto(valor) {
   return typeof valor === "string" ? valor.trim() : "";
@@ -61,8 +66,7 @@ export default async function handler(req, res) {
         numero_identificacao: identificacao,
         tombo: texto(body.tombo).toUpperCase() || null,
         status: "disponivel",
-        localizacao_atual:
-          texto(body.localizacao_atual) || "Estoque da Reserva",
+        localizacao_atual: texto(body.localizacao_atual) || "Estoque da Reserva",
         foto_radio_url: texto(body.foto_radio_url) || null,
         observacoes: texto(body.observacoes),
       };
@@ -75,11 +79,7 @@ export default async function handler(req, res) {
 
       if (error) {
         if (error.code === "23505") {
-          return respostaErro(
-            res,
-            409,
-            "Já existe um rádio com essa identificação ou número de série.",
-          );
+          return respostaErro(res, 409, "Já existe um rádio com essa identificação ou número de série.");
         }
         throw error;
       }
@@ -93,29 +93,51 @@ export default async function handler(req, res) {
       }
 
       const id = texto(req.query?.id);
-      if (!id) {
-        return respostaErro(res, 400, "Identificador do rádio inválido.");
-      }
+      if (!id) return respostaErro(res, 400, "Identificador do rádio inválido.");
 
       const body = req.body;
       if (!body || typeof body !== "object" || Array.isArray(body)) {
         return respostaErro(res, 400, "Dados de atualização inválidos.");
       }
 
-      const camposPermitidos = ["status", "localizacao_atual"];
+      const camposEdicao = ["marca", "modelo_descricao", "numero_serie", "numero_identificacao", "tombo", "observacoes"];
+      if (camposEdicao.some((campo) => Object.prototype.hasOwnProperty.call(req.body, campo)) && !PERFIS_EDICAO_EXCLUSAO.includes(role)) {
+        return respostaErro(res, 403, "Somente Master e P4 podem editar os dados do rádio.");
+      }
+
+      const camposPermitidos = ["status", "localizacao_atual", ...camposEdicao];
       const dados = {};
+
       for (const campo of camposPermitidos) {
         if (Object.prototype.hasOwnProperty.call(body, campo)) {
           dados[campo] = body[campo];
         }
       }
 
+      const camposTexto = ["marca", "modelo_descricao", "numero_serie", "numero_identificacao"];
+      for (const campo of camposTexto) {
+        if (Object.prototype.hasOwnProperty.call(dados, campo)) {
+          dados[campo] = texto(dados[campo]).toUpperCase();
+          if (!dados[campo]) {
+            return respostaErro(res, 400, `${campo} é obrigatório.`);
+          }
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(dados, "tombo")) {
+        dados.tombo = texto(dados.tombo).toUpperCase() || null;
+      }
+      if (Object.prototype.hasOwnProperty.call(dados, "observacoes")) {
+        dados.observacoes = texto(dados.observacoes);
+      }
+      if (Object.prototype.hasOwnProperty.call(dados, "localizacao_atual")) {
+        dados.localizacao_atual = texto(dados.localizacao_atual);
+        if (!dados.localizacao_atual) {
+          return respostaErro(res, 400, "Localização é obrigatória.");
+        }
+      }
+
       if (Object.keys(dados).length === 0) {
-        return respostaErro(
-          res,
-          400,
-          "Nenhum campo permitido para atualização.",
-        );
+        return respostaErro(res, 400, "Nenhum campo permitido para atualização.");
       }
 
       if (
@@ -123,6 +145,14 @@ export default async function handler(req, res) {
         !STATUS_VALIDOS.includes(dados.status)
       ) {
         return respostaErro(res, 400, "Status do rádio inválido.");
+      }
+
+      if (dados.status === "cautelado") {
+        return respostaErro(
+          res,
+          400,
+          "O status Cautelado deve ser alterado pela emissão ou devolução da cautela.",
+        );
       }
 
       if (dados.status === "em_manutencao") {
@@ -135,20 +165,56 @@ export default async function handler(req, res) {
         .from("radios")
         .update(dados)
         .eq("id", id)
+        .neq("status", "cautelado")
         .select("*")
         .maybeSingle();
 
       if (error) throw error;
-
       if (!data) {
-        return respostaErro(res, 404, "Rádio não encontrado.");
+        return respostaErro(
+          res,
+          409,
+          "Rádio não encontrado ou está cautelado e não pode ser alterado por esta operação.",
+        );
       }
 
       return res.status(200).json({ radio: data });
     }
 
+    if (req.method === "DELETE") {
+      if (!PERFIS_EDICAO_EXCLUSAO.includes(role)) {
+        return respostaErro(res, 403, "Somente Master e P4 podem excluir rádios.");
+      }
+
+      const id = texto(req.query?.id);
+      if (!id) return respostaErro(res, 400, "Identificador do rádio inválido.");
+
+      const { data: radio, error: consultaError } = await db
+        .from("radios")
+        .select("id, status")
+        .eq("id", id)
+        .maybeSingle();
+      if (consultaError) throw consultaError;
+      if (!radio) return respostaErro(res, 404, "Rádio não encontrado.");
+      if (radio.status === "cautelado") {
+        return respostaErro(res, 409, "Não é possível excluir um rádio enquanto estiver cautelado. Faça a devolução primeiro.");
+      }
+
+      const { error: exclusaoError } = await db
+        .from("radios")
+        .delete()
+        .eq("id", id);
+      if (exclusaoError) {
+        if (exclusaoError.code === "23503") {
+          return respostaErro(res, 409, "Este rádio possui vínculos e não pode ser excluído.");
+        }
+        throw exclusaoError;
+      }
+      return res.status(200).json({ success: true, id });
+    }
+
     return res
-      .setHeader("Allow", "GET, POST, PATCH")
+      .setHeader("Allow", "GET, POST, PATCH, DELETE")
       .status(405)
       .json({ error: "Método não permitido." });
   } catch (error) {

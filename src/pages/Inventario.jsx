@@ -11,6 +11,8 @@ import {
   Radio,
   Shield,
   Target,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -26,7 +28,6 @@ export default function Inventario() {
   const [radios, setRadios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [armaSelecionada, setArmaSelecionada] = useState(null);
-  const [radioSelecionado, setRadioSelecionado] = useState(null);
   const [modalNovo, setModalNovo] = useState(false);
   const [userRole, setUserRole] = useState("policial");
 
@@ -87,6 +88,9 @@ export default function Inventario() {
 
   const [salvando, setSalvando] = useState(false);
   const [atualizandoStatusRadio, setAtualizandoStatusRadio] = useState(null);
+  const [radioEmEdicao, setRadioEmEdicao] = useState(null);
+  const [salvandoEdicaoRadio, setSalvandoEdicaoRadio] = useState(false);
+  const [excluindoRadio, setExcluindoRadio] = useState(null);
 
   const checkUserRole = () => {
     try {
@@ -107,6 +111,85 @@ export default function Inventario() {
 
   const isP4OrMasterOrArmeiro =
     userRole === "master" || userRole === "p4" || userRole === "armeiro";
+  const podeEditarExcluirRadio = userRole === "master" || userRole === "p4";
+
+  const abrirEdicaoRadio = (radio) => {
+    if (!podeEditarExcluirRadio) return;
+    if (radio.status === "cautelado") {
+      alert("Não é possível editar um rádio enquanto estiver cautelado.");
+      return;
+    }
+    setRadioEmEdicao({
+      ...radio,
+      marca: radio.marca || "",
+      modelo_descricao: radio.modelo_descricao || "",
+      numero_serie: radio.numero_serie || "",
+      numero_identificacao: radio.numero_identificacao || "",
+      tombo: radio.tombo || "",
+      localizacao_atual: radio.localizacao_atual || "Estoque da Reserva",
+      observacoes: radio.observacoes || "",
+    });
+  };
+
+  const salvarEdicaoRadio = async (e) => {
+    e.preventDefault();
+    if (!radioEmEdicao || !podeEditarExcluirRadio) return;
+    if (radioEmEdicao.status === "cautelado") {
+      alert("Não é possível editar um rádio enquanto estiver cautelado.");
+      return;
+    }
+    setSalvandoEdicaoRadio(true);
+    try {
+      const response = await fetch(`/api/radios?id=${encodeURIComponent(radioEmEdicao.id)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          marca: radioEmEdicao.marca,
+          modelo_descricao: radioEmEdicao.modelo_descricao,
+          numero_serie: radioEmEdicao.numero_serie,
+          numero_identificacao: radioEmEdicao.numero_identificacao,
+          tombo: radioEmEdicao.tombo,
+          localizacao_atual: radioEmEdicao.localizacao_atual,
+          observacoes: radioEmEdicao.observacoes,
+        }),
+      });
+      const resultado = await response.json();
+      if (!response.ok) throw new Error(resultado.error || "Não foi possível editar o rádio.");
+      setRadios((atuais) => atuais.map((item) => item.id === resultado.radio.id ? resultado.radio : item));
+      setRadioEmEdicao(null);
+      alert("Rádio atualizado com sucesso!");
+    } catch (error) {
+      alert("Não foi possível editar o rádio: " + error.message);
+    } finally {
+      setSalvandoEdicaoRadio(false);
+    }
+  };
+
+  const excluirRadio = async (radio) => {
+    if (!podeEditarExcluirRadio) return;
+    if (radio.status === "cautelado") {
+      alert("Não é possível excluir um rádio enquanto estiver cautelado. Faça a devolução primeiro.");
+      return;
+    }
+    const confirmado = window.confirm(`Confirma a exclusão do rádio ${radio.numero_identificacao} (série ${radio.numero_serie})? Esta ação não pode ser desfeita.`);
+    if (!confirmado) return;
+    setExcluindoRadio(radio.id);
+    try {
+      const response = await fetch(`/api/radios?id=${encodeURIComponent(radio.id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const resultado = await response.json();
+      if (!response.ok) throw new Error(resultado.error || "Não foi possível excluir o rádio.");
+      setRadios((atuais) => atuais.filter((item) => item.id !== radio.id));
+      alert("Rádio excluído com sucesso!");
+    } catch (error) {
+      alert("Não foi possível excluir o rádio: " + error.message);
+    } finally {
+      setExcluindoRadio(null);
+    }
+  };
 
   async function carregarDados() {
     setLoading(true);
@@ -125,9 +208,7 @@ export default function Inventario() {
       });
       const radioData = await radioResponse.json();
       if (!radioResponse.ok) {
-        throw new Error(
-          radioData.error || "Não foi possível carregar os rádios.",
-        );
+        throw new Error(radioData.error || "Não foi possível carregar os rádios.");
       }
       setRadios(radioData.radios || []);
     } catch (err) {
@@ -198,9 +279,7 @@ export default function Inventario() {
         });
         const radioResultado = await radioResponse.json();
         if (!radioResponse.ok) {
-          throw new Error(
-            radioResultado.error || "Não foi possível cadastrar o rádio.",
-          );
+          throw new Error(radioResultado.error || "Não foi possível cadastrar o rádio.");
         }
         alert("Rádio comunicador cadastrado com sucesso!");
 
@@ -720,13 +799,13 @@ export default function Inventario() {
                 <th className="p-3.5">Tombo</th>
                 <th className="p-3.5">Localização</th>
                 <th className="p-3.5">Status</th>
-                <th className="p-3.5 text-right">Ações</th>
+                {podeEditarExcluirRadio && <th className="p-3.5 text-right">Ações</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {radiosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-slate-400">
+                  <td colSpan={podeEditarExcluirRadio ? 7 : 6} className="p-8 text-center text-slate-400">
                     Nenhum rádio comunicador cadastrado.
                   </td>
                 </tr>
@@ -752,41 +831,150 @@ export default function Inventario() {
                       {radio.localizacao_atual}
                     </td>
                     <td className="p-3.5">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          radio.status === "disponivel"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : radio.status === "cautelado"
-                              ? "bg-blue-100 text-blue-800"
-                              : radio.status === "em_manutencao"
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-slate-100 text-slate-700"
-                        }`}
-                      >
-                        {{
-                          disponivel: "Disponível",
-                          cautelado: "Cautelado",
-                          em_manutencao: "Em manutenção",
-                          baixado: "Baixado",
-                        }[radio.status] ||
-                          radio.status ||
-                          "Disponível"}
-                      </span>
+                      {isP4OrMasterOrArmeiro ? (
+                        <select
+                          value={radio.status || "disponivel"}
+                          disabled={atualizandoStatusRadio === radio.id}
+                          onChange={async (e) => {
+                            const novoStatus = e.target.value;
+                            const statusAnterior = radio.status || "disponivel";
+                            if (novoStatus === statusAnterior) return;
+                            if (statusAnterior === "cautelado" || novoStatus === "cautelado") {
+                              alert("O status Cautelado deve ser alterado pela emissão ou devolução da cautela.");
+                              return;
+                            }
+                            setAtualizandoStatusRadio(radio.id);
+                            const localizacaoAtualizada =
+                              novoStatus === "em_manutencao"
+                                ? "Manutenção"
+                                : novoStatus === "disponivel"
+                                  ? "Estoque da Reserva"
+                                  : radio.localizacao_atual;
+                            try {
+                              const response = await fetch(`/api/radios?id=${encodeURIComponent(radio.id)}`, {
+                                method: "PATCH",
+                                credentials: "include",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  status: novoStatus,
+                                  localizacao_atual: localizacaoAtualizada,
+                                }),
+                              });
+                              const resultado = await response.json();
+                              if (!response.ok) {
+                                throw new Error(resultado.error || "Não foi possível atualizar o status.");
+                              }
+                              setRadios((atuais) => atuais.map((item) =>
+                                item.id === radio.id ? resultado.radio : item
+                              ));
+                            } catch (error) {
+                              alert("Não foi possível atualizar o status: " + error.message);
+                            } finally {
+                              setAtualizandoStatusRadio(null);
+                            }
+                          }}
+                          className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold"
+                          aria-label={`Status do rádio ${radio.numero_identificacao}`}
+                        >
+                          <option value="disponivel">Disponível</option>
+                          <option value="cautelado">Cautelado</option>
+                          <option value="em_manutencao">Em manutenção</option>
+                          <option value="baixado">Baixado</option>
+                        </select>
+                      ) : (
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${radio.status === "disponivel" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                          {({ disponivel: "Disponível", cautelado: "Cautelado", em_manutencao: "Em manutenção", baixado: "Baixado" })[radio.status] || radio.status}
+                        </span>
+                      )}
                     </td>
-                    <td className="p-3.5 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setRadioSelecionado(radio)}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all text-xs border border-slate-200 shadow-xs"
-                      >
-                        Ver Detalhes / Fotos
-                      </button>
-                    </td>
+                    {podeEditarExcluirRadio && (
+                      <td className="p-3.5">
+                        <div className="flex justify-end items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => abrirEdicaoRadio(radio)}
+                            disabled={radio.status === "cautelado" || salvandoEdicaoRadio || excluindoRadio === radio.id}
+                            title={radio.status === "cautelado" ? "Rádio cautelado não pode ser editado" : "Editar rádio"}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <Pencil className="w-3.5 h-3.5" /> Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => excluirRadio(radio)}
+                            disabled={radio.status === "cautelado" || excluindoRadio === radio.id || salvandoEdicaoRadio}
+                            title={radio.status === "cautelado" ? "Rádio cautelado não pode ser excluído" : "Excluir rádio"}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            {excluindoRadio === radio.id ? "Excluindo..." : "Excluir"}
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {radioEmEdicao && podeEditarExcluirRadio && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-[60] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-100 space-y-4 my-8">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h2 className="text-base font-bold text-slate-800">Editar Rádio Comunicador</h2>
+              <button type="button" onClick={() => setRadioEmEdicao(null)} disabled={salvandoEdicaoRadio} className="text-slate-400 hover:text-slate-600 font-bold text-base p-1" aria-label="Fechar">✕</button>
+            </div>
+            <form onSubmit={salvarEdicaoRadio} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Marca *</label>
+                  <input required value={radioEmEdicao.marca} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, marca: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase" />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Modelo *</label>
+                  <input required value={radioEmEdicao.modelo_descricao} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, modelo_descricao: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Nº de Série *</label>
+                  <input required value={radioEmEdicao.numero_serie} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, numero_serie: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase font-mono" />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Nº de Identificação *</label>
+                  <input required value={radioEmEdicao.numero_identificacao} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, numero_identificacao: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase font-mono" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Tombo / Patrimônio</label>
+                  <input value={radioEmEdicao.tombo} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, tombo: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase" />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Localização</label>
+                  <select value={radioEmEdicao.localizacao_atual} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, localizacao_atual: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+                    <option value="Estoque da Reserva">Estoque da Reserva</option>
+                    <option value="Acautelada com Policial">Acautelada com Policial</option>
+                    <option value="Manutenção">Manutenção</option>
+                    <option value="Apreendida">Apreendida</option>
+                    <option value="Em Perícia">Em Perícia</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 uppercase mb-1">Observações</label>
+                <textarea rows="3" value={radioEmEdicao.observacoes} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, observacoes: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl resize-none" />
+              </div>
+              <p className="text-[10px] text-slate-500">O status e a foto atual serão preservados. Para alterar o status, use o seletor da tabela.</p>
+              <div className="flex gap-2 pt-3 border-t">
+                <button type="button" onClick={() => setRadioEmEdicao(null)} disabled={salvandoEdicaoRadio} className="w-1/3 py-2.5 bg-slate-100 font-bold rounded-xl">Cancelar</button>
+                <button type="submit" disabled={salvandoEdicaoRadio} className="w-2/3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl disabled:opacity-60">{salvandoEdicaoRadio ? "Salvando..." : "Salvar alterações"}</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -1367,193 +1555,6 @@ export default function Inventario() {
           }}
         />
       )}
-      {radioSelecionado && (
-        <ModalDetalhesRadio
-          radio={radioSelecionado}
-          podeGerenciar={isP4OrMasterOrArmeiro}
-          atualizando={atualizandoStatusRadio === radioSelecionado.id}
-          onClose={() => setRadioSelecionado(null)}
-          onStatusChange={async (novoStatus) => {
-            const statusAnterior = radioSelecionado.status || "disponivel";
-            if (novoStatus === statusAnterior) return;
-            setAtualizandoStatusRadio(radioSelecionado.id);
-            const localizacaoAtualizada =
-              novoStatus === "em_manutencao"
-                ? "Manutenção"
-                : novoStatus === "disponivel"
-                  ? "Estoque da Reserva"
-                  : radioSelecionado.localizacao_atual || "Estoque da Reserva";
-            try {
-              const response = await fetch(
-                `/api/radios?id=${encodeURIComponent(radioSelecionado.id)}`,
-                {
-                  method: "PATCH",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    status: novoStatus,
-                    localizacao_atual: localizacaoAtualizada,
-                  }),
-                },
-              );
-              const textoResposta = await response.text();
-              let resultado;
-              try {
-                resultado = JSON.parse(textoResposta);
-              } catch {
-                throw new Error(
-                  `Resposta inválida da API (HTTP ${response.status}): ${textoResposta.slice(0, 180)}`,
-                );
-              }
-              if (!response.ok)
-                throw new Error(
-                  resultado.error || "Não foi possível atualizar o status.",
-                );
-              setRadios((atuais) =>
-                atuais.map((item) =>
-                  item.id === radioSelecionado.id ? resultado.radio : item,
-                ),
-              );
-              setRadioSelecionado(resultado.radio);
-              alert("Status do rádio atualizado com sucesso!");
-            } catch (error) {
-              alert("Não foi possível atualizar o status: " + error.message);
-            } finally {
-              setAtualizandoStatusRadio(null);
-            }
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function ModalDetalhesRadio({
-  radio,
-  podeGerenciar,
-  atualizando,
-  onClose,
-  onStatusChange,
-}) {
-  const statusLabel = {
-    disponivel: "Disponível",
-    cautelado: "Cautelado",
-    em_manutencao: "Em manutenção",
-    baixado: "Baixado",
-  };
-
-  return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-[60] flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl border border-slate-100 space-y-4 my-8 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-          <h2 className="text-base font-bold text-slate-800">
-            Detalhes do Rádio Comunicador
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 text-xl font-bold"
-            aria-label="Fechar"
-          >
-            ×
-          </button>
-        </div>
-
-        {radio.foto_radio_url ? (
-          <div className="flex justify-center bg-slate-50 rounded-xl p-3">
-            <img
-              src={radio.foto_radio_url}
-              alt={`Rádio ${radio.numero_identificacao || ""}`}
-              className="max-h-64 max-w-full object-contain rounded-lg"
-            />
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-2 bg-slate-50 rounded-xl p-8 text-slate-400">
-            <Radio className="w-10 h-10" />
-            <span className="text-xs">Nenhuma foto cadastrada</span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-          {[
-            ["Marca", radio.marca],
-            ["Modelo", radio.modelo_descricao],
-            ["Nº de Série", radio.numero_serie],
-            ["Nº de Identificação", radio.numero_identificacao],
-            ["Tombo / Patrimônio", radio.tombo],
-            ["Localização", radio.localizacao_atual],
-          ].map(([label, value]) => (
-            <div
-              key={label}
-              className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-            >
-              <div className="text-[10px] font-bold uppercase text-slate-500 mb-1">
-                {label}
-              </div>
-              <div className="font-semibold text-slate-800 break-words">
-                {value || "—"}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="rounded-xl border border-slate-200 p-3 space-y-2">
-          <div className="text-[10px] font-bold uppercase text-slate-500">
-            Status atual
-          </div>
-          <div className="text-sm font-bold text-slate-800">
-            {statusLabel[radio.status] || radio.status || "Disponível"}
-          </div>
-          {podeGerenciar ? (
-            <div className="pt-2 border-t border-slate-100 space-y-1.5">
-              <label className="block text-[11px] font-bold text-slate-600">
-                Alterar status
-              </label>
-              <select
-                value={radio.status || "disponivel"}
-                disabled={atualizando}
-                onChange={(e) => onStatusChange(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 disabled:opacity-60"
-              >
-                <option value="disponivel">Disponível</option>
-                <option value="cautelado">Cautelado</option>
-                <option value="em_manutencao">Em manutenção</option>
-                <option value="baixado">Baixado</option>
-              </select>
-              {atualizando && (
-                <p className="text-[10px] text-blue-600">
-                  Atualizando status...
-                </p>
-              )}
-              <p className="text-[10px] text-amber-700">
-                A alteração para Cautelado registra apenas o status do rádio;
-                não cria uma cautela nem vincula um policial.
-              </p>
-            </div>
-          ) : null}
-        </div>
-
-        {radio.observacoes ? (
-          <div className="rounded-xl border border-slate-200 p-3">
-            <div className="text-[10px] font-bold uppercase text-slate-500 mb-1">
-              Observações
-            </div>
-            <p className="text-xs text-slate-700 whitespace-pre-wrap">
-              {radio.observacoes}
-            </p>
-          </div>
-        ) : null}
-
-        <div className="flex justify-end pt-2 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
-          >
-            Fechar
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
