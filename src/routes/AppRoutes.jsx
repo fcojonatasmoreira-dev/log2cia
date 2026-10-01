@@ -13,26 +13,44 @@ import PainelMaster from "../pages/PainelMaster";
 import Login from "../pages/Login";
 import AlterarSenhaObrigatoria from "../pages/AlterarSenhaObrigatoria";
 import LivroPermanencia from "../pages/p1/LivroPermanencia";
+import { obterSessao, logout } from "../services/sessionService";
 
 export default function AppRoutes() {
   const [usuario, setUsuario] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const usuarioSalvo = localStorage.getItem("log2cia_user");
-      if (usuarioSalvo) {
-        setUsuario(JSON.parse(usuarioSalvo));
+    let ativo = true;
+    let verificando = false;
+
+    const validarSessao = async () => {
+      if (verificando) return;
+      verificando = true;
+      try {
+        const { user } = await obterSessao();
+        if (!ativo) return;
+        localStorage.setItem("log2cia_user", JSON.stringify(user));
+        setUsuario(user);
+      } catch (error) {
+        if (!ativo) return;
+        localStorage.removeItem("log2cia_user");
+        setUsuario(null);
+      } finally {
+        verificando = false;
+        if (ativo) setLoading(false);
       }
-    } catch (e) {
-      console.error("Erro ao ler sessão:", e);
-      localStorage.removeItem("log2cia_user");
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    validarSessao();
+    // A sessão é validada ao carregar o aplicativo. As operações protegidas
+    // devem validar novamente no backend; não fazemos consultas periódicas.
+    return () => {
+      ativo = false;
+    };
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try { await logout(); } catch (e) { console.error("Erro ao encerrar sessão:", e); }
     localStorage.removeItem("log2cia_user");
     setUsuario(null);
     window.location.href = "/";

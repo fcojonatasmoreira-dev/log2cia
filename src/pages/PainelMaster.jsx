@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabaseClient";
 import {
   Shield,
   KeyRound,
@@ -33,14 +32,10 @@ export default function PainelMaster() {
   async function carregarSolicitacoes() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("solicitacoes_senha")
-        .select("*")
-        .eq("status", "pendente")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      if (data) setSolicitacoes(data);
+      const response = await fetch("/api/solicitacoes-senha", { credentials: "include" });
+      const resultado = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(resultado.error || "Não foi possível carregar as solicitações.");
+      setSolicitacoes(resultado.solicitacoes || []);
     } catch (err) {
       console.error("Erro ao carregar solicitações de senha:", err.message);
     } finally {
@@ -80,22 +75,12 @@ export default function PainelMaster() {
     }
 
     try {
-      const { error: errPolicial } = await supabase
-        .from("policiais")
-        .update({
-          senha: null,
-          primeiro_acesso: true,
-        })
-        .eq("id", solicitacao.policial_id);
-
-      if (errPolicial) throw errPolicial;
-
-      const { error: errSolicitacao } = await supabase
-        .from("solicitacoes_senha")
-        .update({ status: "aprovada" })
-        .eq("id", solicitacao.id);
-
-      if (errSolicitacao) throw errSolicitacao;
+      const response = await fetch(`/api/solicitacoes-senha/${encodeURIComponent(solicitacao.id)}/aprovar`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const resultado = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(resultado.error || "Não foi possível aprovar a solicitação.");
 
       alert(
         "Senha resetada com sucesso! O militar agora está em regime de primeiro acesso.",
@@ -123,13 +108,17 @@ export default function PainelMaster() {
         role: role.toLowerCase(),
         unidade: unidade.trim(),
         primeiro_acesso: primeiroAcesso,
-        senha: null,
         status: "EM ATIVIDADE",
       };
 
-      const { error } = await supabase.from("policiais").insert([payload]);
-
-      if (error) throw error;
+      const response = await fetch("/api/policiais", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const resultado = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(resultado.error || "Não foi possível cadastrar o operador.");
 
       alert("Operador cadastrado com sucesso!");
       setNomeCompleto("");

@@ -26,6 +26,7 @@ export default function Inventario() {
   const [radios, setRadios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [armaSelecionada, setArmaSelecionada] = useState(null);
+  const [radioSelecionado, setRadioSelecionado] = useState(null);
   const [modalNovo, setModalNovo] = useState(false);
   const [userRole, setUserRole] = useState("policial");
 
@@ -85,6 +86,7 @@ export default function Inventario() {
   const [arquivoRadio, setArquivoRadio] = useState(null);
 
   const [salvando, setSalvando] = useState(false);
+  const [atualizandoStatusRadio, setAtualizandoStatusRadio] = useState(null);
 
   const checkUserRole = () => {
     try {
@@ -117,13 +119,17 @@ export default function Inventario() {
       if (equipError) throw equipError;
       if (equipData) setEquipamentos(equipData);
 
-      const { data: radioData, error: radioError } = await supabase
-        .from("radios")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (radioError && radioError.code !== "42P01") throw radioError;
-      if (radioData) setRadios(radioData);
+      const radioResponse = await fetch("/api/radios", {
+        method: "GET",
+        credentials: "include",
+      });
+      const radioData = await radioResponse.json();
+      if (!radioResponse.ok) {
+        throw new Error(
+          radioData.error || "Não foi possível carregar os rádios.",
+        );
+      }
+      setRadios(radioData.radios || []);
     } catch (err) {
       console.error("Erro ao carregar dados:", err.message);
     } finally {
@@ -174,8 +180,11 @@ export default function Inventario() {
       if (abaAtiva === "radios") {
         const fotoRadioUrl = await fazerUploadImagem(arquivoRadio, "radio");
 
-        const { error: radioErr } = await supabase.from("radios").insert([
-          {
+        const radioResponse = await fetch("/api/radios", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             marca: radioMarca.trim().toUpperCase(),
             modelo_descricao: radioModelo.trim().toUpperCase(),
             numero_serie: radioSerie.trim().toUpperCase(),
@@ -185,10 +194,14 @@ export default function Inventario() {
             localizacao_atual: radioLocalizacao,
             foto_radio_url: fotoRadioUrl,
             observacoes: radioObs,
-          },
-        ]);
-
-        if (radioErr) throw radioErr;
+          }),
+        });
+        const radioResultado = await radioResponse.json();
+        if (!radioResponse.ok) {
+          throw new Error(
+            radioResultado.error || "Não foi possível cadastrar o rádio.",
+          );
+        }
         alert("Rádio comunicador cadastrado com sucesso!");
 
         setRadioMarca("");
@@ -347,7 +360,7 @@ export default function Inventario() {
 
     if (filtroDescricao && !modeloItem.includes(filtroDescricao.toLowerCase()))
       return false;
-    if (filtroSerie && !serieItem.includes(serieItem.toLowerCase()))
+    if (filtroSerie && !serieItem.includes(filtroSerie.toLowerCase()))
       return false;
     if (
       filtroLocalizacao !== "todas" &&
@@ -707,12 +720,13 @@ export default function Inventario() {
                 <th className="p-3.5">Tombo</th>
                 <th className="p-3.5">Localização</th>
                 <th className="p-3.5">Status</th>
+                <th className="p-3.5 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {radiosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="p-8 text-center text-slate-400">
+                  <td colSpan="7" className="p-8 text-center text-slate-400">
                     Nenhum rádio comunicador cadastrado.
                   </td>
                 </tr>
@@ -739,10 +753,34 @@ export default function Inventario() {
                     </td>
                     <td className="p-3.5">
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${radio.status === "disponivel" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          radio.status === "disponivel"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : radio.status === "cautelado"
+                              ? "bg-blue-100 text-blue-800"
+                              : radio.status === "em_manutencao"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-slate-100 text-slate-700"
+                        }`}
                       >
-                        {radio.status}
+                        {{
+                          disponivel: "Disponível",
+                          cautelado: "Cautelado",
+                          em_manutencao: "Em manutenção",
+                          baixado: "Baixado",
+                        }[radio.status] ||
+                          radio.status ||
+                          "Disponível"}
                       </span>
+                    </td>
+                    <td className="p-3.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setRadioSelecionado(radio)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all text-xs border border-slate-200 shadow-xs"
+                      >
+                        Ver Detalhes / Fotos
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -1329,6 +1367,193 @@ export default function Inventario() {
           }}
         />
       )}
+      {radioSelecionado && (
+        <ModalDetalhesRadio
+          radio={radioSelecionado}
+          podeGerenciar={isP4OrMasterOrArmeiro}
+          atualizando={atualizandoStatusRadio === radioSelecionado.id}
+          onClose={() => setRadioSelecionado(null)}
+          onStatusChange={async (novoStatus) => {
+            const statusAnterior = radioSelecionado.status || "disponivel";
+            if (novoStatus === statusAnterior) return;
+            setAtualizandoStatusRadio(radioSelecionado.id);
+            const localizacaoAtualizada =
+              novoStatus === "em_manutencao"
+                ? "Manutenção"
+                : novoStatus === "disponivel"
+                  ? "Estoque da Reserva"
+                  : radioSelecionado.localizacao_atual || "Estoque da Reserva";
+            try {
+              const response = await fetch(
+                `/api/radios?id=${encodeURIComponent(radioSelecionado.id)}`,
+                {
+                  method: "PATCH",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    status: novoStatus,
+                    localizacao_atual: localizacaoAtualizada,
+                  }),
+                },
+              );
+              const textoResposta = await response.text();
+              let resultado;
+              try {
+                resultado = JSON.parse(textoResposta);
+              } catch {
+                throw new Error(
+                  `Resposta inválida da API (HTTP ${response.status}): ${textoResposta.slice(0, 180)}`,
+                );
+              }
+              if (!response.ok)
+                throw new Error(
+                  resultado.error || "Não foi possível atualizar o status.",
+                );
+              setRadios((atuais) =>
+                atuais.map((item) =>
+                  item.id === radioSelecionado.id ? resultado.radio : item,
+                ),
+              );
+              setRadioSelecionado(resultado.radio);
+              alert("Status do rádio atualizado com sucesso!");
+            } catch (error) {
+              alert("Não foi possível atualizar o status: " + error.message);
+            } finally {
+              setAtualizandoStatusRadio(null);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ModalDetalhesRadio({
+  radio,
+  podeGerenciar,
+  atualizando,
+  onClose,
+  onStatusChange,
+}) {
+  const statusLabel = {
+    disponivel: "Disponível",
+    cautelado: "Cautelado",
+    em_manutencao: "Em manutenção",
+    baixado: "Baixado",
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-[60] flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl border border-slate-100 space-y-4 my-8 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+          <h2 className="text-base font-bold text-slate-800">
+            Detalhes do Rádio Comunicador
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-700 text-xl font-bold"
+            aria-label="Fechar"
+          >
+            ×
+          </button>
+        </div>
+
+        {radio.foto_radio_url ? (
+          <div className="flex justify-center bg-slate-50 rounded-xl p-3">
+            <img
+              src={radio.foto_radio_url}
+              alt={`Rádio ${radio.numero_identificacao || ""}`}
+              className="max-h-64 max-w-full object-contain rounded-lg"
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-2 bg-slate-50 rounded-xl p-8 text-slate-400">
+            <Radio className="w-10 h-10" />
+            <span className="text-xs">Nenhuma foto cadastrada</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          {[
+            ["Marca", radio.marca],
+            ["Modelo", radio.modelo_descricao],
+            ["Nº de Série", radio.numero_serie],
+            ["Nº de Identificação", radio.numero_identificacao],
+            ["Tombo / Patrimônio", radio.tombo],
+            ["Localização", radio.localizacao_atual],
+          ].map(([label, value]) => (
+            <div
+              key={label}
+              className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+            >
+              <div className="text-[10px] font-bold uppercase text-slate-500 mb-1">
+                {label}
+              </div>
+              <div className="font-semibold text-slate-800 break-words">
+                {value || "—"}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-xl border border-slate-200 p-3 space-y-2">
+          <div className="text-[10px] font-bold uppercase text-slate-500">
+            Status atual
+          </div>
+          <div className="text-sm font-bold text-slate-800">
+            {statusLabel[radio.status] || radio.status || "Disponível"}
+          </div>
+          {podeGerenciar ? (
+            <div className="pt-2 border-t border-slate-100 space-y-1.5">
+              <label className="block text-[11px] font-bold text-slate-600">
+                Alterar status
+              </label>
+              <select
+                value={radio.status || "disponivel"}
+                disabled={atualizando}
+                onChange={(e) => onStatusChange(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 disabled:opacity-60"
+              >
+                <option value="disponivel">Disponível</option>
+                <option value="cautelado">Cautelado</option>
+                <option value="em_manutencao">Em manutenção</option>
+                <option value="baixado">Baixado</option>
+              </select>
+              {atualizando && (
+                <p className="text-[10px] text-blue-600">
+                  Atualizando status...
+                </p>
+              )}
+              <p className="text-[10px] text-amber-700">
+                A alteração para Cautelado registra apenas o status do rádio;
+                não cria uma cautela nem vincula um policial.
+              </p>
+            </div>
+          ) : null}
+        </div>
+
+        {radio.observacoes ? (
+          <div className="rounded-xl border border-slate-200 p-3">
+            <div className="text-[10px] font-bold uppercase text-slate-500 mb-1">
+              Observações
+            </div>
+            <p className="text-xs text-slate-700 whitespace-pre-wrap">
+              {radio.observacoes}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="flex justify-end pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

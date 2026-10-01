@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { login } from "../services/sessionService";
 import {
   Shield,
   KeyRound,
@@ -38,42 +38,14 @@ export default function Login() {
     setCarregando(true);
 
     try {
-      const matriculaLimpa = matricula.trim();
+      const { user: policial } = await login(matricula.trim(), senha);
 
-      // Busca o policial estritamente pela matrícula
-      const { data: policiais, error } = await supabase
-        .from("policiais")
-        .select("*")
-        .eq("matricula", matriculaLimpa);
-
-      if (error) throw error;
-
-      if (!policiais || policiais.length === 0) {
-        throw new Error("Policial não encontrado com esta Matrícula.");
-      }
-
-      const policial = policiais[0];
-
-      // Se a senha estiver vazia ou for primeiro acesso, usa a senha padrão inteligente
-      const senhaInformada = senha.trim();
-      const senhaCorreta =
-        policial.senha && policial.senha.trim() !== ""
-          ? policial.senha.trim()
-          : obterSenhaPadrao(policial);
-
-      if (senhaInformada !== senhaCorreta) {
-        throw new Error("Senha incorreta. Tente novamente.");
-      }
-
-      // SEGURANÇA: Cria uma cópia do objeto do policial e remove a senha antes de salvar no localStorage
-      const policialSeguro = { ...policial };
-      delete policialSeguro.senha;
-
-      // Salva apenas os dados seguros e limpos no localStorage
-      localStorage.setItem("log2cia_user", JSON.stringify(policialSeguro));
+      // Mantido temporariamente para compatibilidade com os módulos existentes.
+      // A identidade válida passa a ser confirmada pelo cookie HttpOnly no backend.
+      localStorage.setItem("log2cia_user", JSON.stringify(policial));
 
       // Verifica se é o primeiro acesso
-      if (policial.primeiro_acesso || !policial.senha) {
+      if (policial.primeiro_acesso) {
         window.location.href = "/alterar-senha-obrigatoria";
       } else {
         window.location.href = "/dashboard";
@@ -93,32 +65,16 @@ export default function Login() {
 
     setEnviandoSolicitacao(true);
     try {
-      const matriculaLimpa = matriculaRecuperacao.trim();
-
-      const { data: policiais, error: errBusca } = await supabase
-        .from("policiais")
-        .select("id, nome_guerra, matricula")
-        .eq("matricula", matriculaLimpa);
-
-      if (errBusca || !policiais || policiais.length === 0) {
-        throw new Error("Militar não encontrado com esta Matrícula.");
-      }
-
-      const policial = policiais[0];
-
-      const { error: errInsert } = await supabase
-        .from("solicitacoes_senha")
-        .insert([
-          {
-            policial_id: policial.id,
-            matricula: policial.matricula,
-            nome_guerra: policial.nome_guerra,
-            motivo: motivoRecuperacao,
-            status: "pendente",
-          },
-        ]);
-
-      if (errInsert) throw errInsert;
+      const response = await fetch("/api/solicitacoes-senha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          matricula: matriculaRecuperacao.trim(),
+          motivo: motivoRecuperacao.trim(),
+        }),
+      });
+      const resultado = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(resultado.error || "Não foi possível enviar a solicitação.");
 
       alert("Solicitação enviada com sucesso para o painel do Master!");
       setIsEsqueciModalOpen(false);

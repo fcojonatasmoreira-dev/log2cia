@@ -22,12 +22,7 @@
           </h1>
         </div>
         <p class="text-sm text-slate-400">
-          Documentação oficial unificada contendo o mapeamento completo das
-          regras de negócio, restrições RBAC, inventário P4, duplo controle de
-          armeiros, o novo
-          <strong>Módulo P1 (Livro Digital da Permanência)</strong> com upload
-          em servidor local/Drive, Assinatura Eletrônica Avançada e os padrões
-          visuais imutáveis.
+          Documentação de referência do Log2CIA: regras de negócio, restrições RBAC, inventário P4, duplo controle de armeiros, Módulo P1 (Livro Digital da Permanência) e planejamento do P4 — Gestão de Viaturas. Confirmar sempre o estado real do código e do banco antes de implementar.
         </p>
       </header>
 
@@ -168,9 +163,7 @@
               class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
             >
               <li>
-                <strong>Permanente da Guarda:</strong> Operador do turno,
-                preenche o livro, registra viaturas/ocorrências, gera o PDF e
-                faz o upload do arquivo assinado.
+                <strong>Permanente da Guarda:</strong> Operador do turno, preenche o livro e registra as informações permitidas enquanto o livro está aberto. O painel de situação das viaturas previsto para esse perfil será inicialmente de consulta; agendamentos e alterações administrativas ficam sob responsabilidade do P4.
               </li>
               <li>
                 <strong>P1 / P4 / Armeiro:</strong> Gestores setoriais. P1
@@ -341,10 +334,7 @@
                 Assinatura").
               </li>
               <li>
-                <strong>Ações por Linha:</strong> Botões de "Baixar PDF Oficial"
-                (gerado via jsPDF nos moldes da PMCE) e "Ver Assinado" (link
-                externo direto para o arquivo armazenado no servidor
-                local/Drive).
+                <strong>Ações por Linha:</strong> Ícone de visualização do registro. Os botões de baixar PDF e upload que apareciam ao lado da visualização foram removidos; não os considerar como ações atuais dessa listagem.
               </li>
             </ul>
           </div>
@@ -542,13 +532,129 @@
         </div>
       </section>
 
+
+      <!-- Seção 8: Planejamento do P4 — Gestão de Viaturas -->
+      <section class="space-y-4">
+        <h2 class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3">
+          8. Planejamento do P4 — Gestão de Viaturas (01/10/2026)
+        </h2>
+        <div class="bg-slate-950 p-5 rounded-xl border border-amber-700 space-y-4 text-xs">
+          <p class="text-amber-300 font-bold">
+            Planejamento funcional — não representa funcionalidades já implementadas.
+            O desenvolvimento depende da análise dos arquivos atuais e do schema real do Supabase.
+          </p>
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Objetivo do módulo</h3>
+            <p class="text-slate-300 leading-relaxed">
+              O P4 deverá cadastrar e acompanhar as viaturas, consultar dados operacionais do P1,
+              administrar demandas e manutenções, controlar agendamentos e emitir relatórios
+              individuais, gerais da frota e de emprego operacional.
+            </p>
+          </div>
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Integração P1/P4 e constatações</h3>
+            <ul class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed">
+              <li>O P1 continua sendo a origem dos registros do Livro da Permanência; o P4 consulta as informações de viaturas disponíveis no banco.</li>
+              <li>Ajustes manuais no P4 deverão manter histórico, autoria e data/hora, conforme modelo técnico a definir.</li>
+              <li>Novas constatações somente podem gerar notificação ao P4 enquanto o livro estiver aberto. Livro fechado não aceita nova constatação.</li>
+              <li>Notificações já criadas permanecem acessíveis no P4 após o fechamento; a análise e o prosseguimento não alteram o registro original do P1.</li>
+              <li>Constatação não significa indisponibilidade automática: o P4 analisa e decide as providências.</li>
+            </ul>
+          </div>
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Painel do Permanente da Guarda</h3>
+            <p class="text-slate-300 leading-relaxed">
+              Está previsto um painel geral, inicialmente de consulta, com a situação das viaturas
+              baseada nos registros do P4: manutenções, pendências, lembretes de troca de óleo
+              e manutenções agendadas. Agendamentos e alterações administrativas ficam sob
+              responsabilidade do P4. O critério do lembrete de óleo (quilometragem ou data)
+              ainda será definido.
+            </p>
+          </div>
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Manutenção e relatórios</h3>
+            <p class="text-slate-300 leading-relaxed">
+              A manutenção começará com recursos básicos, podendo evoluir depois. Os campos
+              finais dependem da análise do schema e dos requisitos. Foram definidos três
+              relatórios: ficha individual, visão geral da frota e emprego operacional.
+            </p>
+          </div>
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Compatibilidade futura com Escalas</h3>
+            <p class="text-slate-300 leading-relaxed">
+              O módulo Escalas não será desenvolvido nesta etapa. A arquitetura deverá permitir
+              que, futuramente, uma composição vinculada a uma viatura consulte os dados do P4
+              e as determinações do comando. Deve-se preservar o histórico da escala e evitar
+              duplicação desnecessária de dados.
+            </p>
+          </div>
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Próxima etapa técnica</h3>
+            <p class="text-slate-300 leading-relaxed">
+              Antes de editar código, conferir LivroPermanencia.jsx, os serviços relacionados,
+              Inventario.jsx e o schema real do Supabase. Confirmar o bloqueio de constatações
+              após fechamento, o fluxo de notificações e as permissões. Não presumir colunas,
+              políticas ou relacionamentos.
+            </p>
+          </div>
+        </div>
+      </section>
+
+
+      <!-- Seção 9: Autenticação própria e segurança de sessões -->
+      <section class="space-y-4">
+        <h2 class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3">
+          9. Autenticação Própria & Segurança de Sessões (01/10/2026)
+        </h2>
+        <div class="bg-slate-950 p-5 rounded-xl border border-amber-700 space-y-4 text-xs">
+          <p class="text-amber-300 font-bold">
+            Estado parcial: fluxo básico testado localmente pelo usuário. A revisão das demais APIs protegidas e a validação do schema permanecem pendentes. Não há confirmação de deploy.
+          </p>
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Arquitetura de autenticação</h3>
+            <ul class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed">
+              <li>Autenticação própria; o projeto não utiliza Supabase Auth para autenticar usuários.</li>
+              <li>O frontend chama <code>/api/auth/login</code>, <code>/api/auth/me</code> e <code>/api/auth/logout</code> por meio de <code>src/services/sessionService.js</code>, com <code>credentials: 'include'</code>.</li>
+              <li>O backend valida a sessão e acessa o Supabase/PostgreSQL com a chave de serviço exclusivamente no servidor.</li>
+              <li>A sessão é mantida em cookie <code>HttpOnly</code>, <code>Secure</code>, <code>SameSite=Lax</code> e <code>Path=/</code>.</li>
+            </ul>
+          </div>
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Assinatura e senha</h3>
+            <ul class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed">
+              <li>Tokens assinados com HMAC-SHA256 e validade de oito horas, conforme <code>api/auth/_session.js</code>.</li>
+              <li>Senhas armazenadas com hash scrypt, conforme <code>api/auth/_password.js</code>; o login contempla migração de senhas legadas para hash.</li>
+              <li>A troca de senha grava o hash, encerra o primeiro acesso e foi testada pelo usuário: após alterar a senha, o sistema deslogou e aceitou o novo login.</li>
+            </ul>
+          </div>
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Revogação por versão</h3>
+            <p class="text-slate-300 leading-relaxed">
+              A estratégia proposta utiliza <code>public.policiais.auth_version</code> para comparar a versão gravada no token com a versão atual no banco. A troca de senha incrementa essa versão, invalidando tokens antigos nas APIs que fizerem a verificação.
+            </p>
+            <p class="text-amber-300 leading-relaxed">
+              A existência da coluna no banco e a validação em todas as APIs ainda precisam ser confirmadas. Apagar o cookie no logout, isoladamente, não revoga um token copiado.
+            </p>
+          </div>
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Pendências antes da produção</h3>
+            <ul class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed">
+              <li>Confirmar o schema real de <code>policiais</code> e o campo que indica se o usuário está ativo.</li>
+              <li>Conferir a validação da sessão em <code>/api/auth/me</code> e em todas as APIs protegidas, incluindo permissões por perfil.</li>
+              <li>Confirmar a revogação no logout e após troca de senha.</li>
+              <li>Revisar proteção contra tentativas abusivas e mensagens que possam revelar matrículas existentes.</li>
+              <li>Executar testes locais e build após a integração. Não há confirmação de implantação em produção.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       <!-- Rodapé -->
       <footer
         class="text-center text-xs text-slate-500 border-t border-slate-700 pt-4 space-y-1"
       >
         <p>
-          Log2CIA • Documentação Oficial de Regras de Negócio, Assinatura
-          Eletrônica, P1 e Arquitetura
+          Log2CIA • Mapa de Regras, Arquitetura e Planejamento
         </p>
         <p class="text-[10px]">
           Dica: Pressione Ctrl + P no seu navegador para exportar este mapa

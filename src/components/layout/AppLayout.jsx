@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { LogOut, Key, Shield, BookOpen } from "lucide-react";
-import { supabase } from "../../lib/supabaseClient";
 
-export default function AppLayout() {
+export default function AppLayout({ onLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -35,9 +34,7 @@ export default function AppLayout() {
 
   const handleSairDoSistema = async () => {
     if (window.confirm("Deseja realmente encerrar a sessão?")) {
-      await supabase.auth.signOut();
-      localStorage.removeItem("log2cia_user");
-      window.location.href = "/";
+      await onLogout();
     }
   };
 

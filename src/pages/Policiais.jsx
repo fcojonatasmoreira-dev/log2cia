@@ -20,8 +20,9 @@ import {
   createPolicial,
   updatePolicial,
   deletePolicial,
+  resetarSenhaPolicial,
+  getCautelasPolicial,
 } from "../services/policiaisService";
-import { supabase } from "../lib/supabaseClient";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -172,15 +173,7 @@ export default function Policiais() {
     }
 
     try {
-      const { error } = await supabase
-        .from("policiais")
-        .update({
-          senha: null,
-          primeiro_acesso: true,
-        })
-        .eq("id", editingId);
-
-      if (error) throw error;
+      await resetarSenhaPolicial(editingId);
 
       alert("Senha resetada com sucesso!");
       setIsModalOpen(false);
@@ -195,33 +188,7 @@ export default function Policiais() {
     setIsViewModalOpen(true);
     setLoadingCautelas(true);
     try {
-      const { data: cautelasData, error: cautelasError } = await supabase
-        .from("cautelas")
-        .select("*")
-        .eq("policial_id", p.id);
-
-      if (cautelasError) throw cautelasError;
-
-      const ativas = (cautelasData || []).filter(
-        (c) =>
-          String(c.status).toLowerCase() === "ativa" ||
-          String(c.status).toLowerCase() === "em_andamento",
-      );
-
-      const cautelasComEquipamentos = await Promise.all(
-        ativas.map(async (cautela) => {
-          const { data: itensData } = await supabase
-            .from("cautela_itens")
-            .select("*, equipamentos(*)")
-            .eq("cautela_id", cautela.id);
-
-          return {
-            ...cautela,
-            equipamentos: itensData?.[0]?.equipamentos || null,
-          };
-        }),
-      );
-
+      const cautelasComEquipamentos = await getCautelasPolicial(p.id);
       setCautelasAtivas(cautelasComEquipamentos);
     } catch (err) {
       setCautelasAtivas([]);

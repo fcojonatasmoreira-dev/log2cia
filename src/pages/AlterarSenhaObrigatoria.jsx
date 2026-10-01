@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabaseClient";
+
 
 export default function AlterarSenhaObrigatoria() {
   const navigate = useNavigate();
@@ -53,17 +53,14 @@ export default function AlterarSenhaObrigatoria() {
     setErro("");
 
     try {
-      // Atualiza a senha no banco e define primeiro_acesso como false
-      const { data, error } = await supabase
-        .from("policiais")
-        .update({
-          senha: String(novaSenha).trim(),
-          primeiro_acesso: false,
-        })
-        .eq("id", String(usuarioLogado.id).trim())
-        .select();
-
-      if (error) throw error;
+      const response = await fetch("/api/auth/change-password", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ novaSenha }),
+      });
+      const resultado = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(resultado.error || "Falha ao atualizar a senha.");
 
       // Atualiza a sessão no navegador de forma segura
       const sessaoSegura = {

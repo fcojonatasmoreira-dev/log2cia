@@ -1,7 +1,7 @@
 # CONTRATO DE COLABORAÇÃO TÉCNICA --- LOG2CIA
 
-**Versão:** 1.0\
-**Data de criação:** 29/09/2026\
+**Versão:** 1.3\
+**Data de atualização:** 01/10/2026\
 **Finalidade:** servir como documento de recuperação de contexto para
 retomar o trabalho sobre o sistema Log2CIA caso o histórico da conversa
 não esteja disponível.
@@ -13,74 +13,78 @@ não esteja disponível.
 
 ## 1. Identificação do projeto
 
--   **Projeto:** Log2CIA
--   **Uso:** sistema desenvolvido para apoiar atividades administrativas
-    e operacionais da unidade de trabalho do usuário.
--   **Unidade mencionada na documentação:** 2ª CIA / 15º BPM
-    (Cascavel-CE).
--   **Fluxo de publicação:** o usuário realiza commits no Git; o código
-    é sincronizado com a Vercel para implantação.
--   **Forma de trabalho:** colaboração contínua. O usuário entende
-    desenvolvimento de software, mas tem pouca familiaridade técnica com
-    detalhes da linguagem e pode solicitar explicações, correções e
-    novas funcionalidades.
+- **Projeto:** Log2CIA
+- **Uso:** sistema desenvolvido para apoiar atividades administrativas
+  e operacionais da unidade de trabalho do usuário.
+- **Unidade mencionada na documentação:** 2ª CIA / 15º BPM
+  (Cascavel-CE).
+- **Fluxo de publicação:** o usuário realiza commits no Git; o código
+  é sincronizado com a Vercel para implantação.
+- **Forma de trabalho:** colaboração contínua. O usuário entende
+  desenvolvimento de software, mas tem pouca familiaridade técnica com
+  detalhes da linguagem e pode solicitar explicações, correções e
+  novas funcionalidades.
 
 ## 2. Tecnologias identificadas
 
 Conforme o `package.json` enviado pelo usuário:
 
-  --------------------------------------------------------------------------
-  Tecnologia/pacote                   Versão declarada Uso conhecido ou
-                                                       provável no projeto
-  ----------------------- ---------------------------- ---------------------
-  React                                       \^19.2.8 Interface baseada em
-                                                       componentes
+---
 
-  React DOM                                   \^19.2.8 Renderização da
-                                                       aplicação
+Tecnologia/pacote Versão declarada Uso conhecido ou
+provável no projeto
 
-  Vite                                         \^8.3.0 Servidor de
-                                                       desenvolvimento e
-                                                       build
+---
 
-  @vitejs/plugin-react                         \^6.1.1 Integração do React
-                                                       com Vite
+React \^19.2.8 Interface baseada em
+componentes
 
-  @supabase/supabase-js                      \^2.116.0 Cliente para
-                                                       integração com
-                                                       Supabase
+React DOM \^19.2.8 Renderização da
+aplicação
 
-  react-router-dom                            \^7.18.3 Rotas e navegação
+Vite \^8.3.0 Servidor de
+desenvolvimento e
+build
 
-  tailwindcss                                  \^4.3.3 Estilização
+@vitejs/plugin-react \^6.1.1 Integração do React
+com Vite
 
-  @tailwindcss/vite                            \^4.3.3 Integração do
-                                                       Tailwind com Vite
+@supabase/supabase-js \^2.116.0 Cliente para
+integração com
+Supabase
 
-  lucide-react                                \^1.45.0 Ícones
+react-router-dom \^7.18.3 Rotas e navegação
 
-  jspdf                                        \^4.2.1 Geração de PDF
+tailwindcss \^4.3.3 Estilização
 
-  jspdf-autotable                              \^5.0.8 Tabelas em PDF
+@tailwindcss/vite \^4.3.3 Integração do
+Tailwind com Vite
 
-  html2canvas                                  \^1.4.1 Captura de elementos
-                                                       HTML
+lucide-react \^1.45.0 Ícones
 
-  html2canvas-pro                              \^2.4.5 Captura de elementos
-                                                       HTML
+jspdf \^4.2.1 Geração de PDF
 
-  html2pdf.js                                 \^0.14.0 Geração de PDF a
-                                                       partir de HTML
+jspdf-autotable \^5.0.8 Tabelas em PDF
 
-  html5-qrcode                                 \^2.3.8 Leitura de QR Code
+html2canvas \^1.4.1 Captura de elementos
+HTML
 
-  qrcode.react                                 \^4.2.0 Geração de QR Code
+html2canvas-pro \^2.4.5 Captura de elementos
+HTML
 
-  xlsx                                        \^0.18.5 Manipulação de
-                                                       planilhas
+html2pdf.js \^0.14.0 Geração de PDF a
+partir de HTML
 
-  oxlint                                      \^1.81.0 Lint
-  --------------------------------------------------------------------------
+html5-qrcode \^2.3.8 Leitura de QR Code
+
+qrcode.react \^4.2.0 Geração de QR Code
+
+xlsx \^0.18.5 Manipulação de
+planilhas
+
+oxlint \^1.81.0 Lint
+
+---
 
 Scripts declarados: - `npm run dev`: inicia o ambiente de
 desenvolvimento com Vite. - `npm run build`: gera a versão de
@@ -96,7 +100,7 @@ A estrutura abaixo foi identificada nas capturas de tela e no mapa de
 arquitetura fornecidos. Ela pode estar incompleta ou ter mudado desde
 então.
 
-``` text
+```text
 src/
 ├── assets/
 ├── components/
@@ -273,3 +277,178 @@ Este documento pode ser atualizado ao longo do projeto. A versão e a
 data devem ser alteradas a cada atualização relevante. Registre somente
 informações confirmadas; marque como "a confirmar" aquilo que ainda não
 foi verificado.
+
+## 9. Registro de alterações — 29/09/2026
+
+Nesta atualização, foram registradas as alterações realizadas no módulo P1
+e no controle de acesso do Log2CIA:
+
+- **Perfil Permanente da Guarda:** foi incluída a opção `permanente da guarda`
+  nos seletores de perfil do Painel Master e da tela de gestão de policiais.
+- **Menu e rotas:** o `AppLayout.jsx` foi ajustado para reconhecer o perfil
+  `permanente da guarda` e exibir o menu correspondente. O `AppRoutes.jsx`
+  foi ajustado para permitir o acesso às rotas pertinentes.
+- **Livro Digital da Permanência:** foram corrigidas as normalizações do
+  perfil nos arquivos relacionados, evitando que a navegação para o módulo
+  provocasse o comportamento de piscar relatado pelo usuário.
+- **Ações do livro:** na listagem do Livro da Permanência, foram removidos
+  os botões de baixar PDF e upload que apareciam ao lado do ícone de
+  visualização, mantendo o ícone de visualização.
+- **Cadastro/seleção de armeiros:** foi ajustada a busca para considerar
+  nome de guerra, nome completo, numeral, matrícula e diferenças de acentuação.
+- **Novo livro:** foi preparado ajuste para verificar duplicidade e permitir
+  clonagem do turno oposto (A/B), conforme o arquivo específico entregue.
+
+### Arquivos relacionados
+
+- `AppLayout.jsx`
+- `AppRoutes.jsx`
+- `LivroPermanencia.jsx`
+- `Policiais.jsx`
+- `PainelMaster.jsx`
+- `ModalNovoLivro_clonagem_turno_oposto.jsx`
+- `ModalNovoLivro_lista_armeiros_corrigido.jsx`
+
+### Validação e observações
+
+O usuário confirmou que o menu do perfil `permanente da guarda` passou a
+aparecer e que a navegação para o Livro da Permanência ficou funcionando
+adequadamente após os ajustes. Não há registro de execução de testes
+automatizados ou de build nesta atualização.
+
+A inclusão do perfil foi realizada na aplicação sem necessidade de alteração
+do banco de dados, conforme verificação relatada pelo usuário. As alterações
+devem ser consideradas referentes aos arquivos entregues; a implantação em
+produção não é afirmada por este registro.
+
+## 10. Planejamento do módulo P4 — Gestão de Viaturas (01/10/2026)
+
+**Status:** planejamento funcional; ainda depende de levantamento do código e do schema real do Supabase. Os itens desta seção não devem ser interpretados como funcionalidades já implementadas.
+
+### 10.1 Objetivo e escopo inicial
+
+O módulo P4 — Gestão de Viaturas deverá permitir:
+
+- cadastrar e manter os dados administrativos das viaturas;
+- consultar informações operacionais provenientes do P1 — Livro Digital da Permanência;
+- acompanhar situação, pendências e demandas de manutenção;
+- registrar manutenções básicas e agendamentos;
+- disponibilizar relatórios individuais, da frota e de emprego operacional.
+
+O escopo inicial não inclui a implementação do futuro módulo Escalas.
+
+### 10.2 Integração entre P1 e P4
+
+- O P1 permanece responsável pelo registro do serviço e das informações lançadas no Livro da Permanência.
+- O P4 deverá consultar os registros do P1 relacionados às viaturas, conforme os dados efetivamente existentes no banco.
+- O P4 poderá permitir ajustes manuais de informações administrativas ou de referência, mantendo histórico do ajuste, autoria e momento da alteração, após definição técnica do modelo.
+- Um livro com status fechado não deverá aceitar o registro de novas constatações. A notificação para o P4 deverá ser criada somente quando a constatação for registrada enquanto o livro estiver aberto.
+- Notificações já criadas deverão continuar acessíveis no P4 após o fechamento do livro. O P4 poderá analisar e dar prosseguimento à demanda sem modificar o registro original do P1.
+- Uma constatação não deverá tornar a viatura automaticamente indisponível. A avaliação e a decisão sobre as providências caberão ao P4, conforme as regras que forem definidas.
+
+### 10.3 Situação, manutenção e agendamentos
+
+O P4 deverá concentrar o acompanhamento administrativo das viaturas, incluindo demandas de manutenção, pendências e manutenções agendadas. O modelo poderá contemplar, conforme validação técnica, situação operacional e situação da manutenção como informações distintas.
+
+A primeira versão da manutenção será básica e poderá evoluir posteriormente. Os campos definitivos (por exemplo, tipo de serviço, datas, quilometragem, responsável, oficina, peças e custos) dependerão do levantamento do schema e da definição funcional.
+
+Os lembretes de troca de óleo poderão ser baseados em quilometragem ou data; o critério ainda precisa ser definido. Manutenções agendadas deverão poder apresentar, no mínimo conceitual, data/horário, tipo e observações.
+
+### 10.4 Painel do Permanente da Guarda
+
+O painel do perfil **Permanente da Guarda** deverá oferecer uma visão geral, inicialmente apenas para consulta, da situação de cada viatura. A visualização deverá considerar os registros administrativos do P4, incluindo manutenções, pendências, lembretes de troca de óleo e manutenções agendadas.
+
+O agendamento e as alterações administrativas permanecerão sob responsabilidade do P4. O painel não deverá permitir que o permanente altere esses registros, salvo decisão futura expressa.
+
+### 10.5 Relatórios
+
+Foram definidos três tipos de relatório para o módulo:
+
+- ficha individual da viatura;
+- visão geral da frota;
+- relatório de emprego operacional.
+
+Filtros, indicadores, formato de exportação e campos dependerão dos dados disponíveis e da validação durante o levantamento técnico.
+
+### 10.6 Diretriz para o futuro módulo Escalas
+
+O módulo Escalas é uma possibilidade futura e não faz parte da implementação atual. A arquitetura do P4 deverá, entretanto, favorecer o reaproveitamento dos dados cadastrados, especialmente a identificação consistente das viaturas.
+
+No futuro, uma composição poderá receber uma viatura e consultar os dados administrativos mantidos pelo P4, além de determinações do comando e outras informações necessárias ao serviço. Deve-se evitar duplicação desnecessária de dados e considerar a preservação de uma fotografia do estado da viatura no momento da elaboração da escala, para que alterações posteriores no cadastro não modifiquem silenciosamente registros históricos.
+
+### 10.7 Próxima etapa técnica
+
+Antes de implementar, conferir o estado atual do projeto e analisar progressivamente:
+
+1. `LivroPermanencia.jsx` e os serviços que carregam/salvam livros, viaturas e ocorrências;
+2. `Inventario.jsx` e os padrões atuais de listagem e relatórios;
+3. schema real do Supabase, incluindo colunas, relacionamentos, constraints, políticas RLS, triggers e funções pertinentes;
+4. bloqueio de novas constatações após o fechamento e fluxo atual de notificações;
+5. permissões e dados necessários ao painel do permanente.
+
+A primeira implementação deverá ser delimitada somente após esse levantamento. Não presumir nomes de campos ou estruturas do banco, nem declarar testes, build ou deploy sem execução e confirmação.
+
+### Registro da atualização — 01/10/2026
+
+- Atualizada a versão do contrato para 1.2.
+- Registrado o planejamento do P4 — Gestão de Viaturas e suas regras de integração com o P1.
+- Registrados os limites do painel do Permanente da Guarda e a diretriz de compatibilidade futura com o módulo Escalas.
+- Os itens novos são planejamento, não confirmação de implementação.
+
+## 11. Autenticação própria e endurecimento de sessões — 01/10/2026
+
+**Status:** autenticação própria implementada no ambiente local e fluxo básico testado pelo usuário. A revisão das demais APIs protegidas permanece pendente. Não há confirmação de implantação em produção.
+
+### 11.1 Diretriz arquitetural
+
+- O projeto não utilizará Supabase Auth para autenticar os usuários.
+- A autenticação é própria, com endpoints no backend e sessão mantida por cookie `HttpOnly`.
+- O frontend utiliza `src/services/sessionService.js` para chamar `/api/auth/login`, `/api/auth/me` e `/api/auth/logout`, enviando credenciais com `credentials: 'include'`.
+- O backend utiliza Supabase/PostgreSQL para consultar e atualizar os registros de policiais, por meio da chave de serviço mantida exclusivamente no ambiente servidor.
+- A autenticação deve ser validada no servidor. O estado do frontend ou dados armazenados no navegador não são prova suficiente de identidade.
+
+### 11.2 Sessão e senha
+
+- O arquivo `api/auth/_session.js` assina tokens com HMAC-SHA256 e define validade de oito horas.
+- O cookie de sessão utiliza `HttpOnly`, `Secure`, `SameSite=Lax` e `Path=/`.
+- As senhas são armazenadas com hash scrypt, conforme `api/auth/_password.js`; o login mantém compatibilidade de migração de senhas legadas para hash.
+- A troca de senha valida critérios de complexidade, grava o hash e desativa a condição de primeiro acesso.
+- Foi atualizado o fluxo de troca de senha para incrementar `auth_version`, condicionando a atualização à versão presente na sessão. O usuário confirmou que alterou a senha, foi deslogado e conseguiu entrar com a nova senha.
+
+### 11.3 Controle de versão e revogação
+
+- Foi proposto adicionar `public.policiais.auth_version` como inteiro não nulo, padrão `0`, para permitir revogação de tokens.
+- A implementação de troca de senha pressupõe que essa coluna exista e que o token contenha `ver`.
+- O logout básico apaga o cookie do navegador. A revogação efetiva no servidor depende de todas as APIs protegidas compararem a versão do token com a versão atual do banco.
+- A alteração de senha incrementa a versão e, portanto, invalida os tokens anteriores quando a API consultada aplica essa verificação.
+- A existência da coluna no banco e a aplicação da validação em todas as APIs ainda precisam ser confirmadas. Não presumir que todas as rotas estejam protegidas.
+
+### 11.4 Pendências de segurança
+
+1. Conferir o schema real de `public.policiais`, incluindo o campo que representa a situação ativa/inativa do policial.
+2. Verificar se `/api/auth/me` consulta a versão atual e rejeita sessões revogadas e usuários inativos.
+3. Atualizar e auditar as demais APIs para validar sessão, versão e permissões no servidor.
+4. Revisar o logout para confirmar que o incremento de versão está implementado e testado; apagar apenas o cookie não revoga um token copiado.
+5. Avaliar controles adicionais, como limitação de tentativas no pedido de redefinição de senha e tratamento de erros que possam revelar a existência de matrículas.
+6. Executar testes locais e build após a integração dos arquivos; não declarar deploy sem confirmação.
+
+### 11.5 Arquivos relacionados
+
+- `api/auth/_session.js`
+- `api/auth/_password.js`
+- `api/auth/login.js`
+- `api/auth/me.js`
+- `api/auth/logout.js`
+- `api/auth/change-password.js`
+- `src/services/sessionService.js`
+- `src/pages/Login.jsx`
+- `src/routes/AppRoutes.jsx`
+
+### Registro da atualização — 01/10/2026
+
+- Atualizada a versão do contrato para 1.3.
+- Registrado o uso de autenticação própria, sem Supabase Auth.
+- Registrado o hash scrypt e o uso de cookie assinado com HMAC-SHA256.
+- Registrado o teste relatado pelo usuário de alteração de senha, encerramento da sessão e novo login com a senha atualizada.
+- Registrada a estratégia de `auth_version` e as pendências de validação abrangente das APIs.
+- Não há confirmação de build final, auditoria integral das APIs ou implantação em produção.

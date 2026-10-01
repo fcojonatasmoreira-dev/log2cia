@@ -1,42 +1,46 @@
-import { supabase } from "../lib/supabaseClient";
+const API = "/api/policiais";
 
-// Buscar todos os policiais cadastrados
+async function request(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...options.headers },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || "Falha ao acessar policiais.");
+  return body;
+}
+
 export async function getPoliciais() {
-  const { data, error } = await supabase
-    .from("policiais")
-    .select("*")
-    .order("nome_guerra", { ascending: true });
-
-  if (error) throw new Error(error.message);
-  return data;
+  const { policiais } = await request(API);
+  return policiais;
 }
 
-// Cadastrar um novo policial
 export async function createPolicial(policialData) {
-  const { data, error } = await supabase
-    .from("policiais")
-    .insert([policialData])
-    .select();
-
-  if (error) throw new Error(error.message);
-  return data[0];
+  const { policial } = await request(API, { method: "POST", body: JSON.stringify(policialData) });
+  return policial;
 }
 
-// Editar dados de um policial (Apenas Master)
 export async function updatePolicial(id, policialData) {
-  const { data, error } = await supabase
-    .from("policiais")
-    .update(policialData)
-    .eq("id", id)
-    .select();
-
-  if (error) throw new Error(error.message);
-  return data[0];
+  const { policial } = await request(`${API}/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(policialData),
+  });
+  return policial;
 }
 
-// Excluir policial (Apenas Master)
 export async function deletePolicial(id) {
-  const { error } = await supabase.from("policiais").delete().eq("id", id);
+  await request(`${API}/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
 
-  if (error) throw new Error(error.message);
+export async function resetarSenhaPolicial(id) {
+  return request(`${API}/${encodeURIComponent(id)}/reset-senha`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export async function getCautelasPolicial(id) {
+  const { cautelas } = await request(`${API}/${encodeURIComponent(id)}/cautelas`);
+  return cautelas;
 }
