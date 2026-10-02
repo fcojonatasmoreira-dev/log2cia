@@ -15,7 +15,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -640,33 +640,111 @@ export default function Inventario() {
   const exportarExcel = () => {
     setBaixandoExcel(true);
     setTimeout(() => {
-      const dadosFormatados =
-        abaAtiva !== "radios"
-          ? equipamentosFiltrados.map((item) => ({
-              Tipo: formatarTipo(item.tipo),
-              "Modelo / Descrição": item.modelo_descricao || "N/I",
-              Série: item.num_serie || "N/I",
-              Status: item.status,
-            }))
-          : radiosFiltrados.map((item) => ({
-              Tipo: "Rádio Comunicador",
-              "Marca / Modelo": `${item.marca} - ${item.modelo_descricao}`,
-              Série: item.numero_serie,
-              "Nº Identificação": item.numero_identificacao,
-              Status: item.status,
-            }));
+      const agora = new Date();
+      let operador = "Operador não identificado";
+      try {
+        const usuario = JSON.parse(localStorage.getItem("log2cia_user") || "{}");
+        const posto = usuario?.posto_graduacao || usuario?.posto || usuario?.graduacao || "";
+        const numeral = usuario?.numeral || usuario?.numero || usuario?.numero_operacional || "";
+        const nomeGuerra = usuario?.nome_guerra || usuario?.nome_de_guerra || "";
+        const matricula = usuario?.matricula || "";
+        operador = [posto, numeral, nomeGuerra, matricula].filter(Boolean).join(" - ") || operador;
+      } catch (e) {
+        console.error("Não foi possível identificar o operador do relatório:", e);
+      }
 
-      const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
+      const formatarStatusExcel = (status) => {
+        const statusMapeados = {
+          disponivel: "Disponível",
+          cautelado: "Cautelado",
+          em_manutencao: "Em manutenção",
+          baixado: "Baixado",
+        };
+        return statusMapeados[String(status || "").toLowerCase()] || status || "N/I";
+      };
+      const localizacaoExcel = (item) =>
+        item.localizacao_atual || item.detalhes?.localizacao_atual || item.localizacao || "N/I";
+      const dataExcel = (valor) => {
+        if (!valor) return "N/I";
+        const data = String(valor).slice(0, 10);
+        const partes = data.split("-");
+        return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : valor;
+      };
+
+      const titulosExcel = {
+        armamentos: "RELATÓRIO DE ARMAMENTOS",
+        coletes: "RELATÓRIO DE COLETES",
+        municoes: "RELATÓRIO DE MUNIÇÕES",
+        radios: "RELATÓRIO DE RÁDIOS COMUNICADORES",
+      };
+      let colunas = [];
+      let linhas = [];
+      if (abaAtiva === "armamentos") {
+        colunas = ["Modelo", "Nº de Série", "Calibre", "Localização", "Status"];
+        linhas = equipamentosFiltrados.filter((item) => item.tipo === "armamento").map((item) => [
+          item.modelo_descricao || "N/I",
+          item.num_serie || "N/I",
+          item.detalhes?.calibre || item.calibre || "N/I",
+          localizacaoExcel(item),
+          formatarStatusExcel(item.status),
+        ]);
+      } else if (abaAtiva === "coletes") {
+        colunas = ["Modelo", "Nº de Série", "Gênero", "Tamanho", "Data de Validade", "Localização", "Status"];
+        linhas = equipamentosFiltrados.filter((item) => item.tipo === "colete").map((item) => [
+          item.modelo_descricao || "N/I",
+          item.num_serie || "N/I",
+          item.detalhes?.genero || "N/I",
+          item.detalhes?.tamanho || "N/I",
+          dataExcel(item.detalhes?.data_validade),
+          localizacaoExcel(item),
+          formatarStatusExcel(item.status),
+        ]);
+      } else if (abaAtiva === "radios") {
+        colunas = ["Marca", "Modelo", "Nº de Série", "Nº de Identificação", "Localização", "Status"];
+        linhas = radiosFiltrados.map((item) => [
+          item.marca || "N/I",
+          item.modelo_descricao || item.modelo || "N/I",
+          item.numero_serie || "N/I",
+          item.numero_identificacao || "N/I",
+          item.localizacao_atual || "N/I",
+          formatarStatusExcel(item.status),
+        ]);
+      } else {
+        colunas = ["Modelo", "Série / Lote", "Localização", "Status"];
+        linhas = equipamentosFiltrados.map((item) => [
+          item.modelo_descricao || "N/I",
+          item.num_serie || item.detalhes?.lote || "N/I",
+          localizacaoExcel(item),
+          formatarStatusExcel(item.status),
+        ]);
+      }
+
+      const linhasPlanilha = [
+        [`LOG2CIA — ${titulosExcel[abaAtiva] || "RELATÓRIO DO ACERVO"}`],
+        [`Emitido em: ${agora.toLocaleDateString("pt-BR")} às ${agora.toLocaleTimeString("pt-BR")} por: ${operador}`],
+        [],
+        colunas,
+        ...linhas,
+      ];
+      const worksheet = XLSX.utils.aoa_to_sheet(linhasPlanilha);
+      worksheet["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: colunas.length - 1 } }];
+      worksheet["!cols"] = colunas.map((coluna) => ({
+        wch: Math.max(coluna.length + 4, 16),
+      }));
+      for (let r = 3; r < linhasPlanilha.length; r += 1) {
+        for (let c = 0; c < colunas.length; c += 1) {
+          const celula = XLSX.utils.encode_cell({ r, c });
+          if (worksheet[celula]) {
+            worksheet[celula].s = {
+              alignment: { horizontal: "center", vertical: "center", wrapText: true },
+              ...(r === 3 ? { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "1E293B" } } } : {}),
+            };
+          }
+        }
+      }
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(
-        workbook,
-        worksheet,
-        abaAtiva !== "radios" ? "Inventario" : "Radios",
-      );
-      XLSX.writeFile(
-        workbook,
-        `relatorio_${abaAtiva}_${new Date().toISOString().slice(0, 10)}.xlsx`,
-      );
+      XLSX.utils.book_append_sheet(workbook, worksheet, abaAtiva === "radios" ? "Radios" : "Inventario");
+      XLSX.writeFile(workbook, `relatorio_${abaAtiva}_${agora.toISOString().slice(0, 10)}.xlsx`);
 
       setBaixandoExcel(false);
       setSucessoExcel(true);
@@ -677,42 +755,136 @@ export default function Inventario() {
   const exportarPDF = () => {
     setBaixandoPdf(true);
     setTimeout(() => {
-      const doc = new jsPDF();
-      doc.setFontSize(14);
-      doc.text("LOG2CIA — RELATÓRIO DO ACERVO", 14, 15);
-      doc.setFontSize(9);
-      doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 21);
+      const doc = new jsPDF({ orientation: "landscape" });
+      const agora = new Date();
+      let operador = "Operador não identificado";
+      try {
+        const usuario = JSON.parse(localStorage.getItem("log2cia_user") || "{}");
+        const posto = usuario?.posto_graduacao || usuario?.posto || usuario?.graduacao || "";
+        const numeral = usuario?.numeral || usuario?.numero || usuario?.numero_operacional || "";
+        const nomeGuerra = usuario?.nome_guerra || usuario?.nome_de_guerra || "";
+        const matricula = usuario?.matricula || "";
+        operador = [posto, numeral, nomeGuerra, matricula].filter(Boolean).join(" - ") || operador;
+      } catch (e) {
+        console.error("Não foi possível identificar o operador do relatório:", e);
+      }
 
-      const colunas =
-        abaAtiva !== "radios"
-          ? ["Tipo", "Modelo", "Série", "Status"]
-          : ["Marca / Modelo", "Série", "Nº ID", "Status"];
-      const linhas =
-        abaAtiva !== "radios"
-          ? equipamentosFiltrados.map((item) => [
-              formatarTipo(item.tipo),
-              item.modelo_descricao || "N/I",
-              item.num_serie || "N/I",
-              item.status,
-            ])
-          : radiosFiltrados.map((item) => [
-              `${item.marca} - ${item.modelo_descricao}`,
-              item.numero_serie,
-              item.numero_identificacao,
-              item.status,
-            ]);
+      const titulos = {
+        armamentos: "RELATÓRIO DE ARMAMENTOS",
+        coletes: "RELATÓRIO DE COLETES",
+        municoes: "RELATÓRIO DE MUNIÇÕES",
+        radios: "RELATÓRIO DE RÁDIOS COMUNICADORES",
+      };
+      const titulo = titulos[abaAtiva] || "RELATÓRIO DO ACERVO";
+      doc.setFontSize(14);
+      doc.text(`LOG2CIA — ${titulo}`, 14, 15);
+      doc.setFontSize(9);
+      doc.text(
+        `Emitido em: ${agora.toLocaleDateString("pt-BR")} às ${agora.toLocaleTimeString("pt-BR")} por: ${operador}`,
+        14,
+        21,
+      );
+
+      const formatarStatus = (status) => {
+        const statusMapeados = {
+          disponivel: "Disponível",
+          cautelado: "Cautelado",
+          em_manutencao: "Em manutenção",
+          baixado: "Baixado",
+        };
+        return statusMapeados[String(status || "").toLowerCase()] || status || "N/I";
+      };
+      const formatarLocalizacao = (item) =>
+        item.localizacao_atual ||
+        item.detalhes?.localizacao_atual ||
+        item.localizacao ||
+        "N/I";
+      const formatarData = (valor) => {
+        if (!valor) return "N/I";
+        const data = String(valor).slice(0, 10);
+        const partes = data.split("-");
+        return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : valor;
+      };
+
+      let colunas = [];
+      let linhas = [];
+      if (abaAtiva === "armamentos") {
+        colunas = ["Modelo", "Nº de Série", "Calibre", "Localização", "Status"];
+        linhas = equipamentosFiltrados
+          .filter((item) => item.tipo === "armamento")
+          .map((item) => [
+            item.modelo_descricao || "N/I",
+            item.num_serie || "N/I",
+            item.detalhes?.calibre || item.calibre || "N/I",
+            formatarLocalizacao(item),
+            formatarStatus(item.status),
+          ]);
+      } else if (abaAtiva === "coletes") {
+        colunas = [
+          "Modelo",
+          "Nº de Série",
+          "Gênero",
+          "Tamanho",
+          "Data de Validade",
+          "Localização",
+          "Status",
+        ];
+        linhas = equipamentosFiltrados
+          .filter((item) => item.tipo === "colete")
+          .map((item) => [
+            item.modelo_descricao || "N/I",
+            item.num_serie || "N/I",
+            item.detalhes?.genero || "N/I",
+            item.detalhes?.tamanho || "N/I",
+            formatarData(item.detalhes?.data_validade),
+            formatarLocalizacao(item),
+            formatarStatus(item.status),
+          ]);
+      } else if (abaAtiva === "radios") {
+        colunas = [
+          "Marca",
+          "Modelo",
+          "Nº de Série",
+          "Nº de Identificação",
+          "Localização",
+          "Status",
+        ];
+        linhas = radiosFiltrados.map((item) => [
+          item.marca || "N/I",
+          item.modelo_descricao || item.modelo || "N/I",
+          item.numero_serie || "N/I",
+          item.numero_identificacao || "N/I",
+          item.localizacao_atual || "N/I",
+          formatarStatus(item.status),
+        ]);
+      } else {
+        colunas = ["Modelo", "Série / Lote", "Localização", "Status"];
+        linhas = equipamentosFiltrados.map((item) => [
+          item.modelo_descricao || "N/I",
+          item.num_serie || item.detalhes?.lote || "N/I",
+          formatarLocalizacao(item),
+          formatarStatus(item.status),
+        ]);
+      }
 
       autoTable(doc, {
-        startY: 26,
+        startY: 27,
         head: [colunas],
         body: linhas,
         theme: "grid",
-        headStyles: { fillColor: [30, 41, 59] },
-        styles: { fontSize: 7 },
+        headStyles: { fillColor: [30, 41, 59], halign: "center", valign: "middle" },
+        styles: {
+          fontSize: 8,
+          cellPadding: 2.2,
+          overflow: "linebreak",
+          halign: "center",
+          valign: "middle",
+        },
+        margin: { left: 14, right: 14 },
       });
 
       doc.save(
-        `relatorio_${abaAtiva}_${new Date().toISOString().slice(0, 10)}.pdf`,
+        `relatorio_${abaAtiva}_${agora.toISOString().slice(0, 10)}.pdf`,
       );
 
       setBaixandoPdf(false);
