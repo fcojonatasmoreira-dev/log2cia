@@ -11,6 +11,7 @@ import {
   Radio,
   Shield,
   Target,
+  Eye,
   Pencil,
   Trash2,
 } from "lucide-react";
@@ -28,16 +29,28 @@ export default function Inventario() {
   const [radios, setRadios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [armaSelecionada, setArmaSelecionada] = useState(null);
+  const [radioSelecionado, setRadioSelecionado] = useState(null);
+  const [itemEspecialSelecionado, setItemEspecialSelecionado] = useState(null);
+  const [itemEspecialEmEdicao, setItemEspecialEmEdicao] = useState(null);
+  const [salvandoEdicaoEquipamento, setSalvandoEdicaoEquipamento] =
+    useState(false);
+  const [excluindoEquipamento, setExcluindoEquipamento] = useState(null);
   const [modalNovo, setModalNovo] = useState(false);
   const [userRole, setUserRole] = useState("policial");
 
   // Aba ativa: 'geral' (armamentos/coletes/munição) ou 'radios'
-  const [abaAtiva, setAbaAtiva] = useState("geral");
+  const [abaAtiva, setAbaAtiva] = useState("armamentos");
 
   // Estados de Filtros e Busca
   const [filtroTipo, setFiltroTipo] = useState("todos");
   const [filtroDescricao, setFiltroDescricao] = useState("");
   const [filtroSerie, setFiltroSerie] = useState("");
+  const [filtroModeloArmamento, setFiltroModeloArmamento] = useState("");
+  const [filtroIdentificacaoRadio, setFiltroIdentificacaoRadio] = useState("");
+  const [filtroStatusRadio, setFiltroStatusRadio] = useState("todos");
+  const [filtroVencimento, setFiltroVencimento] = useState("todos");
+  const [filtroValidadeDe, setFiltroValidadeDe] = useState("");
+  const [filtroValidadeAte, setFiltroValidadeAte] = useState("");
   const [filtroLocalizacao, setFiltroLocalizacao] = useState("todas");
 
   // Estados de Download / Relatório
@@ -140,23 +153,31 @@ export default function Inventario() {
     }
     setSalvandoEdicaoRadio(true);
     try {
-      const response = await fetch(`/api/radios?id=${encodeURIComponent(radioEmEdicao.id)}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          marca: radioEmEdicao.marca,
-          modelo_descricao: radioEmEdicao.modelo_descricao,
-          numero_serie: radioEmEdicao.numero_serie,
-          numero_identificacao: radioEmEdicao.numero_identificacao,
-          tombo: radioEmEdicao.tombo,
-          localizacao_atual: radioEmEdicao.localizacao_atual,
-          observacoes: radioEmEdicao.observacoes,
-        }),
-      });
+      const response = await fetch(
+        `/api/radios?id=${encodeURIComponent(radioEmEdicao.id)}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            marca: radioEmEdicao.marca,
+            modelo_descricao: radioEmEdicao.modelo_descricao,
+            numero_serie: radioEmEdicao.numero_serie,
+            numero_identificacao: radioEmEdicao.numero_identificacao,
+            tombo: radioEmEdicao.tombo,
+            localizacao_atual: radioEmEdicao.localizacao_atual,
+            observacoes: radioEmEdicao.observacoes,
+          }),
+        },
+      );
       const resultado = await response.json();
-      if (!response.ok) throw new Error(resultado.error || "Não foi possível editar o rádio.");
-      setRadios((atuais) => atuais.map((item) => item.id === resultado.radio.id ? resultado.radio : item));
+      if (!response.ok)
+        throw new Error(resultado.error || "Não foi possível editar o rádio.");
+      setRadios((atuais) =>
+        atuais.map((item) =>
+          item.id === resultado.radio.id ? resultado.radio : item,
+        ),
+      );
       setRadioEmEdicao(null);
       alert("Rádio atualizado com sucesso!");
     } catch (error) {
@@ -169,25 +190,139 @@ export default function Inventario() {
   const excluirRadio = async (radio) => {
     if (!podeEditarExcluirRadio) return;
     if (radio.status === "cautelado") {
-      alert("Não é possível excluir um rádio enquanto estiver cautelado. Faça a devolução primeiro.");
+      alert(
+        "Não é possível excluir um rádio enquanto estiver cautelado. Faça a devolução primeiro.",
+      );
       return;
     }
-    const confirmado = window.confirm(`Confirma a exclusão do rádio ${radio.numero_identificacao} (série ${radio.numero_serie})? Esta ação não pode ser desfeita.`);
+    const confirmado = window.confirm(
+      `Confirma a exclusão do rádio ${radio.numero_identificacao} (série ${radio.numero_serie})? Esta ação não pode ser desfeita.`,
+    );
     if (!confirmado) return;
     setExcluindoRadio(radio.id);
     try {
-      const response = await fetch(`/api/radios?id=${encodeURIComponent(radio.id)}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      const response = await fetch(
+        `/api/radios?id=${encodeURIComponent(radio.id)}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
       const resultado = await response.json();
-      if (!response.ok) throw new Error(resultado.error || "Não foi possível excluir o rádio.");
+      if (!response.ok)
+        throw new Error(resultado.error || "Não foi possível excluir o rádio.");
       setRadios((atuais) => atuais.filter((item) => item.id !== radio.id));
       alert("Rádio excluído com sucesso!");
     } catch (error) {
       alert("Não foi possível excluir o rádio: " + error.message);
     } finally {
       setExcluindoRadio(null);
+    }
+  };
+
+  const abrirEdicaoEquipamento = (item) => {
+    if (!podeEditarExcluirRadio) return;
+    setItemEspecialEmEdicao({
+      ...item,
+      modelo_descricao: item.modelo_descricao || "",
+      num_serie: item.num_serie || "",
+      patrimonio: item.patrimonio || "",
+      status: item.status || "disponivel",
+      detalhes: {
+        ...(item.detalhes || {}),
+        genero: item.detalhes?.genero || "MASCULINO",
+        tamanho: item.detalhes?.tamanho || "M",
+        data_fabricacao: item.detalhes?.data_fabricacao || "",
+        data_validade: item.detalhes?.data_validade || "",
+        lote: item.detalhes?.lote || "",
+        quantidade: item.detalhes?.quantidade ?? 0,
+        localizacao_atual: [
+          "Acautelada com Policial",
+          "Baixa Definitiva",
+          "Estoque da Reserva",
+        ].includes(item.detalhes?.localizacao_atual)
+          ? item.detalhes.localizacao_atual
+          : item.status === "cautelado"
+            ? "Acautelada com Policial"
+            : item.status === "baixado"
+              ? "Baixa Definitiva"
+              : "Estoque da Reserva",
+        obs: item.detalhes?.obs || "",
+        obs_baixa_definitiva: item.detalhes?.obs_baixa_definitiva || "",
+      },
+    });
+  };
+
+  const salvarEdicaoEquipamento = async (e) => {
+    e.preventDefault();
+    if (!itemEspecialEmEdicao || !podeEditarExcluirRadio) return;
+    setSalvandoEdicaoEquipamento(true);
+    try {
+      const response = await fetch(
+        `/api/equipamentos?id=${encodeURIComponent(itemEspecialEmEdicao.id)}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tipo: itemEspecialEmEdicao.tipo,
+            modelo_descricao: itemEspecialEmEdicao.modelo_descricao,
+            num_serie: itemEspecialEmEdicao.num_serie,
+            patrimonio: itemEspecialEmEdicao.patrimonio || null,
+            status: itemEspecialEmEdicao.status,
+            detalhes: itemEspecialEmEdicao.detalhes,
+          }),
+        },
+      );
+      const resultado = await response.json();
+      if (!response.ok)
+        throw new Error(
+          resultado.error || "Não foi possível editar o equipamento.",
+        );
+      setEquipamentos((atuais) =>
+        atuais.map((item) =>
+          item.id === resultado.equipamento.id ? resultado.equipamento : item,
+        ),
+      );
+      setItemEspecialSelecionado(resultado.equipamento);
+      setItemEspecialEmEdicao(null);
+      alert("Equipamento atualizado com sucesso!");
+    } catch (error) {
+      alert("Não foi possível editar o equipamento: " + error.message);
+    } finally {
+      setSalvandoEdicaoEquipamento(false);
+    }
+  };
+
+  const excluirEquipamento = async (item) => {
+    if (!podeEditarExcluirRadio) return;
+    const confirmado = window.confirm(
+      `Confirma a exclusão de ${item.tipo === "colete" ? "colete" : "munição"} "${item.modelo_descricao || "sem descrição"}" (série/lote ${item.num_serie || "não informado"})? Esta ação não pode ser desfeita.`,
+    );
+    if (!confirmado) return;
+    setExcluindoEquipamento(item.id);
+    try {
+      const response = await fetch(
+        `/api/equipamentos?id=${encodeURIComponent(item.id)}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+      const resultado = await response.json();
+      if (!response.ok)
+        throw new Error(
+          resultado.error || "Não foi possível excluir o equipamento.",
+        );
+      setEquipamentos((atuais) =>
+        atuais.filter((registro) => registro.id !== item.id),
+      );
+      setItemEspecialSelecionado(null);
+      alert("Equipamento excluído com sucesso!");
+    } catch (error) {
+      alert("Não foi possível excluir o equipamento: " + error.message);
+    } finally {
+      setExcluindoEquipamento(null);
     }
   };
 
@@ -208,7 +343,9 @@ export default function Inventario() {
       });
       const radioData = await radioResponse.json();
       if (!radioResponse.ok) {
-        throw new Error(radioData.error || "Não foi possível carregar os rádios.");
+        throw new Error(
+          radioData.error || "Não foi possível carregar os rádios.",
+        );
       }
       setRadios(radioData.radios || []);
     } catch (err) {
@@ -279,7 +416,9 @@ export default function Inventario() {
         });
         const radioResultado = await radioResponse.json();
         if (!radioResponse.ok) {
-          throw new Error(radioResultado.error || "Não foi possível cadastrar o rádio.");
+          throw new Error(
+            radioResultado.error || "Não foi possível cadastrar o rádio.",
+          );
         }
         alert("Rádio comunicador cadastrado com sucesso!");
 
@@ -400,6 +539,12 @@ export default function Inventario() {
   // Lógica de Filtragem Geral
   const equipamentosFiltrados = equipamentos.filter((item) => {
     const tipoItem = String(item.tipo || "").toLowerCase();
+    const abaTipo = {
+      armamentos: "armamento",
+      coletes: "colete",
+      municoes: "municao",
+    }[abaAtiva];
+    if (abaTipo && tipoItem !== abaTipo) return false;
     const modeloItem = String(
       item.modelo_descricao || item.modelo || "",
     ).toLowerCase();
@@ -410,17 +555,49 @@ export default function Inventario() {
       item.detalhes?.localizacao_atual || "Estoque da Reserva",
     ).toLowerCase();
 
-    if (filtroTipo !== "todos" && tipoItem !== filtroTipo.toLowerCase())
-      return false;
-    if (filtroDescricao && !modeloItem.includes(filtroDescricao.toLowerCase()))
-      return false;
     if (filtroSerie && !serieItem.includes(filtroSerie.toLowerCase()))
+      return false;
+    if (
+      tipoItem === "armamento" &&
+      filtroModeloArmamento &&
+      !modeloItem.includes(filtroModeloArmamento.trim().toLowerCase())
+    )
       return false;
     if (
       filtroLocalizacao !== "todas" &&
       localizacaoItem !== filtroLocalizacao.toLowerCase()
     )
       return false;
+
+    if (tipoItem === "colete") {
+      const validade = String(item.detalhes?.data_validade || "").slice(0, 10);
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      const dataValidade = validade ? new Date(`${validade}T00:00:00`) : null;
+      const limite30 = new Date(hoje);
+      limite30.setDate(limite30.getDate() + 30);
+      if (
+        filtroVencimento === "vencidos" &&
+        (!dataValidade || dataValidade >= hoje)
+      )
+        return false;
+      if (
+        filtroVencimento === "proximos30" &&
+        (!dataValidade || dataValidade < hoje || dataValidade > limite30)
+      )
+        return false;
+      if (
+        filtroVencimento === "baixados" &&
+        item.status !== "baixado" &&
+        String(item.detalhes?.localizacao_atual || "").toLowerCase() !==
+          "baixa definitiva"
+      )
+        return false;
+      if (filtroValidadeDe && (!validade || validade < filtroValidadeDe))
+        return false;
+      if (filtroValidadeAte && (!validade || validade > filtroValidadeAte))
+        return false;
+    }
 
     return true;
   });
@@ -437,9 +614,19 @@ export default function Inventario() {
       item.localizacao_atual || "Estoque da Reserva",
     ).toLowerCase();
 
-    if (filtroDescricao && !modeloItem.includes(filtroDescricao.toLowerCase()))
-      return false;
     if (filtroSerie && !serieItem.includes(filtroSerie.toLowerCase()))
+      return false;
+    if (
+      filtroIdentificacaoRadio &&
+      !String(item.numero_identificacao || "")
+        .toLowerCase()
+        .includes(filtroIdentificacaoRadio.toLowerCase())
+    )
+      return false;
+    if (
+      filtroStatusRadio !== "todos" &&
+      (item.status || "disponivel") !== filtroStatusRadio
+    )
       return false;
     if (
       filtroLocalizacao !== "todas" &&
@@ -454,7 +641,7 @@ export default function Inventario() {
     setBaixandoExcel(true);
     setTimeout(() => {
       const dadosFormatados =
-        abaAtiva === "geral"
+        abaAtiva !== "radios"
           ? equipamentosFiltrados.map((item) => ({
               Tipo: formatarTipo(item.tipo),
               "Modelo / Descrição": item.modelo_descricao || "N/I",
@@ -474,7 +661,7 @@ export default function Inventario() {
       XLSX.utils.book_append_sheet(
         workbook,
         worksheet,
-        abaAtiva === "geral" ? "Inventario" : "Radios",
+        abaAtiva !== "radios" ? "Inventario" : "Radios",
       );
       XLSX.writeFile(
         workbook,
@@ -497,11 +684,11 @@ export default function Inventario() {
       doc.text(`Emitido em: ${new Date().toLocaleString("pt-BR")}`, 14, 21);
 
       const colunas =
-        abaAtiva === "geral"
+        abaAtiva !== "radios"
           ? ["Tipo", "Modelo", "Série", "Status"]
           : ["Marca / Modelo", "Série", "Nº ID", "Status"];
       const linhas =
-        abaAtiva === "geral"
+        abaAtiva !== "radios"
           ? equipamentosFiltrados.map((item) => [
               formatarTipo(item.tipo),
               item.modelo_descricao || "N/I",
@@ -600,7 +787,12 @@ export default function Inventario() {
           {isP4OrMasterOrArmeiro && (
             <button
               type="button"
-              onClick={() => setModalNovo(true)}
+              onClick={() => {
+                if (abaAtiva === "coletes") setNovoTipo("colete");
+                else if (abaAtiva === "municoes") setNovoTipo("municao");
+                else if (abaAtiva === "armamentos") setNovoTipo("armamento");
+                setModalNovo(true);
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl shadow-md text-xs flex items-center gap-1.5 transition-all ml-1"
             >
               <span>+</span> Novo Equipamento
@@ -609,27 +801,49 @@ export default function Inventario() {
         </div>
       </div>
 
-      {/* ABAS DE NAVEGAÇÃO (GERAL x RÁDIOS) */}
-      <div className="flex bg-slate-200/70 p-1 rounded-2xl w-fit border border-slate-300/60">
-        <button
-          onClick={() => {
-            setAbaAtiva("geral");
-            setFiltroTipo("todos");
-          }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${abaAtiva === "geral" ? "bg-white text-blue-600 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
-        >
-          <Shield className="w-4 h-4" /> Armamentos, Coletes e Munições (
-          {equipamentos.length})
-        </button>
-        <button
-          onClick={() => {
-            setAbaAtiva("radios");
-            setFiltroTipo("todos");
-          }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${abaAtiva === "radios" ? "bg-white text-blue-600 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
-        >
-          <Radio className="w-4 h-4" /> Rádios Comunicadores ({radios.length})
-        </button>
+      {/* ABAS DE NAVEGAÇÃO POR TIPO DE MATERIAL */}
+      <div className="flex flex-wrap bg-slate-200/70 p-1 rounded-2xl w-fit border border-slate-300/60 gap-1">
+        {[
+          {
+            id: "armamentos",
+            label: "Armamentos",
+            count: equipamentos.filter((item) => item.tipo === "armamento")
+              .length,
+            Icon: Shield,
+          },
+          {
+            id: "coletes",
+            label: "Coletes",
+            count: equipamentos.filter((item) => item.tipo === "colete").length,
+            Icon: Shield,
+          },
+          {
+            id: "municoes",
+            label: "Munições",
+            count: equipamentos.filter((item) => item.tipo === "municao")
+              .length,
+            Icon: Target,
+          },
+          {
+            id: "radios",
+            label: "Rádios Comunicadores",
+            count: radios.length,
+            Icon: Radio,
+          },
+        ].map(({ id, label, count, Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => {
+              setAbaAtiva(id);
+              setFiltroTipo("todos");
+              setFiltroModeloArmamento("");
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${abaAtiva === id ? "bg-white text-blue-600 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+          >
+            <Icon className="w-4 h-4" /> {label} ({count})
+          </button>
+        ))}
       </div>
 
       {/* BARRA DE FILTROS AVANÇADOS */}
@@ -639,41 +853,23 @@ export default function Inventario() {
           <span>Filtros de Localização e Busca no Acervo</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {abaAtiva === "geral" && (
+        <div
+          className={`grid grid-cols-1 sm:grid-cols-2 ${abaAtiva === "radios" ? "lg:grid-cols-3 xl:grid-cols-6" : abaAtiva === "coletes" ? "lg:grid-cols-3 xl:grid-cols-4" : abaAtiva === "armamentos" ? "lg:grid-cols-3 xl:grid-cols-3" : "lg:grid-cols-3"} gap-3`}
+        >
+          {abaAtiva === "armamentos" && (
             <div className="space-y-1">
               <label className="block text-[11px] font-bold text-slate-600 uppercase">
-                Tipo de Equipamento
+                Modelo
               </label>
-              <select
-                value={filtroTipo}
-                onChange={(e) => setFiltroTipo(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
-              >
-                <option value="todos">Todos os Tipos</option>
-                <option value="armamento">Armamento</option>
-                <option value="colete">Colete Balístico</option>
-                <option value="municao">Munição</option>
-              </select>
-            </div>
-          )}
-
-          <div className="space-y-1">
-            <label className="block text-[11px] font-bold text-slate-600 uppercase">
-              Modelo / Descrição
-            </label>
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
               <input
                 type="text"
-                value={filtroDescricao}
-                onChange={(e) => setFiltroDescricao(e.target.value)}
-                placeholder="Ex: Fuzil, Motorola..."
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+                value={filtroModeloArmamento}
+                onChange={(e) => setFiltroModeloArmamento(e.target.value)}
+                placeholder="Ex: SIG Sauer..."
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
               />
             </div>
-          </div>
-
+          )}
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
               Nº de Série / ID
@@ -687,6 +883,82 @@ export default function Inventario() {
             />
           </div>
 
+          {abaAtiva === "coletes" && (
+            <>
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                  Vencimento
+                </label>
+                <select
+                  value={filtroVencimento}
+                  onChange={(e) => setFiltroVencimento(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+                >
+                  <option value="todos">Todas as validades</option>
+                  <option value="vencidos">Vencidos</option>
+                  <option value="proximos30">
+                    Vencem nos próximos 30 dias
+                  </option>
+                  <option value="baixados">Baixados (baixa definitiva)</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                  Validade a partir de
+                </label>
+                <input
+                  type="date"
+                  value={filtroValidadeDe}
+                  onChange={(e) => setFiltroValidadeDe(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                  Validade até
+                </label>
+                <input
+                  type="date"
+                  value={filtroValidadeAte}
+                  onChange={(e) => setFiltroValidadeAte(e.target.value)}
+                  min={filtroValidadeDe || undefined}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800"
+                />
+              </div>
+            </>
+          )}
+          {abaAtiva === "radios" && (
+            <>
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                  Nº de Identificação
+                </label>
+                <input
+                  type="text"
+                  value={filtroIdentificacaoRadio}
+                  onChange={(e) => setFiltroIdentificacaoRadio(e.target.value)}
+                  placeholder="Ex: 203827"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                  Status
+                </label>
+                <select
+                  value={filtroStatusRadio}
+                  onChange={(e) => setFiltroStatusRadio(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+                >
+                  <option value="todos">Todos os Status</option>
+                  <option value="disponivel">Disponível</option>
+                  <option value="cautelado">Cautelado</option>
+                  <option value="em_manutencao">Em manutenção</option>
+                  <option value="baixado">Baixado</option>
+                </select>
+              </div>
+            </>
+          )}
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-600 uppercase">
               Localização Atual
@@ -713,23 +985,31 @@ export default function Inventario() {
         <div className="text-center py-10 text-slate-500 font-medium">
           Carregando acervo...
         </div>
-      ) : abaAtiva === "geral" ? (
+      ) : abaAtiva !== "radios" ? (
         <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold text-[11px]">
-                <th className="p-3.5">Tipo / Descrição</th>
-                <th className="p-3.5">Série / Lote</th>
-                <th className="p-3.5">Especificações</th>
-                <th className="p-3.5">Localização</th>
-                <th className="p-3.5">Status</th>
-                <th className="p-3.5 text-right">Ação</th>
+                <th className="p-3.5 text-center">Modelo</th>
+                <th className="p-3.5 text-center">Série / Lote</th>
+                <th className="p-3.5 text-center">
+                  {abaAtiva === "armamentos" ? "Calibre" : "Especificações"}
+                </th>
+                {abaAtiva === "coletes" && (
+                  <th className="p-3.5 text-center">Data de Validade</th>
+                )}
+                <th className="p-3.5 text-center">Localização</th>
+                <th className="p-3.5 text-center">Status</th>
+                <th className="p-3.5 text-center">Ação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {equipamentosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="p-8 text-center text-slate-400">
+                  <td
+                    colSpan={abaAtiva === "coletes" ? 7 : 6}
+                    className="p-8 text-center text-slate-400"
+                  >
                     Nenhum equipamento encontrado com os filtros aplicados.
                   </td>
                 </tr>
@@ -744,7 +1024,7 @@ export default function Inventario() {
 
                   let infoExtra = item.detalhes?.calibre || "";
                   if (item.tipo === "colete") {
-                    infoExtra = `Gênero: ${item.detalhes?.genero || "N/I"} | Tam: ${item.detalhes?.tamanho || "N/I"} | Val: ${item.detalhes?.data_validade || "N/I"}`;
+                    infoExtra = `Gênero: ${item.detalhes?.genero || "N/I"} | Tam: ${item.detalhes?.tamanho || "N/I"}`;
                   } else if (item.tipo === "municao") {
                     infoExtra = `Lote: ${item.detalhes?.lote || "Não Identificado"} | Qtd: ${item.detalhes?.quantidade || 0} un`;
                   }
@@ -754,17 +1034,40 @@ export default function Inventario() {
                       key={item.id}
                       className="hover:bg-slate-50/80 transition-colors"
                     >
-                      <td className="p-3.5 font-bold text-slate-800">
-                        {tipoFormatted} - {modeloVal}
+                      <td
+                        className={`p-3.5 font-bold text-slate-800 ${abaAtiva === "armamentos" ? "text-center" : ""}`}
+                      >
+                        {modeloVal}
                       </td>
-                      <td className="p-3.5 font-mono font-bold text-slate-700">
+                      <td
+                        className={`p-3.5 font-mono font-bold text-slate-700 ${abaAtiva === "armamentos" ? "text-center" : ""}`}
+                      >
                         {serieVal}
                       </td>
-                      <td className="p-3.5 text-slate-600 font-medium">
-                        {infoExtra || "—"}
+                      <td
+                        className={`p-3.5 text-slate-600 font-medium ${abaAtiva === "armamentos" ? "text-center" : ""}`}
+                      >
+                        {abaAtiva === "armamentos"
+                          ? item.detalhes?.calibre || "—"
+                          : infoExtra || "—"}
                       </td>
-                      <td className="p-3.5 text-slate-600">{localizacaoVal}</td>
-                      <td className="p-3.5">
+                      {abaAtiva === "coletes" && (
+                        <td className="p-3.5 text-center font-mono text-slate-700">
+                          {item.detalhes?.data_validade
+                            ? new Date(
+                                `${String(item.detalhes.data_validade).slice(0, 10)}T00:00:00`,
+                              ).toLocaleDateString("pt-BR")
+                            : "Não informada"}
+                        </td>
+                      )}
+                      <td
+                        className={`p-3.5 text-slate-600 ${abaAtiva === "armamentos" ? "text-center" : ""}`}
+                      >
+                        {localizacaoVal}
+                      </td>
+                      <td
+                        className={`p-3.5 ${abaAtiva === "armamentos" ? "text-center" : ""}`}
+                      >
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${item.status === "disponivel" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
                         >
@@ -773,12 +1076,18 @@ export default function Inventario() {
                             : item.status}
                         </span>
                       </td>
-                      <td className="p-3.5 text-right">
+                      <td
+                        className={`p-3.5 ${abaAtiva === "armamentos" ? "text-center" : "text-right"}`}
+                      >
                         <button
-                          onClick={() => setArmaSelecionada(item)}
+                          onClick={() => {
+                            if (item.tipo === "armamento")
+                              setArmaSelecionada(item);
+                            else setItemEspecialSelecionado(item);
+                          }}
                           className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all text-xs border border-slate-200 shadow-xs"
                         >
-                          Ver Detalhes / Fotos
+                          Visualizar
                         </button>
                       </td>
                     </tr>
@@ -793,19 +1102,19 @@ export default function Inventario() {
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold text-[11px]">
-                <th className="p-3.5">Rádio / Marca / Modelo</th>
-                <th className="p-3.5">Nº de Série</th>
-                <th className="p-3.5">Nº Identificação</th>
-                <th className="p-3.5">Tombo</th>
-                <th className="p-3.5">Localização</th>
-                <th className="p-3.5">Status</th>
-                {podeEditarExcluirRadio && <th className="p-3.5 text-right">Ações</th>}
+                <th className="p-3.5 text-center">Rádio / Marca / Modelo</th>
+                <th className="p-3.5 text-center">Nº de Série</th>
+                <th className="p-3.5 text-center">Nº Identificação</th>
+                <th className="p-3.5 text-center">Tombo</th>
+                <th className="p-3.5 text-center">Localização</th>
+                <th className="p-3.5 text-center">Status</th>
+                <th className="p-3.5 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {radiosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={podeEditarExcluirRadio ? 7 : 6} className="p-8 text-center text-slate-400">
+                  <td colSpan={7} className="p-8 text-center text-slate-400">
                     Nenhum rádio comunicador cadastrado.
                   </td>
                 </tr>
@@ -830,88 +1139,45 @@ export default function Inventario() {
                     <td className="p-3.5 text-slate-600">
                       {radio.localizacao_atual}
                     </td>
-                    <td className="p-3.5">
-                      {isP4OrMasterOrArmeiro ? (
-                        <select
-                          value={radio.status || "disponivel"}
-                          disabled={atualizandoStatusRadio === radio.id}
-                          onChange={async (e) => {
-                            const novoStatus = e.target.value;
-                            const statusAnterior = radio.status || "disponivel";
-                            if (novoStatus === statusAnterior) return;
-                            if (statusAnterior === "cautelado" || novoStatus === "cautelado") {
-                              alert("O status Cautelado deve ser alterado pela emissão ou devolução da cautela.");
-                              return;
-                            }
-                            setAtualizandoStatusRadio(radio.id);
-                            const localizacaoAtualizada =
-                              novoStatus === "em_manutencao"
-                                ? "Manutenção"
-                                : novoStatus === "disponivel"
-                                  ? "Estoque da Reserva"
-                                  : radio.localizacao_atual;
-                            try {
-                              const response = await fetch(`/api/radios?id=${encodeURIComponent(radio.id)}`, {
-                                method: "PATCH",
-                                credentials: "include",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  status: novoStatus,
-                                  localizacao_atual: localizacaoAtualizada,
-                                }),
-                              });
-                              const resultado = await response.json();
-                              if (!response.ok) {
-                                throw new Error(resultado.error || "Não foi possível atualizar o status.");
-                              }
-                              setRadios((atuais) => atuais.map((item) =>
-                                item.id === radio.id ? resultado.radio : item
-                              ));
-                            } catch (error) {
-                              alert("Não foi possível atualizar o status: " + error.message);
-                            } finally {
-                              setAtualizandoStatusRadio(null);
-                            }
-                          }}
-                          className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold"
-                          aria-label={`Status do rádio ${radio.numero_identificacao}`}
-                        >
-                          <option value="disponivel">Disponível</option>
-                          <option value="cautelado">Cautelado</option>
-                          <option value="em_manutencao">Em manutenção</option>
-                          <option value="baixado">Baixado</option>
-                        </select>
-                      ) : (
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${radio.status === "disponivel" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
-                          {({ disponivel: "Disponível", cautelado: "Cautelado", em_manutencao: "Em manutenção", baixado: "Baixado" })[radio.status] || radio.status}
-                        </span>
-                      )}
+                    <td className="p-3.5 text-center">
+                      <span
+                        className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                          radio.status === "disponivel"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : radio.status === "cautelado"
+                              ? "bg-blue-100 text-blue-800"
+                              : radio.status === "em_manutencao"
+                                ? "bg-amber-100 text-amber-800"
+                                : radio.status === "baixado"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {{
+                          disponivel: "Disponível",
+                          cautelado: "Cautelado",
+                          em_manutencao: "Em manutenção",
+                          baixado: "Baixado",
+                        }[radio.status] ||
+                          radio.status ||
+                          "Disponível"}
+                      </span>
                     </td>
-                    {podeEditarExcluirRadio && (
-                      <td className="p-3.5">
-                        <div className="flex justify-end items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => abrirEdicaoRadio(radio)}
-                            disabled={radio.status === "cautelado" || salvandoEdicaoRadio || excluindoRadio === radio.id}
-                            title={radio.status === "cautelado" ? "Rádio cautelado não pode ser editado" : "Editar rádio"}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <Pencil className="w-3.5 h-3.5" /> Editar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => excluirRadio(radio)}
-                            disabled={radio.status === "cautelado" || excluindoRadio === radio.id || salvandoEdicaoRadio}
-                            title={radio.status === "cautelado" ? "Rádio cautelado não pode ser excluído" : "Excluir rádio"}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            {excluindoRadio === radio.id ? "Excluindo..." : "Excluir"}
-                          </button>
-                        </div>
-                      </td>
-                    )}
+                    <td className="p-3.5 text-center">
+                      <div className="flex justify-center items-center">
+                        <button
+                          type="button"
+                          onClick={() => setRadioSelecionado(radio)}
+                          disabled={
+                            salvandoEdicaoRadio || excluindoRadio === radio.id
+                          }
+                          title="Visualizar detalhes do rádio"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> Visualizar
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -920,44 +1186,357 @@ export default function Inventario() {
         </div>
       )}
 
+      {radioSelecionado && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-[70] flex items-center justify-center p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setRadioSelecionado(null);
+          }}
+        >
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-100 space-y-4 my-8">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">
+                  Detalhes do Rádio Comunicador
+                </h2>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Consulta dos dados cadastrais e da foto do equipamento.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRadioSelecionado(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-base p-1"
+                aria-label="Fechar detalhes"
+              >
+                ✕
+              </button>
+            </div>
+
+            {radioSelecionado.foto_radio_url ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 flex justify-center">
+                <img
+                  src={radioSelecionado.foto_radio_url}
+                  alt={`Foto do rádio ${radioSelecionado.numero_identificacao || ""}`}
+                  className="max-h-64 max-w-full object-contain rounded-lg"
+                />
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 py-8 text-center text-xs text-slate-500">
+                Nenhuma foto cadastrada para este rádio.
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              {[
+                ["Marca", radioSelecionado.marca],
+                ["Modelo", radioSelecionado.modelo_descricao],
+                ["Nº de Série", radioSelecionado.numero_serie],
+                ["Nº de Identificação", radioSelecionado.numero_identificacao],
+                ["Tombo / Patrimônio", radioSelecionado.tombo],
+                ["Localização Atual", radioSelecionado.localizacao_atual],
+                [
+                  "Status",
+                  {
+                    disponivel: "Disponível",
+                    cautelado: "Cautelado",
+                    em_manutencao: "Em manutenção",
+                    baixado: "Baixado",
+                  }[radioSelecionado.status] || radioSelecionado.status,
+                ],
+              ].map(([rotulo, valor]) => (
+                <div
+                  key={rotulo}
+                  className="rounded-xl bg-slate-50 border border-slate-100 p-3"
+                >
+                  <p className="text-[10px] font-bold uppercase text-slate-500 mb-1">
+                    {rotulo}
+                  </p>
+                  <p className="font-semibold text-slate-800 break-words">
+                    {valor || "—"}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+              <p className="text-[10px] font-bold uppercase text-slate-500 mb-1">
+                Observações
+              </p>
+              <p className="text-xs text-slate-800 whitespace-pre-wrap break-words">
+                {radioSelecionado.observacoes ||
+                  "Nenhuma observação cadastrada."}
+              </p>
+            </div>
+
+            <div className="pt-3 border-t space-y-3">
+              {podeEditarExcluirRadio && (
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold uppercase text-slate-600">
+                    Alterar status
+                  </label>
+                  <select
+                    value={radioSelecionado.status || "disponivel"}
+                    disabled={atualizandoStatusRadio === radioSelecionado.id}
+                    onChange={async (e) => {
+                      const novoStatus = e.target.value;
+                      const statusAnterior =
+                        radioSelecionado.status || "disponivel";
+                      if (novoStatus === statusAnterior) return;
+                      if (
+                        statusAnterior === "cautelado" ||
+                        novoStatus === "cautelado"
+                      ) {
+                        alert(
+                          "O status Cautelado deve ser alterado pela emissão ou devolução da cautela.",
+                        );
+                        return;
+                      }
+                      setAtualizandoStatusRadio(radioSelecionado.id);
+                      const localizacaoAtualizada =
+                        novoStatus === "em_manutencao"
+                          ? "Manutenção"
+                          : novoStatus === "disponivel"
+                            ? "Estoque da Reserva"
+                            : radioSelecionado.localizacao_atual;
+                      try {
+                        const response = await fetch(
+                          `/api/radios?id=${encodeURIComponent(radioSelecionado.id)}`,
+                          {
+                            method: "PATCH",
+                            credentials: "include",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              status: novoStatus,
+                              localizacao_atual: localizacaoAtualizada,
+                            }),
+                          },
+                        );
+                        const resultado = await response.json();
+                        if (!response.ok) {
+                          throw new Error(
+                            resultado.error ||
+                              "Não foi possível atualizar o status.",
+                          );
+                        }
+                        setRadios((atuais) =>
+                          atuais.map((item) =>
+                            item.id === radioSelecionado.id
+                              ? resultado.radio
+                              : item,
+                          ),
+                        );
+                        setRadioSelecionado(resultado.radio);
+                      } catch (error) {
+                        alert(
+                          "Não foi possível atualizar o status: " +
+                            error.message,
+                        );
+                      } finally {
+                        setAtualizandoStatusRadio(null);
+                      }
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-800"
+                    aria-label={`Alterar status do rádio ${radioSelecionado.numero_identificacao}`}
+                  >
+                    <option value="disponivel">Disponível</option>
+                    <option value="cautelado">Cautelado</option>
+                    <option value="em_manutencao">Em manutenção</option>
+                    <option value="baixado">Baixado</option>
+                  </select>
+                  <p className="text-[10px] text-slate-500">
+                    O status Cautelado é controlado pela emissão ou devolução da
+                    cautela.
+                  </p>
+                </div>
+              )}
+              <div className="flex flex-wrap justify-between gap-2">
+                <div className="flex flex-wrap gap-2">
+                  {podeEditarExcluirRadio && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const radio = radioSelecionado;
+                          setRadioSelecionado(null);
+                          abrirEdicaoRadio(radio);
+                        }}
+                        disabled={
+                          radioSelecionado.status === "cautelado" ||
+                          salvandoEdicaoRadio ||
+                          excluindoRadio === radioSelecionado.id
+                        }
+                        title={
+                          radioSelecionado.status === "cautelado"
+                            ? "Rádio cautelado não pode ser editado"
+                            : "Editar rádio"
+                        }
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold disabled:opacity-40 disabled:cursor-not-allowed text-xs"
+                      >
+                        <Pencil className="w-3.5 h-3.5" /> Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const radio = radioSelecionado;
+                          setRadioSelecionado(null);
+                          await excluirRadio(radio);
+                        }}
+                        disabled={
+                          radioSelecionado.status === "cautelado" ||
+                          excluindoRadio === radioSelecionado.id ||
+                          salvandoEdicaoRadio
+                        }
+                        title={
+                          radioSelecionado.status === "cautelado"
+                            ? "Rádio cautelado não pode ser excluído"
+                            : "Excluir rádio"
+                        }
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 font-bold disabled:opacity-40 disabled:cursor-not-allowed text-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        {excluindoRadio === radioSelecionado.id
+                          ? "Excluindo..."
+                          : "Excluir"}
+                      </button>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRadioSelecionado(null)}
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {radioEmEdicao && podeEditarExcluirRadio && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-[60] flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-100 space-y-4 my-8">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h2 className="text-base font-bold text-slate-800">Editar Rádio Comunicador</h2>
-              <button type="button" onClick={() => setRadioEmEdicao(null)} disabled={salvandoEdicaoRadio} className="text-slate-400 hover:text-slate-600 font-bold text-base p-1" aria-label="Fechar">✕</button>
+              <h2 className="text-base font-bold text-slate-800">
+                Editar Rádio Comunicador
+              </h2>
+              <button
+                type="button"
+                onClick={() => setRadioEmEdicao(null)}
+                disabled={salvandoEdicaoRadio}
+                className="text-slate-400 hover:text-slate-600 font-bold text-base p-1"
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
             </div>
             <form onSubmit={salvarEdicaoRadio} className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Marca *</label>
-                  <input required value={radioEmEdicao.marca} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, marca: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase" />
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Marca *
+                  </label>
+                  <input
+                    required
+                    value={radioEmEdicao.marca}
+                    onChange={(e) =>
+                      setRadioEmEdicao((atual) => ({
+                        ...atual,
+                        marca: e.target.value,
+                      }))
+                    }
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase"
+                  />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Modelo *</label>
-                  <input required value={radioEmEdicao.modelo_descricao} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, modelo_descricao: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase" />
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Modelo *
+                  </label>
+                  <input
+                    required
+                    value={radioEmEdicao.modelo_descricao}
+                    onChange={(e) =>
+                      setRadioEmEdicao((atual) => ({
+                        ...atual,
+                        modelo_descricao: e.target.value,
+                      }))
+                    }
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase"
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Nº de Série *</label>
-                  <input required value={radioEmEdicao.numero_serie} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, numero_serie: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase font-mono" />
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Nº de Série *
+                  </label>
+                  <input
+                    required
+                    value={radioEmEdicao.numero_serie}
+                    onChange={(e) =>
+                      setRadioEmEdicao((atual) => ({
+                        ...atual,
+                        numero_serie: e.target.value,
+                      }))
+                    }
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase font-mono"
+                  />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Nº de Identificação *</label>
-                  <input required value={radioEmEdicao.numero_identificacao} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, numero_identificacao: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase font-mono" />
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Nº de Identificação *
+                  </label>
+                  <input
+                    required
+                    value={radioEmEdicao.numero_identificacao}
+                    onChange={(e) =>
+                      setRadioEmEdicao((atual) => ({
+                        ...atual,
+                        numero_identificacao: e.target.value,
+                      }))
+                    }
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase font-mono"
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Tombo / Patrimônio</label>
-                  <input value={radioEmEdicao.tombo} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, tombo: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase" />
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Tombo / Patrimônio
+                  </label>
+                  <input
+                    value={radioEmEdicao.tombo}
+                    onChange={(e) =>
+                      setRadioEmEdicao((atual) => ({
+                        ...atual,
+                        tombo: e.target.value,
+                      }))
+                    }
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase"
+                  />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Localização</label>
-                  <select value={radioEmEdicao.localizacao_atual} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, localizacao_atual: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-                    <option value="Estoque da Reserva">Estoque da Reserva</option>
-                    <option value="Acautelada com Policial">Acautelada com Policial</option>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Localização
+                  </label>
+                  <select
+                    value={radioEmEdicao.localizacao_atual}
+                    onChange={(e) =>
+                      setRadioEmEdicao((atual) => ({
+                        ...atual,
+                        localizacao_atual: e.target.value,
+                      }))
+                    }
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                  >
+                    <option value="Estoque da Reserva">
+                      Estoque da Reserva
+                    </option>
+                    <option value="Acautelada com Policial">
+                      Acautelada com Policial
+                    </option>
                     <option value="Manutenção">Manutenção</option>
                     <option value="Apreendida">Apreendida</option>
                     <option value="Em Perícia">Em Perícia</option>
@@ -965,13 +1544,41 @@ export default function Inventario() {
                 </div>
               </div>
               <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Observações</label>
-                <textarea rows="3" value={radioEmEdicao.observacoes} onChange={(e) => setRadioEmEdicao((atual) => ({ ...atual, observacoes: e.target.value }))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl resize-none" />
+                <label className="block font-bold text-slate-700 uppercase mb-1">
+                  Observações
+                </label>
+                <textarea
+                  rows="3"
+                  value={radioEmEdicao.observacoes}
+                  onChange={(e) =>
+                    setRadioEmEdicao((atual) => ({
+                      ...atual,
+                      observacoes: e.target.value,
+                    }))
+                  }
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl resize-none"
+                />
               </div>
-              <p className="text-[10px] text-slate-500">O status e a foto atual serão preservados. Para alterar o status, use o seletor da tabela.</p>
+              <p className="text-[10px] text-slate-500">
+                O status e a foto atual serão preservados. Para alterar o
+                status, use o seletor da tabela.
+              </p>
               <div className="flex gap-2 pt-3 border-t">
-                <button type="button" onClick={() => setRadioEmEdicao(null)} disabled={salvandoEdicaoRadio} className="w-1/3 py-2.5 bg-slate-100 font-bold rounded-xl">Cancelar</button>
-                <button type="submit" disabled={salvandoEdicaoRadio} className="w-2/3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl disabled:opacity-60">{salvandoEdicaoRadio ? "Salvando..." : "Salvar alterações"}</button>
+                <button
+                  type="button"
+                  onClick={() => setRadioEmEdicao(null)}
+                  disabled={salvandoEdicaoRadio}
+                  className="w-1/3 py-2.5 bg-slate-100 font-bold rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvandoEdicaoRadio}
+                  className="w-2/3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl disabled:opacity-60"
+                >
+                  {salvandoEdicaoRadio ? "Salvando..." : "Salvar alterações"}
+                </button>
               </div>
             </form>
           </div>
@@ -1008,7 +1615,13 @@ export default function Inventario() {
                     if (val === "radio") {
                       setAbaAtiva("radios");
                     } else {
-                      setAbaAtiva("geral");
+                      setAbaAtiva(
+                        val === "colete"
+                          ? "coletes"
+                          : val === "municao"
+                            ? "municoes"
+                            : "armamentos",
+                      );
                       handleTipoChange(val);
                     }
                   }}
@@ -1537,6 +2150,514 @@ export default function Inventario() {
                   className="w-2/3 py-2.5 bg-blue-600 text-white font-bold rounded-xl shadow-md"
                 >
                   {salvando ? "Salvando..." : "Salvar Equipamento"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {itemEspecialSelecionado && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-[70] flex items-center justify-center p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setItemEspecialSelecionado(null);
+          }}
+        >
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-100 space-y-4 my-8">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">
+                  {itemEspecialSelecionado.tipo === "colete"
+                    ? "Detalhes do Colete Balístico"
+                    : "Detalhes da Munição"}
+                </h2>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Consulta dos dados cadastrais e imagens.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setItemEspecialSelecionado(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-base p-1"
+                aria-label="Fechar detalhes"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                [
+                  "Tipo / Descrição",
+                  itemEspecialSelecionado.modelo_descricao ||
+                    itemEspecialSelecionado.modelo ||
+                    "—",
+                ],
+                [
+                  "Nº de Série / Lote",
+                  itemEspecialSelecionado.num_serie ||
+                    itemEspecialSelecionado.numero_serie ||
+                    "—",
+                ],
+                ...(itemEspecialSelecionado.tipo === "colete"
+                  ? [
+                      [
+                        "Gênero",
+                        itemEspecialSelecionado.detalhes?.genero || "—",
+                      ],
+                      [
+                        "Tamanho",
+                        itemEspecialSelecionado.detalhes?.tamanho || "—",
+                      ],
+                      [
+                        "Data de Fabricação",
+                        itemEspecialSelecionado.detalhes?.data_fabricacao ||
+                          "—",
+                      ],
+                      [
+                        "Data de Validade",
+                        itemEspecialSelecionado.detalhes?.data_validade
+                          ? new Date(
+                              `${String(itemEspecialSelecionado.detalhes.data_validade).slice(0, 10)}T00:00:00`,
+                            ).toLocaleDateString("pt-BR")
+                          : "Não informada",
+                      ],
+                    ]
+                  : [
+                      [
+                        "Lote",
+                        itemEspecialSelecionado.detalhes?.lote ||
+                          "Não Identificado",
+                      ],
+                      [
+                        "Quantidade",
+                        `${itemEspecialSelecionado.detalhes?.quantidade ?? 0} unidades`,
+                      ],
+                    ]),
+                [
+                  "Localização Atual",
+                  itemEspecialSelecionado.detalhes?.localizacao_atual ||
+                    "Estoque da Reserva",
+                ],
+                ["Status", itemEspecialSelecionado.status || "—"],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="rounded-xl bg-slate-50 border border-slate-100 p-3"
+                >
+                  <p className="text-[10px] font-bold uppercase text-slate-500 mb-1">
+                    {label}
+                  </p>
+                  <p className="text-xs font-semibold text-slate-800 break-words">
+                    {value}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {itemEspecialSelecionado.tipo === "colete" &&
+              (itemEspecialSelecionado.status === "baixado" ||
+                String(
+                  itemEspecialSelecionado.detalhes?.localizacao_atual || "",
+                ).toLowerCase() === "baixa definitiva") && (
+                <div className="rounded-xl bg-red-50 border border-red-200 p-3">
+                  <p className="text-[10px] font-bold uppercase text-red-700 mb-1">
+                    Observação da baixa definitiva
+                  </p>
+                  <p className="text-xs text-slate-800 whitespace-pre-wrap break-words">
+                    {itemEspecialSelecionado.detalhes?.obs_baixa_definitiva ||
+                      "Nenhuma observação específica da baixa foi cadastrada."}
+                  </p>
+                </div>
+              )}
+            <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+              <p className="text-[10px] font-bold uppercase text-slate-500 mb-1">
+                Observações
+              </p>
+              <p className="text-xs text-slate-800 whitespace-pre-wrap break-words">
+                {itemEspecialSelecionado.detalhes?.obs ||
+                  itemEspecialSelecionado.obs ||
+                  "Nenhuma observação cadastrada."}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase text-slate-500">
+                Fotos / Imagens
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  {
+                    label:
+                      itemEspecialSelecionado.tipo === "colete"
+                        ? "Rótulo da frente"
+                        : "Munições",
+                    url: itemEspecialSelecionado.detalhes?.foto_arma_url,
+                  },
+                  {
+                    label:
+                      itemEspecialSelecionado.tipo === "colete"
+                        ? "Rótulo do verso"
+                        : "Caixa da munição",
+                    url: itemEspecialSelecionado.detalhes?.foto_numeracao_url,
+                  },
+                ].map((foto) => (
+                  <div
+                    key={foto.label}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-2"
+                  >
+                    <p className="text-[10px] font-bold text-slate-500 mb-2">
+                      {foto.label}
+                    </p>
+                    {foto.url ? (
+                      <img
+                        src={foto.url}
+                        alt={foto.label}
+                        className="w-full max-h-56 object-contain rounded-lg"
+                      />
+                    ) : (
+                      <div className="py-8 text-center text-xs text-slate-400">
+                        Imagem não cadastrada
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-between gap-2 pt-2 border-t">
+              <div className="flex gap-2">
+                {podeEditarExcluirRadio && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        abrirEdicaoEquipamento(itemEspecialSelecionado);
+                        setItemEspecialSelecionado(null);
+                      }}
+                      className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        excluirEquipamento(itemEspecialSelecionado)
+                      }
+                      disabled={
+                        excluindoEquipamento === itemEspecialSelecionado.id
+                      }
+                      className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 font-bold text-xs disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {excluindoEquipamento === itemEspecialSelecionado.id
+                        ? "Excluindo..."
+                        : "Excluir"}
+                    </button>
+                  </>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setItemEspecialSelecionado(null)}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {itemEspecialEmEdicao && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[80] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-4 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">
+                  Editar{" "}
+                  {itemEspecialEmEdicao.tipo === "colete"
+                    ? "Colete Balístico"
+                    : "Munição"}
+                </h2>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Altere os dados e salve para atualizar o cadastro.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setItemEspecialEmEdicao(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold p-1"
+                aria-label="Fechar edição"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={salvarEdicaoEquipamento} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                  Tipo / Descrição
+                  <input
+                    required
+                    value={itemEspecialEmEdicao.modelo_descricao}
+                    onChange={(e) =>
+                      setItemEspecialEmEdicao((atual) => ({
+                        ...atual,
+                        modelo_descricao: e.target.value,
+                      }))
+                    }
+                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs normal-case font-medium"
+                  />
+                </label>
+                <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                  Nº de Série / Lote
+                  <input
+                    value={itemEspecialEmEdicao.num_serie}
+                    onChange={(e) =>
+                      setItemEspecialEmEdicao((atual) => ({
+                        ...atual,
+                        num_serie: e.target.value,
+                      }))
+                    }
+                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs normal-case font-medium"
+                  />
+                </label>
+                <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                  Tombo / Patrimônio
+                  <input
+                    value={itemEspecialEmEdicao.patrimonio}
+                    onChange={(e) =>
+                      setItemEspecialEmEdicao((atual) => ({
+                        ...atual,
+                        patrimonio: e.target.value,
+                      }))
+                    }
+                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs normal-case font-medium"
+                  />
+                </label>
+                <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                  Localização Atual
+                  <select
+                    value={itemEspecialEmEdicao.detalhes.localizacao_atual}
+                    onChange={(e) => {
+                      const localizacao = e.target.value;
+                      const status =
+                        localizacao === "Acautelada com Policial"
+                          ? "cautelado"
+                          : localizacao === "Baixa Definitiva"
+                            ? "baixado"
+                            : "disponivel";
+                      setItemEspecialEmEdicao((atual) => ({
+                        ...atual,
+                        status,
+                        detalhes: {
+                          ...atual.detalhes,
+                          localizacao_atual: localizacao,
+                        },
+                      }));
+                    }}
+                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs normal-case font-medium"
+                  >
+                    <option value="Acautelada com Policial">
+                      Acautelado com policial
+                    </option>
+                    <option value="Baixa Definitiva">Baixa definitiva</option>
+                    <option value="Estoque da Reserva">
+                      Disponível na reserva
+                    </option>
+                  </select>
+                </label>
+                {itemEspecialEmEdicao.tipo !== "colete" && (
+                  <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                    Status
+                    <select
+                      value={itemEspecialEmEdicao.status}
+                      onChange={(e) =>
+                        setItemEspecialEmEdicao((atual) => ({
+                          ...atual,
+                          status: e.target.value,
+                        }))
+                      }
+                      className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs normal-case font-medium"
+                    >
+                      <option value="disponivel">Disponível</option>
+                      <option value="cautelado">Cautelado</option>
+                      <option value="em_manutencao">Em manutenção</option>
+                      <option value="baixado">Baixado</option>
+                    </select>
+                  </label>
+                )}
+                {itemEspecialEmEdicao.tipo === "colete" ? (
+                  <>
+                    <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                      Gênero
+                      <select
+                        value={itemEspecialEmEdicao.detalhes.genero}
+                        onChange={(e) =>
+                          setItemEspecialEmEdicao((atual) => ({
+                            ...atual,
+                            detalhes: {
+                              ...atual.detalhes,
+                              genero: e.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs normal-case font-medium"
+                      >
+                        <option value="MASCULINO">Masculino</option>
+                        <option value="FEMININO">Feminino</option>
+                      </select>
+                    </label>
+                    <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                      Tamanho
+                      <input
+                        value={itemEspecialEmEdicao.detalhes.tamanho}
+                        onChange={(e) =>
+                          setItemEspecialEmEdicao((atual) => ({
+                            ...atual,
+                            detalhes: {
+                              ...atual.detalhes,
+                              tamanho: e.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs normal-case font-medium"
+                      />
+                    </label>
+                    <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                      Data de Fabricação
+                      <input
+                        type="date"
+                        value={String(
+                          itemEspecialEmEdicao.detalhes.data_fabricacao || "",
+                        ).slice(0, 10)}
+                        onChange={(e) =>
+                          setItemEspecialEmEdicao((atual) => ({
+                            ...atual,
+                            detalhes: {
+                              ...atual.detalhes,
+                              data_fabricacao: e.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs"
+                      />
+                    </label>
+                    <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                      Data de Validade
+                      <input
+                        type="date"
+                        value={String(
+                          itemEspecialEmEdicao.detalhes.data_validade || "",
+                        ).slice(0, 10)}
+                        onChange={(e) =>
+                          setItemEspecialEmEdicao((atual) => ({
+                            ...atual,
+                            detalhes: {
+                              ...atual.detalhes,
+                              data_validade: e.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs"
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                      Lote
+                      <input
+                        value={itemEspecialEmEdicao.detalhes.lote}
+                        onChange={(e) =>
+                          setItemEspecialEmEdicao((atual) => ({
+                            ...atual,
+                            detalhes: {
+                              ...atual.detalhes,
+                              lote: e.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs normal-case font-medium"
+                      />
+                    </label>
+                    <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                      Quantidade
+                      <input
+                        type="number"
+                        min="0"
+                        value={itemEspecialEmEdicao.detalhes.quantidade}
+                        onChange={(e) =>
+                          setItemEspecialEmEdicao((atual) => ({
+                            ...atual,
+                            detalhes: {
+                              ...atual.detalhes,
+                              quantidade: e.target.value,
+                            },
+                          }))
+                        }
+                        className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs normal-case font-medium"
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+              {itemEspecialEmEdicao.tipo === "colete" &&
+                itemEspecialEmEdicao.detalhes.localizacao_atual ===
+                  "Baixa Definitiva" && (
+                  <label className="block text-[10px] font-bold uppercase text-red-700 space-y-1">
+                    Observação da baixa definitiva
+                    <textarea
+                      rows="3"
+                      required
+                      value={itemEspecialEmEdicao.detalhes.obs_baixa_definitiva}
+                      onChange={(e) =>
+                        setItemEspecialEmEdicao((atual) => ({
+                          ...atual,
+                          detalhes: {
+                            ...atual.detalhes,
+                            obs_baixa_definitiva: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="Informe o motivo e os dados da baixa definitiva..."
+                      className="w-full p-2.5 border border-red-200 rounded-xl bg-red-50 text-xs normal-case font-medium resize-y"
+                    />
+                  </label>
+                )}
+              <label className="block text-[10px] font-bold uppercase text-slate-600 space-y-1">
+                Observações
+                <textarea
+                  rows="3"
+                  value={itemEspecialEmEdicao.detalhes.obs}
+                  onChange={(e) =>
+                    setItemEspecialEmEdicao((atual) => ({
+                      ...atual,
+                      detalhes: { ...atual.detalhes, obs: e.target.value },
+                    }))
+                  }
+                  className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs normal-case font-medium resize-y"
+                />
+              </label>
+              <p className="text-[10px] text-slate-500">
+                As imagens existentes serão preservadas nesta edição.
+              </p>
+              <div className="flex gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setItemEspecialEmEdicao(null)}
+                  className="w-1/3 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvandoEdicaoEquipamento}
+                  className="w-2/3 py-2.5 bg-blue-600 text-white font-bold rounded-xl disabled:opacity-50"
+                >
+                  {salvandoEdicaoEquipamento
+                    ? "Salvando..."
+                    : "Salvar alterações"}
                 </button>
               </div>
             </form>
