@@ -75,7 +75,7 @@ export default function PainelMaster() {
     }
 
     try {
-      const response = await fetch(`/api/solicitacoes-senha/${encodeURIComponent(solicitacao.id)}/aprovar`, {
+      const response = await fetch(`/api/solicitacoes-senha?acao=aprovar&id=${encodeURIComponent(solicitacao.id)}`, {
         method: "POST",
         credentials: "include",
       });
