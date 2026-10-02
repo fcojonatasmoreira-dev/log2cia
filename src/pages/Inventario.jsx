@@ -1,3 +1,4 @@
+// ENTREGA INCREMENTAL: Inventario.jsx | 2026-10-02 | v2: cadastro e edição de coletes alinhados (gênero e tamanho).
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import ModalDetalhesArma from "../components/ModalDetalhesArma";
@@ -637,20 +638,51 @@ export default function Inventario() {
     return true;
   });
 
+  // Totais da aba atual: quantidade após filtros e quantidade total cadastrada.
+  const tipoDaAba = {
+    armamentos: "armamento",
+    coletes: "colete",
+    municoes: "municao",
+  }[abaAtiva];
+  const totalRegistrosAba =
+    abaAtiva === "radios"
+      ? radios.length
+      : equipamentos.filter((item) => item.tipo === tipoDaAba).length;
+  const quantidadeFiltradaAba =
+    abaAtiva === "radios"
+      ? radiosFiltrados.length
+      : equipamentosFiltrados.length;
+
   const exportarExcel = () => {
     setBaixandoExcel(true);
     setTimeout(() => {
       const agora = new Date();
       let operador = "Operador não identificado";
       try {
-        const usuario = JSON.parse(localStorage.getItem("log2cia_user") || "{}");
-        const posto = usuario?.posto_graduacao || usuario?.posto || usuario?.graduacao || "";
-        const numeral = usuario?.numeral || usuario?.numero || usuario?.numero_operacional || "";
-        const nomeGuerra = usuario?.nome_guerra || usuario?.nome_de_guerra || "";
+        const usuario = JSON.parse(
+          localStorage.getItem("log2cia_user") || "{}",
+        );
+        const posto =
+          usuario?.posto_graduacao ||
+          usuario?.posto ||
+          usuario?.graduacao ||
+          "";
+        const numeral =
+          usuario?.numeral ||
+          usuario?.numero ||
+          usuario?.numero_operacional ||
+          "";
+        const nomeGuerra =
+          usuario?.nome_guerra || usuario?.nome_de_guerra || "";
         const matricula = usuario?.matricula || "";
-        operador = [posto, numeral, nomeGuerra, matricula].filter(Boolean).join(" - ") || operador;
+        operador =
+          [posto, numeral, nomeGuerra, matricula].filter(Boolean).join(" - ") ||
+          operador;
       } catch (e) {
-        console.error("Não foi possível identificar o operador do relatório:", e);
+        console.error(
+          "Não foi possível identificar o operador do relatório:",
+          e,
+        );
       }
 
       const formatarStatusExcel = (status) => {
@@ -660,15 +692,22 @@ export default function Inventario() {
           em_manutencao: "Em manutenção",
           baixado: "Baixado",
         };
-        return statusMapeados[String(status || "").toLowerCase()] || status || "N/I";
+        return (
+          statusMapeados[String(status || "").toLowerCase()] || status || "N/I"
+        );
       };
       const localizacaoExcel = (item) =>
-        item.localizacao_atual || item.detalhes?.localizacao_atual || item.localizacao || "N/I";
+        item.localizacao_atual ||
+        item.detalhes?.localizacao_atual ||
+        item.localizacao ||
+        "N/I";
       const dataExcel = (valor) => {
         if (!valor) return "N/I";
         const data = String(valor).slice(0, 10);
         const partes = data.split("-");
-        return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : valor;
+        return partes.length === 3
+          ? `${partes[2]}/${partes[1]}/${partes[0]}`
+          : valor;
       };
 
       const titulosExcel = {
@@ -681,26 +720,45 @@ export default function Inventario() {
       let linhas = [];
       if (abaAtiva === "armamentos") {
         colunas = ["Modelo", "Nº de Série", "Calibre", "Localização", "Status"];
-        linhas = equipamentosFiltrados.filter((item) => item.tipo === "armamento").map((item) => [
-          item.modelo_descricao || "N/I",
-          item.num_serie || "N/I",
-          item.detalhes?.calibre || item.calibre || "N/I",
-          localizacaoExcel(item),
-          formatarStatusExcel(item.status),
-        ]);
+        linhas = equipamentosFiltrados
+          .filter((item) => item.tipo === "armamento")
+          .map((item) => [
+            item.modelo_descricao || "N/I",
+            item.num_serie || "N/I",
+            item.detalhes?.calibre || item.calibre || "N/I",
+            localizacaoExcel(item),
+            formatarStatusExcel(item.status),
+          ]);
       } else if (abaAtiva === "coletes") {
-        colunas = ["Modelo", "Nº de Série", "Gênero", "Tamanho", "Data de Validade", "Localização", "Status"];
-        linhas = equipamentosFiltrados.filter((item) => item.tipo === "colete").map((item) => [
-          item.modelo_descricao || "N/I",
-          item.num_serie || "N/I",
-          item.detalhes?.genero || "N/I",
-          item.detalhes?.tamanho || "N/I",
-          dataExcel(item.detalhes?.data_validade),
-          localizacaoExcel(item),
-          formatarStatusExcel(item.status),
-        ]);
+        colunas = [
+          "Modelo",
+          "Nº de Série",
+          "Gênero",
+          "Tamanho",
+          "Data de Validade",
+          "Localização",
+          "Status",
+        ];
+        linhas = equipamentosFiltrados
+          .filter((item) => item.tipo === "colete")
+          .map((item) => [
+            item.modelo_descricao || "N/I",
+            item.num_serie || "N/I",
+            item.detalhes?.genero || "N/I",
+            item.detalhes?.tamanho || "N/I",
+            dataExcel(item.detalhes?.data_validade),
+            localizacaoExcel(item),
+            formatarStatusExcel(item.status),
+          ]);
       } else if (abaAtiva === "radios") {
-        colunas = ["Marca", "Modelo", "Nº de Série", "Nº de Identificação", "Localização", "Status"];
+        colunas = [
+          "Marca",
+          "Modelo",
+          "Nº de Série",
+          "Nº de Identificação",
+          "Localização",
+          "Status",
+        ];
         linhas = radiosFiltrados.map((item) => [
           item.marca || "N/I",
           item.modelo_descricao || item.modelo || "N/I",
@@ -719,15 +777,23 @@ export default function Inventario() {
         ]);
       }
 
+      // Numeração sequencial dos registros exibidos na planilha Excel.
+      colunas = ["Ord.", ...colunas];
+      linhas = linhas.map((linha, indice) => [indice + 1, ...linha]);
+
       const linhasPlanilha = [
         [`LOG2CIA — ${titulosExcel[abaAtiva] || "RELATÓRIO DO ACERVO"}`],
-        [`Emitido em: ${agora.toLocaleDateString("pt-BR")} às ${agora.toLocaleTimeString("pt-BR")} por: ${operador}`],
+        [
+          `Emitido em: ${agora.toLocaleDateString("pt-BR")} às ${agora.toLocaleTimeString("pt-BR")} por: ${operador}`,
+        ],
         [],
         colunas,
         ...linhas,
       ];
       const worksheet = XLSX.utils.aoa_to_sheet(linhasPlanilha);
-      worksheet["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: colunas.length - 1 } }];
+      worksheet["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: colunas.length - 1 } },
+      ];
       worksheet["!cols"] = colunas.map((coluna) => ({
         wch: Math.max(coluna.length + 4, 16),
       }));
@@ -736,15 +802,31 @@ export default function Inventario() {
           const celula = XLSX.utils.encode_cell({ r, c });
           if (worksheet[celula]) {
             worksheet[celula].s = {
-              alignment: { horizontal: "center", vertical: "center", wrapText: true },
-              ...(r === 3 ? { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "1E293B" } } } : {}),
+              alignment: {
+                horizontal: "center",
+                vertical: "center",
+                wrapText: true,
+              },
+              ...(r === 3
+                ? {
+                    font: { bold: true, color: { rgb: "FFFFFF" } },
+                    fill: { fgColor: { rgb: "1E293B" } },
+                  }
+                : {}),
             };
           }
         }
       }
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, abaAtiva === "radios" ? "Radios" : "Inventario");
-      XLSX.writeFile(workbook, `relatorio_${abaAtiva}_${agora.toISOString().slice(0, 10)}.xlsx`);
+      XLSX.utils.book_append_sheet(
+        workbook,
+        worksheet,
+        abaAtiva === "radios" ? "Radios" : "Inventario",
+      );
+      XLSX.writeFile(
+        workbook,
+        `relatorio_${abaAtiva}_${agora.toISOString().slice(0, 10)}.xlsx`,
+      );
 
       setBaixandoExcel(false);
       setSucessoExcel(true);
@@ -759,14 +841,30 @@ export default function Inventario() {
       const agora = new Date();
       let operador = "Operador não identificado";
       try {
-        const usuario = JSON.parse(localStorage.getItem("log2cia_user") || "{}");
-        const posto = usuario?.posto_graduacao || usuario?.posto || usuario?.graduacao || "";
-        const numeral = usuario?.numeral || usuario?.numero || usuario?.numero_operacional || "";
-        const nomeGuerra = usuario?.nome_guerra || usuario?.nome_de_guerra || "";
+        const usuario = JSON.parse(
+          localStorage.getItem("log2cia_user") || "{}",
+        );
+        const posto =
+          usuario?.posto_graduacao ||
+          usuario?.posto ||
+          usuario?.graduacao ||
+          "";
+        const numeral =
+          usuario?.numeral ||
+          usuario?.numero ||
+          usuario?.numero_operacional ||
+          "";
+        const nomeGuerra =
+          usuario?.nome_guerra || usuario?.nome_de_guerra || "";
         const matricula = usuario?.matricula || "";
-        operador = [posto, numeral, nomeGuerra, matricula].filter(Boolean).join(" - ") || operador;
+        operador =
+          [posto, numeral, nomeGuerra, matricula].filter(Boolean).join(" - ") ||
+          operador;
       } catch (e) {
-        console.error("Não foi possível identificar o operador do relatório:", e);
+        console.error(
+          "Não foi possível identificar o operador do relatório:",
+          e,
+        );
       }
 
       const titulos = {
@@ -792,7 +890,9 @@ export default function Inventario() {
           em_manutencao: "Em manutenção",
           baixado: "Baixado",
         };
-        return statusMapeados[String(status || "").toLowerCase()] || status || "N/I";
+        return (
+          statusMapeados[String(status || "").toLowerCase()] || status || "N/I"
+        );
       };
       const formatarLocalizacao = (item) =>
         item.localizacao_atual ||
@@ -803,7 +903,9 @@ export default function Inventario() {
         if (!valor) return "N/I";
         const data = String(valor).slice(0, 10);
         const partes = data.split("-");
-        return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : valor;
+        return partes.length === 3
+          ? `${partes[2]}/${partes[1]}/${partes[0]}`
+          : valor;
       };
 
       let colunas = [];
@@ -867,12 +969,20 @@ export default function Inventario() {
         ]);
       }
 
+      // Numeração sequencial dos registros exibidos no relatório PDF.
+      colunas = ["Ord.", ...colunas];
+      linhas = linhas.map((linha, indice) => [indice + 1, ...linha]);
+
       autoTable(doc, {
         startY: 27,
         head: [colunas],
         body: linhas,
         theme: "grid",
-        headStyles: { fillColor: [30, 41, 59], halign: "center", valign: "middle" },
+        headStyles: {
+          fillColor: [30, 41, 59],
+          halign: "center",
+          valign: "middle",
+        },
         styles: {
           fontSize: 8,
           cellPadding: 2.2,
@@ -883,9 +993,7 @@ export default function Inventario() {
         margin: { left: 14, right: 14 },
       });
 
-      doc.save(
-        `relatorio_${abaAtiva}_${agora.toISOString().slice(0, 10)}.pdf`,
-      );
+      doc.save(`relatorio_${abaAtiva}_${agora.toISOString().slice(0, 10)}.pdf`);
 
       setBaixandoPdf(false);
       setSucessoPdf(true);
@@ -902,6 +1010,9 @@ export default function Inventario() {
           </h1>
           <p className="text-xs text-slate-500">
             Gestão e controle de equipamentos e materiais bélicos
+          </p>
+          <p className="mt-1 text-[10px] font-medium text-slate-400">
+            Arquivo: Inventario.jsx · Entrega incremental 2026-10-02 · v2
           </p>
         </div>
 
@@ -1159,16 +1270,30 @@ export default function Inventario() {
         </div>
       ) : abaAtiva !== "radios" ? (
         <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-100">
+            <span className="text-xs font-semibold text-slate-700">
+              Registros exibidos: <strong>{quantidadeFiltradaAba}</strong> de{" "}
+              <strong>{totalRegistrosAba}</strong>
+            </span>
+            <span className="text-[10px] text-slate-500">
+              Considera os filtros aplicados
+            </span>
+          </div>
+          <table className="w-full text-center text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold text-[11px]">
                 <th className="p-3.5 text-center">Modelo</th>
                 <th className="p-3.5 text-center">Série / Lote</th>
-                <th className="p-3.5 text-center">
-                  {abaAtiva === "armamentos" ? "Calibre" : "Especificações"}
-                </th>
-                {abaAtiva === "coletes" && (
-                  <th className="p-3.5 text-center">Data de Validade</th>
+                {abaAtiva === "armamentos" ? (
+                  <th className="p-3.5 text-center">Calibre</th>
+                ) : abaAtiva === "coletes" ? (
+                  <>
+                    <th className="p-3.5 text-center">Gênero</th>
+                    <th className="p-3.5 text-center">Tamanho</th>
+                    <th className="p-3.5 text-center">Data de Validade</th>
+                  </>
+                ) : (
+                  <th className="p-3.5 text-center">Especificações</th>
                 )}
                 <th className="p-3.5 text-center">Localização</th>
                 <th className="p-3.5 text-center">Status</th>
@@ -1179,7 +1304,7 @@ export default function Inventario() {
               {equipamentosFiltrados.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={abaAtiva === "coletes" ? 7 : 6}
+                    colSpan={abaAtiva === "coletes" ? 8 : 6}
                     className="p-8 text-center text-slate-400"
                   >
                     Nenhum equipamento encontrado com os filtros aplicados.
@@ -1195,9 +1320,7 @@ export default function Inventario() {
                     item.detalhes?.localizacao_atual || "Estoque da Reserva";
 
                   let infoExtra = item.detalhes?.calibre || "";
-                  if (item.tipo === "colete") {
-                    infoExtra = `Gênero: ${item.detalhes?.genero || "N/I"} | Tam: ${item.detalhes?.tamanho || "N/I"}`;
-                  } else if (item.tipo === "municao") {
+                  if (item.tipo === "municao") {
                     infoExtra = `Lote: ${item.detalhes?.lote || "Não Identificado"} | Qtd: ${item.detalhes?.quantidade || 0} un`;
                   }
 
@@ -1206,23 +1329,28 @@ export default function Inventario() {
                       key={item.id}
                       className="hover:bg-slate-50/80 transition-colors"
                     >
-                      <td
-                        className={`p-3.5 font-bold text-slate-800 ${abaAtiva === "armamentos" ? "text-center" : ""}`}
-                      >
+                      <td className="p-3.5 text-center font-bold text-slate-800">
                         {modeloVal}
                       </td>
-                      <td
-                        className={`p-3.5 font-mono font-bold text-slate-700 ${abaAtiva === "armamentos" ? "text-center" : ""}`}
-                      >
+                      <td className="p-3.5 text-center font-mono font-bold text-slate-700">
                         {serieVal}
                       </td>
-                      <td
-                        className={`p-3.5 text-slate-600 font-medium ${abaAtiva === "armamentos" ? "text-center" : ""}`}
-                      >
-                        {abaAtiva === "armamentos"
-                          ? item.detalhes?.calibre || "—"
-                          : infoExtra || "—"}
-                      </td>
+                      {abaAtiva === "coletes" ? (
+                        <>
+                          <td className="p-3.5 text-center text-slate-600 font-medium">
+                            {item.detalhes?.genero || "N/I"}
+                          </td>
+                          <td className="p-3.5 text-center text-slate-600 font-medium">
+                            {item.detalhes?.tamanho || "N/I"}
+                          </td>
+                        </>
+                      ) : (
+                        <td className="p-3.5 text-center text-slate-600 font-medium">
+                          {abaAtiva === "armamentos"
+                            ? item.detalhes?.calibre || "—"
+                            : infoExtra || "—"}
+                        </td>
+                      )}
                       {abaAtiva === "coletes" && (
                         <td className="p-3.5 text-center font-mono text-slate-700">
                           {item.detalhes?.data_validade
@@ -1232,14 +1360,10 @@ export default function Inventario() {
                             : "Não informada"}
                         </td>
                       )}
-                      <td
-                        className={`p-3.5 text-slate-600 ${abaAtiva === "armamentos" ? "text-center" : ""}`}
-                      >
+                      <td className="p-3.5 text-center text-slate-600">
                         {localizacaoVal}
                       </td>
-                      <td
-                        className={`p-3.5 ${abaAtiva === "armamentos" ? "text-center" : ""}`}
-                      >
+                      <td className="p-3.5 text-center">
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${item.status === "disponivel" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
                         >
@@ -1248,9 +1372,7 @@ export default function Inventario() {
                             : item.status}
                         </span>
                       </td>
-                      <td
-                        className={`p-3.5 ${abaAtiva === "armamentos" ? "text-center" : "text-right"}`}
-                      >
+                      <td className="p-3.5 text-center">
                         <button
                           onClick={() => {
                             if (item.tipo === "armamento")
@@ -1271,7 +1393,16 @@ export default function Inventario() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-100">
+            <span className="text-xs font-semibold text-slate-700">
+              Registros exibidos: <strong>{quantidadeFiltradaAba}</strong> de{" "}
+              <strong>{totalRegistrosAba}</strong>
+            </span>
+            <span className="text-[10px] text-slate-500">
+              Considera os filtros aplicados
+            </span>
+          </div>
+          <table className="w-full text-center text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold text-[11px]">
                 <th className="p-3.5 text-center">Rádio / Marca / Modelo</th>
@@ -1296,19 +1427,19 @@ export default function Inventario() {
                     key={radio.id}
                     className="hover:bg-slate-50/80 transition-colors"
                   >
-                    <td className="p-3.5 font-bold text-slate-800">
+                    <td className="p-3.5 text-center font-bold text-slate-800">
                       {radio.marca} - {radio.modelo_descricao}
                     </td>
-                    <td className="p-3.5 font-mono font-bold text-slate-700">
+                    <td className="p-3.5 text-center font-mono font-bold text-slate-700">
                       {radio.numero_serie}
                     </td>
-                    <td className="p-3.5 font-mono text-blue-600 font-bold">
+                    <td className="p-3.5 text-center font-mono text-blue-600 font-bold">
                       {radio.numero_identificacao}
                     </td>
-                    <td className="p-3.5 text-slate-600">
+                    <td className="p-3.5 text-center text-slate-600">
                       {radio.tombo || "—"}
                     </td>
-                    <td className="p-3.5 text-slate-600">
+                    <td className="p-3.5 text-center text-slate-600">
                       {radio.localizacao_atual}
                     </td>
                     <td className="p-3.5 text-center">
@@ -2678,11 +2809,12 @@ export default function Inventario() {
                       >
                         <option value="MASCULINO">Masculino</option>
                         <option value="FEMININO">Feminino</option>
+                        <option value="UNISEX">Unissex</option>
                       </select>
                     </label>
                     <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
                       Tamanho
-                      <input
+                      <select
                         value={itemEspecialEmEdicao.detalhes.tamanho}
                         onChange={(e) =>
                           setItemEspecialEmEdicao((atual) => ({
@@ -2694,7 +2826,13 @@ export default function Inventario() {
                           }))
                         }
                         className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs normal-case font-medium"
-                      />
+                      >
+                        {["PP", "P", "M", "G", "GG"].map((tamanho) => (
+                          <option key={tamanho} value={tamanho}>
+                            {tamanho}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <label className="text-[10px] font-bold uppercase text-slate-600 space-y-1">
                       Data de Fabricação
