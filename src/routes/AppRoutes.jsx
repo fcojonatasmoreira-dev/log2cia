@@ -13,6 +13,9 @@ import PainelMaster from "../pages/PainelMaster";
 import Login from "../pages/Login";
 import AlterarSenhaObrigatoria from "../pages/AlterarSenhaObrigatoria";
 import LivroPermanencia from "../pages/p1/LivroPermanencia";
+import BancoHoras from "../pages/BancoHoras";
+import BancoHorasPolicial from "../pages/BancoHorasPolicial";
+import NovaInsercaoBancoHoras from "../pages/NovaInsercaoBancoHoras";
 import { obterSessao, logout } from "../services/sessionService";
 
 export default function AppRoutes() {
@@ -89,6 +92,19 @@ export default function AppRoutes() {
             <Route path="cautelas/nova" element={<NovaCautela />} />
             <Route path="minhas-cautelas" element={<MinhasCautelas />} />
             <Route path="devolucao" element={<Devolucao />} />
+
+            <Route
+              path="banco-horas"
+              element={
+                usuario.is_master === true || ["master", "p1"].includes(String(usuario.role || "").trim().toLowerCase())
+                  ? <BancoHoras />
+                  : <BancoHorasPolicial />
+              }
+            />
+
+            {(usuario.is_master === true || ["master", "p1"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+              <Route path="banco-horas/nova" element={<NovaInsercaoBancoHoras />} />
+            )}
 
             {/* Rota para o Módulo P1 - Livro da Permanência */}
             {(usuario.is_master === true ||

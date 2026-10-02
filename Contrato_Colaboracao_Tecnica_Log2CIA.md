@@ -1,7 +1,7 @@
 # CONTRATO DE COLABORAÇÃO TÉCNICA --- LOG2CIA
 
-**Versão:** 1.3\
-**Data de atualização:** 01/10/2026\
+**Versão:** 1.6\
+**Data de atualização:** 02/10/2026\
 **Finalidade:** servir como documento de recuperação de contexto para
 retomar o trabalho sobre o sistema Log2CIA caso o histórico da conversa
 não esteja disponível.
@@ -397,7 +397,7 @@ A primeira implementação deverá ser delimitada somente após esse levantament
 
 ## 11. Autenticação própria e endurecimento de sessões — 01/10/2026
 
-**Status:** autenticação própria implementada no ambiente local e fluxo básico testado pelo usuário. A revisão das demais APIs protegidas permanece pendente. Não há confirmação de implantação em produção.
+**Status:** autenticação própria e funcionamento local do sistema foram confirmados pelo usuário com `npx vercel dev --local-config vercel.local.json`. A revisão das demais APIs protegidas permanece pendente. Não há confirmação de implantação em produção.
 
 ### 11.1 Diretriz arquitetural
 
@@ -452,3 +452,123 @@ A primeira implementação deverá ser delimitada somente após esse levantament
 - Registrado o teste relatado pelo usuário de alteração de senha, encerramento da sessão e novo login com a senha atualizada.
 - Registrada a estratégia de `auth_version` e as pendências de validação abrangente das APIs.
 - Não há confirmação de build final, auditoria integral das APIs ou implantação em produção.
+
+## 12. Ambiente local e preparação do deploy — 01/10/2026
+
+**Status:** o usuário confirmou que o sistema está funcionando localmente após iniciar o Vercel Dev com uma configuração local separada. O deploy de produção ainda não foi confirmado.
+
+### 12.1 Execução local
+
+- `npm run dev` inicia o frontend pelo Vite. Esse comando, isoladamente, não executa as funções serverless da Vercel; chamadas para `/api/auth/login` no endereço do Vite retornaram `404 (Not Found)`.
+- O usuário executou `npx vercel dev --local-config vercel.local.json` e confirmou que tudo funcionou.
+- `vercel.local.json` é uma configuração de apoio ao desenvolvimento local e não deve ser incluída no commit de produção sem necessidade e decisão expressa.
+- O `vercel.json` original contém o rewrite para `index.html`, usado para suportar as rotas do SPA no Preview. Deve ser preservado no fluxo de publicação, pois já foi validado pelo usuário no Preview. Não substituir por `{}` como alteração permanente.
+
+### 12.2 Build e avisos
+
+- O usuário executou `npm run build`; a saída compartilhada terminou com `built` e código de sucesso.
+- Foram apresentados avisos sobre importação dinâmica e estática de `jspdf` e sobre chunks maiores que 500 kB. Na execução relatada, esses avisos não impediram a conclusão do build.
+- Não afirmar que o build de um commit posterior ou a implantação em produção foi validado sem novo resultado.
+
+### 12.3 Publicação
+
+- O fluxo previsto continua sendo GitHub integrado à Vercel, com commit e push para a branch configurada.
+- Antes de publicar, conferir `git status` e `git diff`; não incluir `vercel.local.json`, arquivos `.env`, credenciais ou outros artefatos locais.
+- O usuário ainda não confirmou que realizou o commit/push nem que o deploy de produção foi concluído.
+- Após o deploy, verificar o estado `Ready` na Vercel e testar login e funcionalidades relevantes em produção.
+
+### 12.4 Estado das alterações de rádios
+
+- O trabalho recente envolveu o módulo de rádios, incluindo a necessidade de edição e exclusão para os perfis Master e P4.
+- A edição/exclusão não deve ser considerada implantada ou validada em produção sem confirmação do usuário e verificação do código efetivamente integrado.
+- Manter as mutações de rádio na API própria, com autenticação e autorização no servidor; não contornar a RLS com políticas abertas.
+- Preservar a regra de que o status `cautelado` deve decorrer do fluxo de cautela, não de alteração manual isolada.
+
+### Registro da atualização — 01/10/2026
+
+- Atualizada a versão do contrato para 1.4.
+- Registrado o funcionamento local confirmado com Vercel Dev e configuração separada.
+- Registrada a diferença entre `npm run dev` (frontend) e `npx vercel dev` (frontend e funções locais).
+- Registrado o build concluído com sucesso, mantendo anotados os avisos apresentados.
+- Reforçada a preservação do `vercel.json` validado no Preview e a exclusão da configuração local do commit.
+- Deploy de produção e integração final das alterações de edição/exclusão de rádios permanecem sem confirmação.
+
+## 13. Relatórios do Inventário — PDF e Excel — 02/10/2026
+
+**Status:** alterações preparadas no arquivo `src/pages/Inventario.jsx` e entregues para teste local. Build, commit, push e deploy desta atualização ainda não foram confirmados.
+
+### 13.1 Relatórios por categoria
+
+A exportação deve respeitar a categoria ativa e os filtros aplicados no Inventário. As colunas definidas são:
+
+- **Armamentos:** modelo, número de série, calibre, localização e status.
+- **Coletes:** modelo, número de série, gênero, tamanho, data de validade, localização e status.
+- **Rádios comunicadores:** marca, modelo, número de série, número de identificação, localização e status.
+- **Munições:** relatório próprio; conferir os campos efetivamente disponíveis no código/schema antes de ampliar ou alterar suas colunas.
+
+O título do relatório deve identificar a categoria (armamentos, coletes, munições ou rádios), acompanhado de data e hora de emissão.
+
+### 13.2 Identificação do operador
+
+A identificação pretendida no cabeçalho dos relatórios PDF e Excel segue o formato:
+
+**Posto/graduação + numeral + nome de guerra + matrícula.**
+
+O código entregue procura os campos `posto_graduacao`/`posto`/`graduacao`, `numeral`/`numero`/`numero_operacional`, `nome_guerra`/`nome_de_guerra` e `matricula` no objeto `log2cia_user`. A correspondência desses nomes com os dados reais da sessão deve ser conferida no teste; se algum campo não estiver disponível, a identificação poderá ficar incompleta.
+
+### 13.3 Formatação e dependência do Excel
+
+- A tabela do PDF deve centralizar cabeçalhos e dados.
+- A planilha Excel foi preparada para centralizar cabeçalhos e dados e aplicar estilo ao cabeçalho.
+- O arquivo entregue importa `xlsx-js-style` para gravar estilos de célula. A dependência precisa estar instalada no projeto (`npm install xlsx-js-style`) antes do build.
+- Não há alteração de schema do banco prevista para essas melhorias de exportação.
+
+### Registro da atualização — 02/10/2026
+
+- Atualizada a versão do contrato para 1.5.
+- Registradas as colunas específicas dos relatórios por categoria e a identificação do operador com numeral.
+- Registrada a centralização das tabelas PDF/Excel e a dependência `xlsx-js-style`.
+- As alterações estão preparadas, mas devem ser testadas localmente antes do commit e do deploy.
+
+## 14. Entrega incremental — Consultas e cadastro/edição de coletes — 02/10/2026
+
+**Versão documental:** 1.6  
+**Arquivo de referência entregue:** `Inventario_atualizado_2026-10-02_v2.jsx` (substitui `src/pages/Inventario.jsx`).  
+**Status:** alteração preparada e entregue para validação local. Não há confirmação de build, teste funcional, commit, push ou deploy desta revisão.
+
+### 14.1 Consultas do inventário
+
+- As abas de armamentos, coletes, munições e rádios devem apresentar o número de registros que correspondem aos filtros ativos e o total cadastrado para a categoria selecionada.
+- A indicação adotada é “Registros exibidos: X de Y”, acompanhada de texto informando que o resultado considera os filtros aplicados.
+- As tabelas dessas quatro categorias foram ajustadas para centralizar os cabeçalhos e os conteúdos das células.
+- Em coletes, a listagem apresenta gênero e tamanho em colunas distintas, em substituição à coluna conjunta “Especificações”.
+
+### 14.2 Cadastro e edição de coletes
+
+- O formulário de cadastro já continha campos independentes para gênero e tamanho.
+- O formulário de edição foi alinhado ao cadastro: gênero com opções Masculino, Feminino e Unissex; tamanho com opções PP, P, M, G e GG.
+- A persistência no componente utiliza `detalhes.genero` e `detalhes.tamanho`.
+- Não foi incluída migração SQL nesta entrega. A ausência de necessidade de alteração no banco depende de a coluna `detalhes` existente aceitar e armazenar esses atributos (por exemplo, como JSON/JSONB) e de a API preservar o objeto. Confirmar o schema e o fluxo de gravação antes de concluir a validação.
+
+### 14.3 Identificação e continuidade das entregas
+
+- O componente exibe a identificação `Inventario.jsx · Entrega incremental 2026-10-02 · v2`.
+- O comentário no início do arquivo também identifica a entrega incremental e seu escopo.
+- Essa identificação visual facilita reconhecer o arquivo, mas o histórico oficial das alterações deve continuar sendo mantido por commits no Git.
+- As entregas futuras devem partir do arquivo mais recente confirmado pelo usuário, preservando as alterações anteriores e registrando versão, data, escopo e estado de validação.
+
+### 14.4 Validação antes da publicação
+
+1. Substituir o arquivo em `src/pages/Inventario.jsx`.
+2. Testar cadastro de colete e conferir se gênero e tamanho são gravados separadamente.
+3. Editar um colete existente e confirmar que os valores são carregados e salvos corretamente.
+4. Conferir a contagem de registros em cada categoria, com filtros vazios e ativos.
+5. Conferir a centralização das quatro tabelas e verificar os relatórios PDF/Excel já existentes.
+6. Executar `npm run build` e revisar `git diff` antes do commit e do push.
+
+### Registro da atualização — 02/10/2026
+
+- Atualizada a versão do contrato de cooperação técnica para 1.6.
+- Documentados os contadores de registros filtrados e totais nas quatro categorias.
+- Documentada a separação de gênero e tamanho na listagem de coletes e o alinhamento do cadastro/edição.
+- Registrada a identificação incremental do arquivo e o estado ainda pendente de validação.

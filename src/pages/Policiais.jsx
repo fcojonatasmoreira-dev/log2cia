@@ -982,6 +982,7 @@ export default function Policiais() {
                         Permanente da Guarda
                       </option>
                       <option value="armeiro">Armeiro</option>
+                      <option value="p1">P1</option>
                       <option value="p4">P4</option>
                       <option value="master">Master</option>
                     </select>

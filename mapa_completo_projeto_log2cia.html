@@ -4,8 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
-      PROJECT_MAP - Log2CIA | Regras de Negócio, Assinatura Eletrônica, P1 &
-      Arquitetura
+      PROJECT_MAP - Log2CIA | Regras, Arquitetura e Estado do Projeto v1.7
     </title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   </head>
@@ -18,11 +17,15 @@
         <div class="flex items-center gap-3">
           <span class="text-3xl">🛡️</span>
           <h1 class="text-2xl md:text-3xl font-bold tracking-tight text-white">
-            PROJECT_MAP — Log2CIA | Regras, Assinatura, P1 & Arquitetura
+            PROJECT_MAP — Log2CIA | Regras, Assinatura, P1 & Arquitetura — v1.7
           </h1>
         </div>
         <p class="text-sm text-slate-400">
-          Documentação de referência do Log2CIA: regras de negócio, restrições RBAC, inventário P4, duplo controle de armeiros, Módulo P1 (Livro Digital da Permanência) e planejamento do P4 — Gestão de Viaturas. Confirmar sempre o estado real do código e do banco antes de implementar.
+          Documentação de referência do Log2CIA: regras de negócio, arquitetura,
+          módulos, ambiente local e fluxo de publicação. Atualizada em
+          02/10/2026 (v1.7). Mapeamento estrutural reorganizado; confirmar a
+          árvore real do repositório antes de tratar itens não verificados como
+          existentes.
         </p>
       </header>
 
@@ -163,7 +166,11 @@
               class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
             >
               <li>
-                <strong>Permanente da Guarda:</strong> Operador do turno, preenche o livro e registra as informações permitidas enquanto o livro está aberto. O painel de situação das viaturas previsto para esse perfil será inicialmente de consulta; agendamentos e alterações administrativas ficam sob responsabilidade do P4.
+                <strong>Permanente da Guarda:</strong> Operador do turno,
+                preenche o livro e registra as informações permitidas enquanto o
+                livro está aberto. O painel de situação das viaturas previsto
+                para esse perfil será inicialmente de consulta; agendamentos e
+                alterações administrativas ficam sob responsabilidade do P4.
               </li>
               <li>
                 <strong>P1 / P4 / Armeiro:</strong> Gestores setoriais. P1
@@ -269,40 +276,195 @@
         </div>
       </section>
 
-      <!-- Seção 5: Mapeamento de Pastas -->
+      <!-- Seção 5: Mapeamento estrutural do projeto -->
       <section class="space-y-4">
         <h2
           class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
         >
-          5. Mapeamento Arquitetural de Pastas e Componentes
+          5. Mapeamento Estrutural do Projeto
         </h2>
         <div
-          class="bg-slate-950 p-4 rounded-xl text-xs font-mono text-slate-300 overflow-x-auto border border-slate-700 leading-relaxed"
+          class="bg-slate-950 p-5 rounded-xl border border-emerald-700 space-y-2 text-xs"
         >
-          src/<br />
-          ├── components/<br />
-          │ ├── layout/AppLayout.jsx # Orquestrador de layout e restrição RBAC
-          na sidebar<br />
-          │ ├── p1/<br />
-          │ │ └── ModalNovoLivro.jsx # Modal interativo do Livro Digital com
-          busca inteligente de efetivo<br />
-          │ └── ModalDetalhesArma.jsx # Ficha técnica dinâmica e QR Code<br />
-          ├── pages/<br />
-          │ ├── p1/<br />
-          │ │ └── LivroPermanencia.jsx # Página principal de listagem, download
-          PDF e visualização de assinaturas P1<br />
-          │ ├── Login.jsx # Autenticação inteligente (Numeral vs 4 dígitos)<br />
-          │ ├── AlterarSenhaObrigatoria.jsx # Troca obrigatória de senha<br />
-          │ ├── Dashboard.jsx # Métricas condicionais<br />
-          │ ├── Policiais.jsx # Gestão de efetivo<br />
-          │ ├── Cautelas.jsx # Gestão de cautelas, aceite e hashes SHA-256<br />
-          │ ├── Inventario.jsx # Acervo bélico e rádios comunicadores<br />
-          │ └── PainelMaster.jsx # Governança e papéis RBAC<br />
-          ├── lib/supabaseClient.js # Conector oficial Supabase<br />
-          └── AppRoutes.jsx # Rotas protegidas (incluindo /livro-permanencia)
+          <p class="text-emerald-300 font-bold">
+            Mapa lógico dos componentes e arquivos identificados na documentação
+            e nas entregas analisadas até 02/10/2026.
+          </p>
+          <p class="text-slate-300 leading-relaxed">
+            Este mapa distingue arquivos conhecidos de diretórios cuja
+            composição completa ainda depende da conferência do repositório
+            atual. Não representa uma listagem obtida diretamente do GitHub ou
+            do computador do usuário.
+          </p>
+        </div>
+
+        <div
+          class="bg-slate-950 p-4 rounded-xl border border-slate-700 space-y-3"
+        >
+          <h3 class="font-bold text-amber-300 text-sm">
+            Árvore estrutural conhecida
+          </h3>
+          <pre
+            class="text-[11px] leading-relaxed text-slate-300 whitespace-pre-wrap font-mono"
+          >
+Log2CIA/
+├── api/                              # Backend: funções/API executadas no servidor
+│   ├── _server.js                    # Autenticação/autorização e utilitários compartilhados
+│   ├── auth/
+│   │   ├── _session.js               # Assinatura e leitura da sessão (HMAC-SHA256)
+│   │   ├── _password.js              # Geração e verificação de hash scrypt
+│   │   ├── login.js                  # Entrada e migração de senha legada
+│   │   ├── me.js                     # Consulta do usuário da sessão
+│   │   ├── change-password.js        # Alteração de senha e incremento de auth_version
+│   │   └── logout.js                 # Encerramento/revogação da sessão
+│   └── radios/
+│       └── index.js                  # API de consulta e gestão de rádios
+├── src/                              # Aplicação React (frontend)
+│   ├── components/
+│   │   ├── layout/
+│   │   │   └── AppLayout.jsx         # Estrutura visual e navegação por perfil
+│   │   ├── p1/
+│   │   │   └── ModalNovoLivro.jsx    # Formulário do Livro Digital
+│   │   └── ModalDetalhesArma.jsx     # Ficha/modal de detalhes do acervo
+│   ├── pages/
+│   │   ├── p1/
+│   │   │   └── LivroPermanencia.jsx  # Página do Livro Digital
+│   │   ├── Login.jsx                # Tela de autenticação
+│   │   ├── AlterarSenhaObrigatoria.jsx
+│   │   ├── Dashboard.jsx
+│   │   ├── Policiais.jsx
+│   │   ├── Cautelas.jsx
+│   │   ├── Inventario.jsx           # Armamentos, coletes, munições e rádios
+│   │   └── PainelMaster.jsx
+│   ├── services/
+│   │   └── sessionService.js         # Chamadas de sessão com credenciais de cookie
+│   ├── lib/
+│   │   └── supabaseClient.js         # Cliente Supabase do frontend
+│   └── AppRoutes.jsx                 # Rotas da aplicação
+├── public/                           # Arquivos públicos do frontend (conteúdo a conferir)
+├── package.json                      # Dependências e scripts npm
+├── vercel.json                       # Configuração de rotas/deploy; preservar rewrite validado
+└── vercel.local.json                 # Configuração local citada; não incluir no Git sem decisão</pre
+          >
+          <p class="text-[10px] text-slate-400 leading-relaxed">
+            A árvore acima lista apenas os caminhos explicitamente
+            identificados. Não se deve concluir que os diretórios estejam
+            limitados aos itens exibidos.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div
+            class="bg-slate-950 p-4 rounded-xl border border-slate-700 space-y-2"
+          >
+            <h3 class="font-bold text-blue-300 text-sm">
+              Frontend — responsabilidades
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>pages/:</strong> telas de negócio e fluxos principais
+                (Livro da Permanência, inventário, cautelas, efetivo, painel e
+                login).
+              </li>
+              <li>
+                <strong>components/:</strong> componentes reutilizáveis e
+                modais, incluindo layout, formulário do Livro e detalhes do
+                acervo.
+              </li>
+              <li>
+                <strong>services/:</strong> comunicação com serviços de backend,
+                incluindo o serviço de sessão.
+              </li>
+              <li>
+                <strong>lib/:</strong> integração cliente com Supabase. A chave
+                de serviço não deve ser colocada no frontend.
+              </li>
+              <li>
+                <strong>AppRoutes.jsx:</strong> composição das rotas e proteção
+                de navegação no frontend; autorização efetiva também deve
+                ocorrer no backend.
+              </li>
+            </ul>
+          </div>
+          <div
+            class="bg-slate-950 p-4 rounded-xl border border-slate-700 space-y-2"
+          >
+            <h3 class="font-bold text-blue-300 text-sm">
+              Backend — responsabilidades
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>api/auth/:</strong> login, leitura da sessão, troca de
+                senha e logout.
+              </li>
+              <li>
+                <strong>api/_server.js:</strong> funções compartilhadas para
+                identificar a sessão e aplicar regras de acesso, conforme
+                implementação existente.
+              </li>
+              <li>
+                <strong>api/radios/:</strong> endpoints próprios para acesso e
+                alterações no inventário de rádios.
+              </li>
+              <li>
+                <strong>Segredos:</strong> credenciais privilegiadas do Supabase
+                permanecem exclusivamente no servidor.
+              </li>
+              <li>
+                <strong>Autorização:</strong> validar sessão, versão e papel no
+                servidor; não confiar apenas em estado de interface ou
+                localStorage.
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div
+          class="bg-slate-950 p-4 rounded-xl border border-amber-700 space-y-2 text-xs"
+        >
+          <h3 class="font-bold text-amber-300 text-sm">
+            Configuração, banco e arquivos ainda a conferir
+          </h3>
+          <ul
+            class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+          >
+            <li>
+              <strong>Vercel:</strong> <code>vercel.json</code> contém o rewrite
+              usado no Preview; <code>vercel.local.json</code> é configuração
+              local e deve permanecer fora do commit, salvo decisão expressa.
+            </li>
+            <li>
+              <strong>Supabase/PostgreSQL:</strong> tabelas documentadas incluem
+              <code>public.livros_permanencia</code>,
+              <code>public.livro_viaturas</code>,
+              <code>public.livro_ocorrencias</code>,
+              <code>public.cautelas</code>, <code>public.policiais</code>,
+              <code>public.equipamentos</code> e <code>public.radios</code>. O
+              schema real deve ser conferido antes de qualquer migração.
+            </li>
+            <li>
+              <strong>Arquivos de configuração:</strong> confirmar no
+              repositório os arquivos de entrada, configuração do Vite,
+              Tailwind, ESLint e demais ferramentas, sem presumir nomes ou
+              existência.
+            </li>
+            <li>
+              <strong>Demais APIs e serviços:</strong> o inventário completo de
+              endpoints, utilitários, hooks, estilos, assets e migrations
+              depende da árvore atual do projeto.
+            </li>
+            <li>
+              <strong>Ambiente:</strong> arquivos <code>.env</code>, chaves e
+              credenciais não devem ser copiados para documentação, commits ou
+              pacotes de entrega.
+            </li>
+          </ul>
         </div>
       </section>
-
       <!-- Seção 6: Mapeamento Detalhado de Telas — Módulo P1 -->
       <section class="space-y-4">
         <h2
@@ -334,7 +496,10 @@
                 Assinatura").
               </li>
               <li>
-                <strong>Ações por Linha:</strong> Ícone de visualização do registro. Os botões de baixar PDF e upload que apareciam ao lado da visualização foram removidos; não os considerar como ações atuais dessa listagem.
+                <strong>Ações por Linha:</strong> Ícone de visualização do
+                registro. Os botões de baixar PDF e upload que apareciam ao lado
+                da visualização foram removidos; não os considerar como ações
+                atuais dessa listagem.
               </li>
             </ul>
           </div>
@@ -532,120 +697,441 @@
         </div>
       </section>
 
-
       <!-- Seção 8: Planejamento do P4 — Gestão de Viaturas -->
       <section class="space-y-4">
-        <h2 class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
           8. Planejamento do P4 — Gestão de Viaturas (01/10/2026)
         </h2>
-        <div class="bg-slate-950 p-5 rounded-xl border border-amber-700 space-y-4 text-xs">
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-amber-700 space-y-4 text-xs"
+        >
           <p class="text-amber-300 font-bold">
-            Planejamento funcional — não representa funcionalidades já implementadas.
-            O desenvolvimento depende da análise dos arquivos atuais e do schema real do Supabase.
+            Planejamento funcional — não representa funcionalidades já
+            implementadas. O desenvolvimento depende da análise dos arquivos
+            atuais e do schema real do Supabase.
           </p>
           <div class="space-y-2">
             <h3 class="font-bold text-white text-sm">Objetivo do módulo</h3>
             <p class="text-slate-300 leading-relaxed">
-              O P4 deverá cadastrar e acompanhar as viaturas, consultar dados operacionais do P1,
-              administrar demandas e manutenções, controlar agendamentos e emitir relatórios
-              individuais, gerais da frota e de emprego operacional.
+              O P4 deverá cadastrar e acompanhar as viaturas, consultar dados
+              operacionais do P1, administrar demandas e manutenções, controlar
+              agendamentos e emitir relatórios individuais, gerais da frota e de
+              emprego operacional.
             </p>
           </div>
           <div class="space-y-2">
-            <h3 class="font-bold text-white text-sm">Integração P1/P4 e constatações</h3>
-            <ul class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed">
-              <li>O P1 continua sendo a origem dos registros do Livro da Permanência; o P4 consulta as informações de viaturas disponíveis no banco.</li>
-              <li>Ajustes manuais no P4 deverão manter histórico, autoria e data/hora, conforme modelo técnico a definir.</li>
-              <li>Novas constatações somente podem gerar notificação ao P4 enquanto o livro estiver aberto. Livro fechado não aceita nova constatação.</li>
-              <li>Notificações já criadas permanecem acessíveis no P4 após o fechamento; a análise e o prosseguimento não alteram o registro original do P1.</li>
-              <li>Constatação não significa indisponibilidade automática: o P4 analisa e decide as providências.</li>
+            <h3 class="font-bold text-white text-sm">
+              Integração P1/P4 e constatações
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                O P1 continua sendo a origem dos registros do Livro da
+                Permanência; o P4 consulta as informações de viaturas
+                disponíveis no banco.
+              </li>
+              <li>
+                Ajustes manuais no P4 deverão manter histórico, autoria e
+                data/hora, conforme modelo técnico a definir.
+              </li>
+              <li>
+                Novas constatações somente podem gerar notificação ao P4
+                enquanto o livro estiver aberto. Livro fechado não aceita nova
+                constatação.
+              </li>
+              <li>
+                Notificações já criadas permanecem acessíveis no P4 após o
+                fechamento; a análise e o prosseguimento não alteram o registro
+                original do P1.
+              </li>
+              <li>
+                Constatação não significa indisponibilidade automática: o P4
+                analisa e decide as providências.
+              </li>
             </ul>
           </div>
           <div class="space-y-2">
-            <h3 class="font-bold text-white text-sm">Painel do Permanente da Guarda</h3>
+            <h3 class="font-bold text-white text-sm">
+              Painel do Permanente da Guarda
+            </h3>
             <p class="text-slate-300 leading-relaxed">
-              Está previsto um painel geral, inicialmente de consulta, com a situação das viaturas
-              baseada nos registros do P4: manutenções, pendências, lembretes de troca de óleo
-              e manutenções agendadas. Agendamentos e alterações administrativas ficam sob
-              responsabilidade do P4. O critério do lembrete de óleo (quilometragem ou data)
-              ainda será definido.
+              Está previsto um painel geral, inicialmente de consulta, com a
+              situação das viaturas baseada nos registros do P4: manutenções,
+              pendências, lembretes de troca de óleo e manutenções agendadas.
+              Agendamentos e alterações administrativas ficam sob
+              responsabilidade do P4. O critério do lembrete de óleo
+              (quilometragem ou data) ainda será definido.
             </p>
           </div>
           <div class="space-y-2">
-            <h3 class="font-bold text-white text-sm">Manutenção e relatórios</h3>
+            <h3 class="font-bold text-white text-sm">
+              Manutenção e relatórios
+            </h3>
             <p class="text-slate-300 leading-relaxed">
-              A manutenção começará com recursos básicos, podendo evoluir depois. Os campos
-              finais dependem da análise do schema e dos requisitos. Foram definidos três
-              relatórios: ficha individual, visão geral da frota e emprego operacional.
+              A manutenção começará com recursos básicos, podendo evoluir
+              depois. Os campos finais dependem da análise do schema e dos
+              requisitos. Foram definidos três relatórios: ficha individual,
+              visão geral da frota e emprego operacional.
             </p>
           </div>
           <div class="space-y-2">
-            <h3 class="font-bold text-white text-sm">Compatibilidade futura com Escalas</h3>
+            <h3 class="font-bold text-white text-sm">
+              Compatibilidade futura com Escalas
+            </h3>
             <p class="text-slate-300 leading-relaxed">
-              O módulo Escalas não será desenvolvido nesta etapa. A arquitetura deverá permitir
-              que, futuramente, uma composição vinculada a uma viatura consulte os dados do P4
-              e as determinações do comando. Deve-se preservar o histórico da escala e evitar
-              duplicação desnecessária de dados.
+              O módulo Escalas não será desenvolvido nesta etapa. A arquitetura
+              deverá permitir que, futuramente, uma composição vinculada a uma
+              viatura consulte os dados do P4 e as determinações do comando.
+              Deve-se preservar o histórico da escala e evitar duplicação
+              desnecessária de dados.
             </p>
           </div>
           <div class="space-y-2">
             <h3 class="font-bold text-white text-sm">Próxima etapa técnica</h3>
             <p class="text-slate-300 leading-relaxed">
-              Antes de editar código, conferir LivroPermanencia.jsx, os serviços relacionados,
-              Inventario.jsx e o schema real do Supabase. Confirmar o bloqueio de constatações
-              após fechamento, o fluxo de notificações e as permissões. Não presumir colunas,
-              políticas ou relacionamentos.
+              Antes de editar código, conferir LivroPermanencia.jsx, os serviços
+              relacionados, Inventario.jsx e o schema real do Supabase.
+              Confirmar o bloqueio de constatações após fechamento, o fluxo de
+              notificações e as permissões. Não presumir colunas, políticas ou
+              relacionamentos.
             </p>
           </div>
         </div>
       </section>
 
-
       <!-- Seção 9: Autenticação própria e segurança de sessões -->
       <section class="space-y-4">
-        <h2 class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
           9. Autenticação Própria & Segurança de Sessões (01/10/2026)
         </h2>
-        <div class="bg-slate-950 p-5 rounded-xl border border-amber-700 space-y-4 text-xs">
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-amber-700 space-y-4 text-xs"
+        >
           <p class="text-amber-300 font-bold">
-            Estado parcial: fluxo básico testado localmente pelo usuário. A revisão das demais APIs protegidas e a validação do schema permanecem pendentes. Não há confirmação de deploy.
+            Estado: o usuário confirmou o funcionamento do login no ambiente
+            local usando Vercel Dev com configuração local separada. A revisão
+            das demais APIs protegidas e a validação do schema permanecem
+            pendentes. Não há confirmação de deploy em produção.
           </p>
           <div class="space-y-2">
-            <h3 class="font-bold text-white text-sm">Arquitetura de autenticação</h3>
-            <ul class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed">
-              <li>Autenticação própria; o projeto não utiliza Supabase Auth para autenticar usuários.</li>
-              <li>O frontend chama <code>/api/auth/login</code>, <code>/api/auth/me</code> e <code>/api/auth/logout</code> por meio de <code>src/services/sessionService.js</code>, com <code>credentials: 'include'</code>.</li>
-              <li>O backend valida a sessão e acessa o Supabase/PostgreSQL com a chave de serviço exclusivamente no servidor.</li>
-              <li>A sessão é mantida em cookie <code>HttpOnly</code>, <code>Secure</code>, <code>SameSite=Lax</code> e <code>Path=/</code>.</li>
+            <h3 class="font-bold text-white text-sm">
+              Arquitetura de autenticação
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                Autenticação própria; o projeto não utiliza Supabase Auth para
+                autenticar usuários.
+              </li>
+              <li>
+                O frontend chama <code>/api/auth/login</code>,
+                <code>/api/auth/me</code> e <code>/api/auth/logout</code> por
+                meio de <code>src/services/sessionService.js</code>, com
+                <code>credentials: 'include'</code>.
+              </li>
+              <li>
+                O backend valida a sessão e acessa o Supabase/PostgreSQL com a
+                chave de serviço exclusivamente no servidor.
+              </li>
+              <li>
+                A sessão é mantida em cookie <code>HttpOnly</code>,
+                <code>Secure</code>, <code>SameSite=Lax</code> e
+                <code>Path=/</code>.
+              </li>
             </ul>
           </div>
           <div class="space-y-2">
             <h3 class="font-bold text-white text-sm">Assinatura e senha</h3>
-            <ul class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed">
-              <li>Tokens assinados com HMAC-SHA256 e validade de oito horas, conforme <code>api/auth/_session.js</code>.</li>
-              <li>Senhas armazenadas com hash scrypt, conforme <code>api/auth/_password.js</code>; o login contempla migração de senhas legadas para hash.</li>
-              <li>A troca de senha grava o hash, encerra o primeiro acesso e foi testada pelo usuário: após alterar a senha, o sistema deslogou e aceitou o novo login.</li>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                Tokens assinados com HMAC-SHA256 e validade de oito horas,
+                conforme <code>api/auth/_session.js</code>.
+              </li>
+              <li>
+                Senhas armazenadas com hash scrypt, conforme
+                <code>api/auth/_password.js</code>; o login contempla migração
+                de senhas legadas para hash.
+              </li>
+              <li>
+                A troca de senha grava o hash, encerra o primeiro acesso e foi
+                testada pelo usuário: após alterar a senha, o sistema deslogou e
+                aceitou o novo login.
+              </li>
             </ul>
           </div>
           <div class="space-y-2">
             <h3 class="font-bold text-white text-sm">Revogação por versão</h3>
             <p class="text-slate-300 leading-relaxed">
-              A estratégia proposta utiliza <code>public.policiais.auth_version</code> para comparar a versão gravada no token com a versão atual no banco. A troca de senha incrementa essa versão, invalidando tokens antigos nas APIs que fizerem a verificação.
+              A estratégia proposta utiliza
+              <code>public.policiais.auth_version</code> para comparar a versão
+              gravada no token com a versão atual no banco. A troca de senha
+              incrementa essa versão, invalidando tokens antigos nas APIs que
+              fizerem a verificação.
             </p>
             <p class="text-amber-300 leading-relaxed">
-              A existência da coluna no banco e a validação em todas as APIs ainda precisam ser confirmadas. Apagar o cookie no logout, isoladamente, não revoga um token copiado.
+              A existência da coluna no banco e a validação em todas as APIs
+              ainda precisam ser confirmadas. Apagar o cookie no logout,
+              isoladamente, não revoga um token copiado.
             </p>
           </div>
           <div class="space-y-2">
-            <h3 class="font-bold text-white text-sm">Pendências antes da produção</h3>
-            <ul class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed">
-              <li>Confirmar o schema real de <code>policiais</code> e o campo que indica se o usuário está ativo.</li>
-              <li>Conferir a validação da sessão em <code>/api/auth/me</code> e em todas as APIs protegidas, incluindo permissões por perfil.</li>
+            <h3 class="font-bold text-white text-sm">
+              Pendências antes da produção
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                Confirmar o schema real de <code>policiais</code> e o campo que
+                indica se o usuário está ativo.
+              </li>
+              <li>
+                Conferir a validação da sessão em <code>/api/auth/me</code> e em
+                todas as APIs protegidas, incluindo permissões por perfil.
+              </li>
               <li>Confirmar a revogação no logout e após troca de senha.</li>
-              <li>Revisar proteção contra tentativas abusivas e mensagens que possam revelar matrículas existentes.</li>
-              <li>Executar testes locais e build após a integração. Não há confirmação de implantação em produção.</li>
+              <li>
+                Revisar proteção contra tentativas abusivas e mensagens que
+                possam revelar matrículas existentes.
+              </li>
+              <li>
+                Executar testes locais e build após a integração. Não há
+                confirmação de implantação em produção.
+              </li>
             </ul>
           </div>
+        </div>
+      </section>
+
+      <!-- Seção 10: Ambiente local e publicação -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          10. Ambiente Local, Vite e Deploy (01/10/2026)
+        </h2>
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-emerald-700 space-y-3 text-xs"
+        >
+          <p class="text-emerald-300 font-bold">
+            Validação relatada pelo usuário: o sistema iniciou e funcionou
+            localmente com Vercel Dev usando configuração local separada.
+          </p>
+          <ul
+            class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+          >
+            <li>
+              <code>npm run dev</code> inicia o frontend Vite, mas não
+              disponibiliza as funções serverless da Vercel; por isso, chamadas
+              como <code>POST /api/auth/login</code> retornam 404 nesse modo,
+              salvo se houver proxy/backend configurado.
+            </li>
+            <li>
+              <code>npx vercel dev --local-config vercel.local.json</code> foi o
+              comando usado para executar localmente o projeto e suas APIs; o
+              usuário confirmou que tudo funcionou.
+            </li>
+            <li>
+              O arquivo <code>vercel.local.json</code> é destinado ao
+              desenvolvimento local e não deve ser enviado ao repositório sem
+              decisão expressa.
+            </li>
+            <li>
+              O <code>vercel.json</code> original contém rewrite de rotas para
+              <code>/index.html</code>, necessário à navegação do SPA no Preview
+              validado. Preservar essa configuração; não substituí-la por
+              <code>{}</code> no fluxo de publicação.
+            </li>
+            <li>
+              O comando <code>npm run build</code> foi executado e concluiu com
+              sucesso, com avisos sobre importação dinâmica/estática do jsPDF e
+              tamanho de chunks. Esses avisos não foram tratados como falha do
+              build.
+            </li>
+            <li>
+              O deploy de produção ainda não foi confirmado. Antes de publicar,
+              revisar <code>git status</code> e <code>git diff</code>, excluir
+              arquivos locais/segredos e só então realizar commit e push
+              conforme o fluxo Git/Vercel do usuário.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Relatórios do Inventário — 02/10/2026 -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          Relatórios do Inventário — PDF e Excel (02/10/2026)
+        </h2>
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-slate-700 space-y-3 text-xs"
+        >
+          <p class="text-emerald-300 font-bold">
+            Status: arquivo atualizado e entregue para teste local; build,
+            commit, push e deploy ainda não confirmados.
+          </p>
+          <ul
+            class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+          >
+            <li>
+              Armamentos: modelo, número de série, calibre, localização e
+              status.
+            </li>
+            <li>
+              Coletes: modelo, número de série, gênero, tamanho, data de
+              validade, localização e status.
+            </li>
+            <li>
+              Rádios: marca, modelo, número de série, número de identificação,
+              localização e status.
+            </li>
+            <li>
+              Munições: relatório próprio; conferir os campos disponíveis antes
+              de alterar sua estrutura.
+            </li>
+            <li>
+              Cada relatório apresenta título da categoria, data e hora de
+              emissão e identificação do operador no formato posto/graduação +
+              numeral + nome de guerra + matrícula.
+            </li>
+            <li>
+              As tabelas PDF e Excel foram preparadas para centralizar
+              cabeçalhos e dados. O Excel utiliza <code>xlsx-js-style</code>,
+              que precisa ser instalado com
+              <code>npm install xlsx-js-style</code>.
+            </li>
+            <li>
+              Não está prevista alteração no schema do banco para essas
+              melhorias de exportação.
+            </li>
+            <li>
+              Antes do deploy, testar localmente, executar
+              <code>npm run build</code>, revisar <code>git status</code> e
+              <code>git diff</code>, e não incluir
+              <code>vercel.local.json</code>, arquivos de ambiente ou segredos.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Entrega incremental v1.6 — Inventário: consultas e cadastro/edição de coletes -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          Inventário — Consultas e formulário de coletes (02/10/2026 · v1.6)
+        </h2>
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-slate-700 space-y-3 text-xs"
+        >
+          <p class="text-emerald-300 font-bold">
+            Status: atualização incremental preparada no arquivo Inventario.jsx
+            e entregue para validação local. Build, testes, commit, push e
+            deploy desta revisão não foram confirmados.
+          </p>
+          <ul
+            class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+          >
+            <li>
+              As consultas das abas de armamentos, coletes, munições e rádios
+              exibem a quantidade de registros após os filtros e o total
+              cadastrado na categoria ativa.
+            </li>
+            <li>
+              As tabelas das quatro categorias foram ajustadas para centralizar
+              os cabeçalhos e os dados das células.
+            </li>
+            <li>
+              Na listagem de coletes, a antiga coluna “Especificações” foi
+              substituída por colunas independentes “Gênero” e “Tamanho”,
+              mantendo a coluna de validade.
+            </li>
+            <li>
+              O cadastro de coletes já possuía campos separados para gênero e
+              tamanho. A edição foi alinhada ao cadastro, com opções de gênero
+              Masculino, Feminino e Unissex e tamanhos PP, P, M, G e GG.
+            </li>
+            <li>
+              Os campos gênero e tamanho são mantidos em
+              <code>detalhes.genero</code> e <code>detalhes.tamanho</code>. A
+              revisão do componente não incluiu migração SQL; a compatibilidade
+              deve ser confirmada com o tipo real da coluna e com a API
+              utilizada para persistência.
+            </li>
+            <li>
+              Foi incluído no cabeçalho da tela um identificador de entrega
+              incremental:
+              <code>Inventario.jsx · Entrega incremental 2026-10-02 · v2</code>.
+              A identificação ajuda a reconhecer a versão do componente, mas não
+              substitui o controle de versão do Git.
+            </li>
+            <li>
+              Arquivo entregue nesta revisão:
+              <code>Inventario_atualizado_2026-10-02_v2.jsx</code>, destinado a
+              substituir <code>src/pages/Inventario.jsx</code>.
+            </li>
+            <li>
+              Antes de publicar, testar cadastro, edição e consulta de coletes;
+              conferir os contadores com e sem filtros; verificar as quatro
+              tabelas; executar <code>npm run build</code>; revisar o diff e
+              então realizar commit/push conforme o fluxo do projeto.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Revisão integral do mapa — v1.7 -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          Revisão estrutural do mapa — 02/10/2026 · v1.7
+        </h2>
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-emerald-700 space-y-2 text-xs"
+        >
+          <p class="text-emerald-300 font-bold">
+            O mapa foi reorganizado para separar frontend, backend, banco de
+            dados e configuração de execução/publicação.
+          </p>
+          <ul
+            class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+          >
+            <li>
+              O mapeamento estrutural anterior, limitado principalmente a
+              <code>src/</code>, foi ampliado com os caminhos de API conhecidos,
+              serviços de sessão e arquivos de configuração documentados.
+            </li>
+            <li>
+              Foram mantidas as seções funcionais anteriores e os registros
+              incrementais do Inventário.
+            </li>
+            <li>
+              Foi removido um comentário HTML duplicado da seção de mapeamento
+              de telas.
+            </li>
+            <li>
+              Os itens cuja existência ou composição não pôde ser confirmada
+              foram explicitamente marcados como pendentes de conferência,
+              evitando apresentar uma árvore presumida como cópia fiel do
+              repositório.
+            </li>
+            <li>
+              Para fechar o inventário estrutural com 100% de correspondência,
+              será necessário comparar este mapa com a árvore atual do projeto
+              (por exemplo, um ZIP sem segredos e dependências geradas).
+            </li>
+          </ul>
         </div>
       </section>
 
@@ -653,9 +1139,7 @@
       <footer
         class="text-center text-xs text-slate-500 border-t border-slate-700 pt-4 space-y-1"
       >
-        <p>
-          Log2CIA • Mapa de Regras, Arquitetura e Planejamento
-        </p>
+        <p>Log2CIA • Mapa de Regras, Arquitetura e Planejamento</p>
         <p class="text-[10px]">
           Dica: Pressione Ctrl + P no seu navegador para exportar este mapa
           atualizado em formato PDF.

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LogOut, Key, Shield, BookOpen } from "lucide-react";
+import { LogOut, Key, Shield, BookOpen, Clock3 } from "lucide-react";
 
 export default function AppLayout({ onLogout }) {
   const navigate = useNavigate();
@@ -59,6 +59,7 @@ export default function AppLayout({ onLogout }) {
     .replace(/[\u0300-\u036f]/g, "");
   const isMaster = userRole === "master" || usuario?.is_master === true;
   const isArmeiroOrAdmin = isMaster || ["p4", "armeiro"].includes(userRole);
+  const isBancoHorasGestor = isMaster || userRole === "p1";
 
   // Livro da Permanência: mantém os perfis já autorizados e inclui Permanente da Guarda.
   const isP1OrAuthorized =
@@ -128,10 +129,16 @@ export default function AppLayout({ onLogout }) {
                 onClick={() => navegarPara("/livro-permanencia")}
                 className={`w-full ${getLinkClass("/livro-permanencia")}`}
               >
-                <BookOpen className="w-4 h-4 text-blue-400" /> Livro Permanência
-                (P1)
+                <BookOpen className="w-4 h-4 text-blue-400" /> Livro Digital
               </button>
             )}
+
+            <button
+              onClick={() => navegarPara("/banco-horas")}
+              className={`w-full ${getLinkClass("/banco-horas")}`}
+            >
+              <Clock3 className="w-4 h-4 text-emerald-400" /> Banco de Horas
+            </button>
 
             {/* ACERVO / INVENTÁRIO - EXCLUSIVO PARA ARMEIRO, P4 E MASTER */}
             {isArmeiroOrAdmin && (
