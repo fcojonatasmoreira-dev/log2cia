@@ -110,54 +110,49 @@ export default function Dashboard() {
         </div>
       ) : (
         /* GRID DE CARDS COM RESTRIÇÃO CONDICIONAL PARA ARMEIRO / ADMIN */
-        <div
-          className={`grid grid-cols-1 sm:grid-cols-2 ${
-            isArmeiro ? "lg:grid-cols-2 max-w-2xl" : "lg:grid-cols-4"
-          } gap-6`}
-        >
-          {/* Card 1: Cautelas Ativas */}
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
-            <p className="text-xs font-semibold text-slate-500">
-              Cautelas Ativas
-            </p>
-            <p className="text-3xl font-bold text-slate-900">
-              {loadingMetrics ? "-" : (metrics?.cautelasAtivas ?? 0)}
-            </p>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              ["Armamentos Disponíveis", metrics?.armamentosDisponiveis],
+              ["Estoque da Reserva", metrics?.estoqueDaReserva],
+              ["Acauteladas — Temporárias", metrics?.acauteladasTemporarias],
+              ["Acauteladas — Longo Prazo", metrics?.acauteladasLongoPrazo],
+              ["Em Manutenção", metrics?.emManutencao],
+              ["Em Perícia", metrics?.emPericia],
+              ["Apreendidas", metrics?.apreendidas],
+              ["Baixa Definitiva", metrics?.baixaDefinitiva],
+            ].map(([titulo, valor]) => (
+              <div key={titulo} className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
+                <p className="text-xs font-semibold text-slate-500">{titulo}</p>
+                <p className="text-3xl font-bold text-slate-900">
+                  {loadingMetrics ? "-" : (valor ?? 0)}
+                </p>
+              </div>
+            ))}
           </div>
 
-          {/* Card 2: Armas Disponíveis */}
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
-            <p className="text-xs font-semibold text-slate-500">
-              Armas Disponíveis
-            </p>
-            <p className="text-3xl font-bold text-slate-900">
-              {loadingMetrics ? "-" : (metrics?.armasDisponiveis ?? 0)}
-            </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
+              <p className="text-xs font-semibold text-slate-500">Cautelas Temporárias Ativas</p>
+              <p className="text-3xl font-bold text-slate-900">{loadingMetrics ? "-" : (metrics?.cautelasTemporariasAtivas ?? 0)}</p>
+            </div>
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
+              <p className="text-xs font-semibold text-slate-500">Cautelas Longo Prazo Ativas</p>
+              <p className="text-3xl font-bold text-slate-900">{loadingMetrics ? "-" : (metrics?.cautelasLongoPrazoAtivas ?? 0)}</p>
+            </div>
+            {!isArmeiro && (
+              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
+                <p className="text-xs font-semibold text-slate-500">Coletes a Vencer (30d)</p>
+                <p className="text-3xl font-bold text-amber-600">{loadingMetrics ? "-" : (metrics?.coletesAVencer ?? 0)}</p>
+              </div>
+            )}
+            {!isArmeiro && (
+              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
+                <p className="text-xs font-semibold text-slate-500">Efetivo Ativo</p>
+                <p className="text-3xl font-bold text-slate-900">{loadingMetrics ? "-" : (metrics?.efetivoAtivo ?? 0)}</p>
+              </div>
+            )}
           </div>
-
-          {/* Card 3: Coletes a Vencer (Oculto para Armeiro) */}
-          {!isArmeiro && (
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
-              <p className="text-xs font-semibold text-slate-500">
-                Coletes a Vencer (30d)
-              </p>
-              <p className="text-3xl font-bold text-amber-600">
-                {loadingMetrics ? "-" : (metrics?.coletesAVencer ?? 0)}
-              </p>
-            </div>
-          )}
-
-          {/* Card 4: Efetivo Ativo (Oculto para Armeiro) */}
-          {!isArmeiro && (
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-2">
-              <p className="text-xs font-semibold text-slate-500">
-                Efetivo Ativo
-              </p>
-              <p className="text-3xl font-bold text-slate-900">
-                {loadingMetrics ? "-" : (metrics?.efetivoAtivo ?? 0)}
-              </p>
-            </div>
-          )}
         </div>
       )}
     </div>

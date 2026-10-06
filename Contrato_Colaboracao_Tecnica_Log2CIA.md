@@ -1,7 +1,7 @@
 # CONTRATO DE COLABORAÇÃO TÉCNICA --- LOG2CIA
 
-**Versão:** 1.6\
-**Data de atualização:** 02/10/2026\
+**Versão:** 1.7\
+**Data de atualização:** 06/10/2026\
 **Finalidade:** servir como documento de recuperação de contexto para
 retomar o trabalho sobre o sistema Log2CIA caso o histórico da conversa
 não esteja disponível.
@@ -572,3 +572,191 @@ O código entregue procura os campos `posto_graduacao`/`posto`/`graduacao`, `num
 - Documentados os contadores de registros filtrados e totais nas quatro categorias.
 - Documentada a separação de gênero e tamanho na listagem de coletes e o alinhamento do cadastro/edição.
 - Registrada a identificação incremental do arquivo e o estado ainda pendente de validação.
+
+## 15. Atualizações de segurança, publicação e limite de funções Vercel — 06/10/2026
+
+**Status:** parte das alterações de autenticação e publicação foi integrada pelo usuário. O limite de funções da Vercel foi tratado; as alterações mais recentes do Inventário continuam pendentes de validação integral no projeto.
+
+### 15.1 Revogação de sessão por `auth_version`
+
+- Foi criada no banco a coluna `public.policiais.auth_version`:
+  `integer NOT NULL DEFAULT 0`.
+- O token de sessão passou a carregar a versão (`ver`) para permitir invalidação no servidor.
+- A validação compartilhada compara a versão da sessão com `auth_version` do policial.
+- A alteração de senha incrementa a versão e invalida sessões anteriores quando a API aplica essa verificação.
+- O usuário confirmou o fluxo de alteração de senha: alteração realizada, sessão encerrada e novo login efetuado com a nova senha.
+- Permanecem como regra: não confiar em `localStorage` para autenticação, não expor `SUPABASE_SERVICE_ROLE_KEY` no frontend e validar autorização no servidor.
+
+### 15.2 Limite de funções da Vercel
+
+- O projeto atingiu o limite de 12 funções da Vercel Hobby.
+- A função duplicada `api/solicitacoes-senha/[id]/aprovar.js` foi removida para adequação ao limite.
+- O usuário realizou a remoção no repositório e confirmou posteriormente que o deploy foi concluído com sucesso.
+- O arquivo não deve ser recriado sem necessidade arquitetural clara e sem revisar o limite de funções da plataforma.
+
+### 15.3 Problema de PATCH de policiais em produção
+
+- O frontend utiliza `PATCH /api/policiais/:id` para edição de policial.
+- O arquivo `api/policiais/[id].js` já continha tratamento para `PATCH`/`PUT` no commit de referência analisado.
+- Localmente, com `npx vercel dev --local-config vercel.local.json`, a edição funcionava.
+- Em produção foi observado `405 Method Not Allowed`, indicando divergência entre o comportamento local e a função efetivamente publicada/configurada.
+- A causa não deve ser presumida como resolvida apenas pelo funcionamento local; produção deve ser testada após cada publicação relevante.
+- Não remover o rewrite SPA de `vercel.json` às cegas para tentar corrigir esse tipo de erro.
+
+---
+
+## 16. Banco de Horas — requisitos e estrutura definida — 06/10/2026
+
+**Status:** migração inicial executada pelo usuário; interface/API em desenvolvimento incremental. A validação integral e o deploy da implementação final ainda dependem de testes.
+
+### 16.1 Regras funcionais
+
+- P1 administra o banco de horas: registra créditos, abate horas e analisa solicitações.
+- O policial solicita inclusão de horas com justificativa vinculada ao Livro da Permanência, informando data, turno e número da ocorrência.
+- O policial consulta seu saldo, histórico e situação das próprias solicitações.
+- Master possui acesso total.
+- Também existe solicitação de dispensa de serviço; inicialmente P1 analisa. Comandante/Subcomandante poderão ser incorporados futuramente.
+- Turnos A e B possuem 12 horas.
+- A dispensa considerada nesta fase é por turno A ou B; serviço completo não faz parte da regra atual.
+- Créditos somam ao saldo e dispensas deferidas debitam horas.
+- O saldo pode ficar negativo; saldo insuficiente não impede o deferimento.
+- Solicitações pendentes ou indeferidas não alteram o saldo.
+- O deferimento deve gerar a movimentação correspondente sem débito duplicado.
+- Zerar saldo é ação exclusiva do Master, com confirmação e justificativa, preservando o histórico e registrando saldo anterior, novo saldo, data/hora e responsável.
+
+### 16.2 Banco e API
+
+- Foram definidas as tabelas `banco_horas_solicitacoes` e `banco_horas_movimentacoes`, com índices e RLS habilitada.
+- O acesso da aplicação deve ocorrer pela API própria autenticada; não abrir políticas RLS genéricas com `true`.
+- As relações utilizam `policiais.id` (UUID).
+- O perfil `p1` foi atribuído ao SGT IWATA, matrícula `30169913`.
+- A API `api/banco-horas/index.js` atende consultas, criação de solicitações/movimentações e análise via RPC `analisar_solicitacao_banco_horas`.
+- Foi definida também a exclusão física de movimentações pelo Master, sem soft delete e sem justificativa adicional: confirmação no frontend e `DELETE` efetivo no backend.
+- A permissão de exclusão deve ser validada no servidor como `master`.
+
+### 16.3 Regra de integridade
+
+- O Livro da Permanência não possui, no schema verificado, um `policial_id` do permanente; ele registra o nome do permanente. Não presumir correspondência automática entre nome e UUID.
+- A referência informada pelo policial deve ser tratada como dado de solicitação e conferida pelo P1 conforme o fluxo definido.
+
+---
+
+## 17. Classificação de cautelas e acervo — 06/10/2026
+
+**Status:** modelo funcional definido; migração de classificação executada/diagnosticada; fluxo completo de longo prazo ainda não está em operação.
+
+### 17.1 Tipos de cautela
+
+Foi definida classificação explícita:
+
+- `temporaria` — material utilizado durante o serviço, como rádio HT, arma longa e arma de serviço.
+- `longo_prazo` — material que permanece com o policial por período prolongado, como colete balístico.
+- Registros históricos que não puderem ser classificados permanecem sem classificação até que haja base segura para definição.
+
+Regra operacional:
+
+- Armeiro trabalha com cautelas temporárias.
+- P4 e Master podem selecionar temporária ou longo prazo.
+- As cautelas de longo prazo dos policiais ainda serão geradas pelo sistema quando o fluxo estiver pronto.
+
+### 17.2 Banco e classificação histórica
+
+- A tabela `public.cautelas` recebeu o campo `tipo_cautela`.
+- A classificação histórica segura proposta marcou como `temporaria` as cautelas associadas a responsáveis cujo papel é `armeiro`.
+- Cautelas históricas de P4/Master não foram classificadas automaticamente.
+- O SQL inicialmente entregue no pacote continha referências incorretas a colunas inexistentes `equipamentos.localizacao_atual` e `equipamentos.localizacao`.
+- Após o erro `42703`, a consulta foi corrigida para utilizar a localização real:
+  `equipamentos.detalhes->>'localizacao_atual'`.
+- Não se deve criar ou presumir colunas diretas de localização em `equipamentos` sem nova confirmação do schema.
+
+### 17.3 Inconsistências históricas esperadas
+
+- O diagnóstico encontrou registros em que a localização e o status não coincidem, por exemplo, equipamentos com localização `Acautelada com Policial` e status `disponivel`.
+- Essas diferenças são esperadas neste momento porque as cautelas de longo prazo dos policiais ainda não foram formalizadas no sistema.
+- **Não corrigir automaticamente esses registros históricos.**
+- O novo fluxo de cautelas deverá passar a produzir os estados corretos quando estiver operacional.
+
+### 17.4 Regra do Dashboard
+
+O card **Cautelas Ativas** deve representar principalmente cautelas temporárias ativas para facilitar a operação do Armeiro.
+
+Não contar todas as cautelas com `status = ativa` indistintamente.
+
+A classificação deve distinguir temporárias, longo prazo e não classificadas conforme o modelo definido.
+
+---
+
+## 18. Inventário — filtros independentes e relatórios respeitando os filtros — 06/10/2026
+
+**Arquivo de referência mais recente:** `Inventario(10).jsx`.
+
+**Status:** arquivo atualizado e entregue para teste. Não há confirmação de build integral, commit, push ou deploy desta revisão específica.
+
+### 18.1 Filtros
+
+Para armamentos, coletes e munições, os filtros devem separar:
+
+1. Modelo;
+2. Nº de série/ID;
+3. Status;
+4. Localização Atual.
+
+O filtro de Status e o filtro de Localização são independentes.
+
+Exemplo válido:
+
+- Status: `Cautelado`
+- Localização Atual: `Estoque da Reserva`
+
+Um equipamento que tenha exatamente esses dois valores deve aparecer.
+
+### 18.2 Fonte correta da localização
+
+Na tabela `public.equipamentos`, a localização atualmente utilizada pelo acervo está armazenada em:
+
+`detalhes->>'localizacao_atual'`
+
+Portanto:
+
+- o filtro de localização deve consultar `item.detalhes?.localizacao_atual`;
+- não usar `item.localizacao_atual` como coluna direta do banco;
+- não usar `item.localizacao` como coluna presumida;
+- a classificação de cautela não deve sobrescrever a localização cadastrada usada pelo filtro.
+
+Isso é especialmente importante enquanto as cautelas de longo prazo ainda não foram geradas pelo sistema.
+
+### 18.3 PDF
+
+O PDF do Inventário deve utilizar exatamente o conjunto de registros que passou pelos filtros ativos.
+
+Para equipamentos:
+
+- localização no PDF = `detalhes.localizacao_atual`;
+- status no PDF = `item.status`;
+- linhas do PDF = registros filtrados exibidos na tela.
+
+Para rádios, a localização continua sendo a propriedade própria utilizada pela tabela de rádios.
+
+Assim, se o usuário aplicar:
+
+`Status = Cautelado` + `Localização = Estoque da Reserva`
+
+o PDF deve conter somente os registros que atendem simultaneamente aos dois filtros.
+
+### 18.4 Dados históricos
+
+A correção dos filtros não deve alterar registros do banco.
+
+Em especial, não transformar automaticamente `disponivel` em `cautelado`, nem o contrário, apenas para fazer um filtro retornar resultados.
+
+---
+
+## 19. Regras de continuidade para as próximas alterações
+
+- O arquivo mais recente enviado pelo usuário deve ser considerado a referência de edição daquela funcionalidade, sem substituir silenciosamente uma versão mais nova por um arquivo histórico.
+- Em alterações do Inventário, preservar o layout atual e modificar somente a lógica solicitada.
+- Antes de criar SQL que dependa de `equipamentos`, conferir o schema real e preferir `detalhes->>'localizacao_atual'` quando essa for a estrutura confirmada.
+- Não usar a classificação de cautela como substituta da localização física/cadastral.
+- Não alterar dados históricos para compensar inconsistências que são consequência do fluxo ainda não implantado.
+- PDF e Excel devem refletir os filtros ativos quando a solicitação for de relatório filtrado.
+- Qualquer afirmação de build, teste, deploy ou funcionamento em produção deve ser acompanhada do resultado efetivamente obtido.

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
-      PROJECT_MAP - Log2CIA | Regras, Arquitetura e Estado do Projeto v1.7
+      PROJECT_MAP - Log2CIA | Regras, Arquitetura e Estado do Projeto v1.8
     </title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   </head>
@@ -17,13 +17,14 @@
         <div class="flex items-center gap-3">
           <span class="text-3xl">🛡️</span>
           <h1 class="text-2xl md:text-3xl font-bold tracking-tight text-white">
-            PROJECT_MAP — Log2CIA | Regras, Assinatura, P1 & Arquitetura — v1.7
+            PROJECT_MAP — Log2CIA | Regras, Assinatura, P1, P4 & Arquitetura —
+            v1.8
           </h1>
         </div>
         <p class="text-sm text-slate-400">
           Documentação de referência do Log2CIA: regras de negócio, arquitetura,
           módulos, ambiente local e fluxo de publicação. Atualizada em
-          02/10/2026 (v1.7). Mapeamento estrutural reorganizado; confirmar a
+          06/10/2026 (v1.8). Mapeamento estrutural reorganizado; confirmar a
           árvore real do repositório antes de tratar itens não verificados como
           existentes.
         </p>
@@ -288,7 +289,7 @@
         >
           <p class="text-emerald-300 font-bold">
             Mapa lógico dos componentes e arquivos identificados na documentação
-            e nas entregas analisadas até 02/10/2026.
+            e nas entregas analisadas até 06/10/2026.
           </p>
           <p class="text-slate-300 leading-relaxed">
             Este mapa distingue arquivos conhecidos de diretórios cuja
@@ -1095,7 +1096,7 @@ Log2CIA/
         <h2
           class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
         >
-          Revisão estrutural do mapa — 02/10/2026 · v1.7
+          Revisão estrutural do mapa — 06/10/2026 · v1.8
         </h2>
         <div
           class="bg-slate-950 p-5 rounded-xl border border-emerald-700 space-y-2 text-xs"
@@ -1130,6 +1131,354 @@ Log2CIA/
               Para fechar o inventário estrutural com 100% de correspondência,
               será necessário comparar este mapa com a árvore atual do projeto
               (por exemplo, um ZIP sem segredos e dependências geradas).
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Seção 12: Atualizações recentes — segurança, publicação e limite Vercel -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          12. Atualizações Recentes — Segurança, Publicação e Vercel
+          (06/10/2026)
+        </h2>
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-emerald-700 space-y-4 text-xs"
+        >
+          <p class="text-emerald-300 font-bold">
+            Estado: autenticação própria consolidada no fluxo conhecido, limite
+            de funções Vercel tratado e alterações incrementais do Inventário em
+            desenvolvimento. A revisão integral de APIs e a validação do
+            Inventário mais recente ainda dependem de testes.
+          </p>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Sessões e senhas</h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <code>public.policiais.auth_version</code> foi adicionada como
+                versão inteira para revogação de sessões.
+              </li>
+              <li>
+                O token carrega <code>ver</code> e a validação do servidor
+                compara essa versão com a versão atual do policial.
+              </li>
+              <li>
+                A troca de senha incrementa a versão e o usuário confirmou o
+                teste de troca de senha, encerramento da sessão e novo login.
+              </li>
+              <li>
+                A autenticação continua própria, sem Supabase Auth, com cookie
+                HttpOnly e chave de serviço somente no backend.
+              </li>
+            </ul>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">
+              Limite de funções Vercel
+            </h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>O projeto atingiu o limite de 12 funções da Vercel Hobby.</li>
+              <li>
+                A função duplicada
+                <code>api/solicitacoes-senha/[id]/aprovar.js</code> foi
+                removida.
+              </li>
+              <li>O usuário confirmou a conclusão do deploy após a remoção.</li>
+            </ul>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Edição de policiais</h3>
+            <p class="text-slate-300 leading-relaxed">
+              Localmente, a edição por
+              <code>PATCH /api/policiais/:id</code> funcionou com Vercel Dev. Em
+              produção foi observado <code>405 Method Not Allowed</code>. O
+              comportamento local não deve ser tratado como prova de que a
+              função publicada está correta; produção deve ser retestada após a
+              integração correspondente.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seção 13: Banco de Horas -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          13. Banco de Horas — Regras e Arquitetura (06/10/2026)
+        </h2>
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-amber-700 space-y-4 text-xs"
+        >
+          <p class="text-amber-300 font-bold">
+            Estado: migração inicial executada; implementação da interface/API
+            em andamento. Não tratar o módulo como concluído sem teste integral.
+          </p>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Regras</h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>P1 registra créditos, abate horas e analisa solicitações.</li>
+              <li>
+                Policial solicita horas com justificativa vinculada ao Livro:
+                data, turno e ocorrência.
+              </li>
+              <li>
+                Policial consulta saldo, histórico e próprias solicitações;
+                Master possui acesso total.
+              </li>
+              <li>
+                Dispensa de serviço é por turno A ou B de 12 horas; serviço
+                completo não faz parte da regra atual.
+              </li>
+              <li>
+                Créditos somam; dispensas deferidas debitam; saldo pode ficar
+                negativo.
+              </li>
+              <li>
+                Pendentes/indeferidas não alteram saldo e deferimento não pode
+                duplicar débito.
+              </li>
+              <li>
+                Zerar saldo é ação exclusiva do Master, com justificativa e
+                preservação do histórico.
+              </li>
+            </ul>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Banco/API</h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                Tabelas: <code>banco_horas_solicitacoes</code> e
+                <code>banco_horas_movimentacoes</code>.
+              </li>
+              <li>
+                A API é <code>api/banco-horas/index.js</code>; análise usa a RPC
+                <code>analisar_solicitacao_banco_horas</code>.
+              </li>
+              <li>
+                O perfil <code>p1</code> foi atribuído ao SGT IWATA, matrícula
+                <code>30169913</code>.
+              </li>
+              <li>
+                Exclusão de movimentação é física e exclusiva do Master, sem
+                soft delete.
+              </li>
+              <li>
+                A referência do Livro não deve presumir vínculo por UUID:
+                <code>livros_permanencia</code> registra o nome do permanente,
+                não um <code>policial_id</code> verificado.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seção 14: Classificação de cautelas e acervo -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          14. Classificação de Cautelas e Acervo (06/10/2026)
+        </h2>
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-amber-700 space-y-4 text-xs"
+        >
+          <p class="text-amber-300 font-bold">
+            Estado: classificação funcional definida; cautelas de longo prazo
+            ainda não estão sendo geradas pelo sistema. Inconsistências
+            históricas não devem ser corrigidas automaticamente.
+          </p>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Tipos de cautela</h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <strong>Temporária:</strong> material utilizado durante o
+                serviço, como rádio HT e arma de serviço.
+              </li>
+              <li>
+                <strong>Longo prazo:</strong> material mantido com o policial
+                por período prolongado, como colete.
+              </li>
+              <li>
+                Armeiro trabalha com temporária; P4 e Master podem escolher
+                temporária ou longo prazo.
+              </li>
+            </ul>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Schema e diagnóstico</h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>
+                <code>public.cautelas.tipo_cautela</code> foi incorporado ao
+                modelo.
+              </li>
+              <li>
+                A localização de <code>public.equipamentos</code> é armazenada
+                em <code>detalhes-&gt;&gt;'localizacao_atual'</code>; não
+                assumir colunas diretas <code>localizacao_atual</code> ou
+                <code>localizacao</code>.
+              </li>
+              <li>
+                O primeiro SQL do pacote referenciou colunas inexistentes e
+                retornou erro <code>42703</code>; a versão corrigida usa
+                <code>detalhes-&gt;&gt;'localizacao_atual'</code>.
+              </li>
+              <li>
+                O diagnóstico encontrou estados como localização
+                <code>Acautelada com Policial</code> com status
+                <code>disponivel</code>. Esses registros são históricos e
+                esperados enquanto o novo fluxo de longo prazo não estiver
+                operacional.
+              </li>
+              <li>Não alterar esses registros automaticamente.</li>
+            </ul>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Dashboard</h3>
+            <p class="text-slate-300 leading-relaxed">
+              O card “Cautelas Ativas” deve privilegiar cautelas temporárias
+              ativas para facilitar o trabalho do Armeiro. Não contar
+              indiscriminadamente todo registro com status “ativa”.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seção 15: Inventário — filtros independentes e PDF -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          15. Inventário — Filtros Independentes e PDF Filtrado (06/10/2026)
+        </h2>
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-emerald-700 space-y-4 text-xs"
+        >
+          <p class="text-emerald-300 font-bold">
+            Arquivo de referência: <code>Inventario(10).jsx</code>. Alteração
+            preparada e entregue para teste. Build integral e deploy desta
+            revisão específica ainda não foram confirmados.
+          </p>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Filtros</h3>
+            <p class="text-slate-300 leading-relaxed">
+              Para armamentos, coletes e munições, Modelo, Nº de Série/ID,
+              Status e Localização Atual são filtros independentes e
+              combináveis. O status não pode impedir a localização de funcionar.
+            </p>
+            <p class="text-slate-300 leading-relaxed">
+              Exemplo: um GLOCK G22 com
+              <code>status = cautelado</code> e
+              <code>detalhes.localizacao_atual = "Estoque da Reserva"</code>
+              deve aparecer quando os dois filtros forem aplicados.
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Fonte da localização</h3>
+            <p class="text-slate-300 leading-relaxed">
+              O filtro consulta diretamente
+              <code>item.detalhes?.localizacao_atual</code>. A classificação de
+              cautela não deve substituir essa localização cadastral.
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">PDF</h3>
+            <ul
+              class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+            >
+              <li>O PDF usa os mesmos registros que passaram pelos filtros.</li>
+              <li>
+                Para equipamentos, a localização vem de
+                <code>detalhes.localizacao_atual</code> e o status de
+                <code>item.status</code>.
+              </li>
+              <li>
+                Para rádios, é utilizada a estrutura própria de localização do
+                módulo de rádios.
+              </li>
+              <li>
+                O relatório deve reproduzir o resultado efetivamente exibido na
+                tela.
+              </li>
+            </ul>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="font-bold text-white text-sm">Regra de preservação</h3>
+            <p class="text-slate-300 leading-relaxed">
+              A correção de filtro/relatório não altera os dados históricos do
+              Supabase. Não converter automaticamente status para resolver
+              inconsistências causadas pelo fluxo de cautelas ainda não
+              implantado.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Seção 16: Regras de continuidade -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          16. Regras de Continuidade das Próximas Entregas
+        </h2>
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-slate-700 space-y-3 text-xs"
+        >
+          <ul
+            class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed"
+          >
+            <li>
+              Usar como base o arquivo mais recente confirmado pelo usuário.
+            </li>
+            <li>
+              Preservar layout e comportamento existente, salvo pedido
+              explícito.
+            </li>
+            <li>
+              Não presumir schema; conferir o banco antes de criar SQL
+              dependente de colunas.
+            </li>
+            <li>
+              Não usar a classificação de cautela como substituta da localização
+              física/cadastral.
+            </li>
+            <li>
+              Não corrigir automaticamente inconsistências históricas enquanto o
+              novo fluxo de longo prazo não estiver operacional.
+            </li>
+            <li>
+              Relatórios devem respeitar os filtros ativos quando essa for a
+              regra solicitada.
+            </li>
+            <li>
+              Não declarar build, teste ou deploy sem resultado efetivamente
+              obtido.
             </li>
           </ul>
         </div>

@@ -24,11 +24,14 @@ export default function NovaInsercaoBancoHoras() {
   const [buscaPolicial, setBuscaPolicial] = useState("");
   const [movimentacoes, setMovimentacoes] = useState([]);
   const [saldo, setSaldo] = useState(0);
+  const [folgasDisponiveis, setFolgasDisponiveis] = useState(0);
   const [tipo, setTipo] = useState("credito");
   const [horas, setHoras] = useState("");
+  const [quantidadeFolgas, setQuantidadeFolgas] = useState("1");
   const [descricao, setDescricao] = useState("");
   const [dataReferencia, setDataReferencia] = useState("");
   const [turno, setTurno] = useState("");
+  const [turnoDescricao, setTurnoDescricao] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
@@ -64,6 +67,7 @@ export default function NovaInsercaoBancoHoras() {
         );
       setMovimentacoes(json.movimentacoes || []);
       setSaldo(Number(json.saldo || 0));
+      setFolgasDisponiveis(Number(json.folgas_disponiveis || 0));
     },
     [policialId],
   );
@@ -122,33 +126,60 @@ export default function NovaInsercaoBancoHoras() {
     e.preventDefault();
     setErro("");
     setSucesso("");
-    if (
-      !policialId ||
-      !descricao.trim() ||
-      !Number.isFinite(Number(horas)) ||
-      Number(horas) <= 0
-    ) {
-      setErro(
-        "Selecione o policial e informe uma quantidade válida de horas e a descrição.",
-      );
+    if (!policialId || !descricao.trim()) {
+      setErro("Selecione o policial e informe a descrição/justificativa.");
       return;
     }
-    if (tipo === "dispensa" && Number(horas) !== 12) {
-      setErro("A dispensa corresponde a um turno de 12 horas.");
+    if (
+      ["credito", "debito", "dispensa"].includes(tipo) &&
+      (!Number.isFinite(Number(horas)) || Number(horas) <= 0)
+    ) {
+      setErro("Informe uma quantidade válida de horas.");
+      return;
+    }
+    if (
+      tipo === "concessao_folga" &&
+      (!Number.isInteger(Number(quantidadeFolgas)) ||
+        Number(quantidadeFolgas) <= 0)
+    ) {
+      setErro("Informe uma quantidade inteira de folgas.");
+      return;
+    }
+    if (tipo === "utilizacao_folga" && !dataReferencia) {
+      setErro("Informe a data de referência do serviço.");
+      return;
+    }
+    if (turno === "OUTRO" && !turnoDescricao.trim()) {
+      setErro("Descreva o outro turno.");
       return;
     }
     setSalvando(true);
     try {
-      const tipoApi = tipo === "credito" ? "credito" : "debito";
-      const descricaoFinal =
-        tipo === "dispensa"
-          ? `Dispensa de serviço (12h) — ${descricao.trim()}`
-          : descricao.trim();
-      const response = await fetch("/api/banco-horas", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let body;
+      if (tipo === "concessao_folga") {
+        body = {
+          acao: "conceder_folga",
+          policial_id: policialId,
+          quantidade_folgas: Number(quantidadeFolgas),
+          descricao: descricao.trim(),
+          data_referencia: dataReferencia || null,
+        };
+      } else if (tipo === "utilizacao_folga") {
+        body = {
+          acao: "utilizar_folga",
+          policial_id: policialId,
+          data_referencia: dataReferencia,
+          turno: turno || null,
+          turno_descricao: turno === "OUTRO" ? turnoDescricao.trim() : null,
+          descricao: descricao.trim(),
+        };
+      } else {
+        const tipoApi = tipo === "credito" ? "credito" : "debito";
+        const descricaoFinal =
+          tipo === "dispensa"
+            ? `Dispensa de serviço (${Number(horas)}h) — ${descricao.trim()}`
+            : descricao.trim();
+        body = {
           acao: "movimentar",
           policial_id: policialId,
           tipo: tipoApi,
@@ -156,7 +187,14 @@ export default function NovaInsercaoBancoHoras() {
           descricao: descricaoFinal,
           data_referencia: dataReferencia || null,
           turno: turno || null,
-        }),
+          turno_descricao: turno === "OUTRO" ? turnoDescricao.trim() : null,
+        };
+      }
+      const response = await fetch("/api/banco-horas", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
       const json = await response.json();
       if (!response.ok)
@@ -166,14 +204,20 @@ export default function NovaInsercaoBancoHoras() {
       setSucesso(
         tipo === "credito"
           ? "Crédito registrado com sucesso."
-          : tipo === "dispensa"
-            ? "Dispensa registrada como débito de 12 horas."
-            : "Débito registrado com sucesso.",
+          : tipo === "debito"
+            ? "Débito registrado com sucesso."
+            : tipo === "dispensa"
+              ? `Dispensa registrada como débito de ${Number(horas)} horas.`
+              : tipo === "concessao_folga"
+                ? "Folga de serviço concedida com sucesso."
+                : "Folga de serviço utilizada com sucesso.",
       );
       setHoras("");
+      setQuantidadeFolgas("1");
       setDescricao("");
       setDataReferencia("");
       setTurno("");
+      setTurnoDescricao("");
       await carregarMovimentacoes(policialId);
     } catch (e2) {
       setErro(e2.message);
@@ -288,36 +332,75 @@ export default function NovaInsercaoBancoHoras() {
               <select
                 value={tipo}
                 onChange={(e) => {
-                  setTipo(e.target.value);
-                  setHoras(e.target.value === "dispensa" ? "12" : "");
+                  const v = e.target.value;
+                  setTipo(v);
+                  setHoras("");
+                  setQuantidadeFolgas("1");
+                  setTurno(v === "concessao_folga" ? "" : "A");
+                  setTurnoDescricao("");
                 }}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white"
               >
                 <option value="credito">Crédito de horas</option>
                 <option value="debito">Débito de horas</option>
-                <option value="dispensa">Dispensa de serviço (12h)</option>
+                <option value="dispensa">
+                  Dispensa de serviço (débito no banco)
+                </option>
+                <option value="concessao_folga">
+                  Concessão de folga de serviço
+                </option>
+                <option value="utilizacao_folga">
+                  Utilização de folga de serviço
+                </option>
               </select>
             </div>
+            {tipo === "utilizacao_folga" ? null : (
+              <div>
+                {tipo === "concessao_folga" ? (
+                  <>
+                    <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                      Quantidade de folgas
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      max="99"
+                      value={quantidadeFolgas}
+                      onChange={(e) => setQuantidadeFolgas(e.target.value)}
+                      required
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white"
+                      placeholder="Ex.: 1"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                      Quantidade de horas
+                    </label>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      max="9999"
+                      value={horas}
+                      onChange={(e) => setHoras(e.target.value)}
+                      readOnly={tipo === "dispensa"}
+                      required
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white read-only:bg-slate-100"
+                      placeholder="Ex.: 12"
+                    />
+                  </>
+                )}
+              </div>
+            )}
             <div>
               <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
-                Quantidade de horas
-              </label>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                max="9999"
-                value={horas}
-                onChange={(e) => setHoras(e.target.value)}
-                readOnly={tipo === "dispensa"}
-                required
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white read-only:bg-slate-100"
-                placeholder="Ex.: 12"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
-                Data de referência
+                {tipo === "concessao_folga"
+                  ? "Data do crédito de folga de serviço"
+                  : tipo === "utilizacao_folga"
+                    ? "Data da utilização da folga de serviço"
+                    : "Data de referência"}
               </label>
               <input
                 type="date"
@@ -325,6 +408,13 @@ export default function NovaInsercaoBancoHoras() {
                 onChange={(e) => setDataReferencia(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white"
               />
+              <p className="mt-1 text-xs text-slate-500">
+                {tipo === "concessao_folga"
+                  ? "Informe o dia em que o crédito de folga de serviço foi concedido."
+                  : tipo === "utilizacao_folga"
+                    ? "Informe o dia em que a folga de serviço foi utilizada."
+                    : "Data usada como referência para este lançamento."}
+              </p>
             </div>
             <div>
               <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
@@ -332,14 +422,34 @@ export default function NovaInsercaoBancoHoras() {
               </label>
               <select
                 value={turno}
-                onChange={(e) => setTurno(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white"
+                onChange={(e) => {
+                  setTurno(e.target.value);
+                  if (e.target.value !== "OUTRO") setTurnoDescricao("");
+                }}
+                disabled={tipo === "concessao_folga"}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white disabled:bg-slate-100"
               >
                 <option value="">Não se aplica</option>
                 <option value="A">A (06h às 18h)</option>
                 <option value="B">B (18h às 06h)</option>
+                <option value="OUTRO">Outros</option>
               </select>
             </div>
+            {turno === "OUTRO" && (
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                  Descrição do outro turno
+                </label>
+                <input
+                  value={turnoDescricao}
+                  onChange={(e) => setTurnoDescricao(e.target.value)}
+                  required
+                  maxLength={200}
+                  placeholder="Ex.: 08h às 16h"
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white"
+                />
+              </div>
+            )}
             <div className="sm:col-span-2">
               <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
                 Descrição / justificativa
@@ -370,8 +480,8 @@ export default function NovaInsercaoBancoHoras() {
             </div>
           </form>
           <p className="text-xs text-slate-500">
-            O lançamento é registrado diretamente no histórico do policial.
-            Dispensas são lançadas como débito de 12 horas.
+            Folgas são controladas como direitos de serviço, independentemente
+            da carga horária do serviço em que forem utilizadas.
           </p>
         </section>
         <section className="bg-slate-900 rounded-2xl p-5 text-white shadow-sm h-fit">
@@ -380,6 +490,10 @@ export default function NovaInsercaoBancoHoras() {
           </div>
           <div className="mt-3 text-3xl font-extrabold">
             {formatarHoras(saldo)}
+          </div>
+          <div className="mt-3 border-t border-slate-700 pt-3">
+            <div className="text-xs text-slate-400">Folgas disponíveis</div>
+            <div className="text-2xl font-extrabold">{folgasDisponiveis}</div>
           </div>
           <p className="mt-2 text-xs text-slate-400">
             {policialSelecionado
@@ -422,15 +536,19 @@ export default function NovaInsercaoBancoHoras() {
                     </td>
                     <td className="p-3">
                       <span
-                        className={`px-2 py-1 rounded-lg text-xs font-bold ${m.tipo === "credito" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}
+                        className={`px-2 py-1 rounded-lg text-xs font-bold ${m.tipo === "credito" || m.tipo === "concessao_folga" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}
                       >
                         {m.tipo === "credito"
                           ? "Crédito"
-                          : m.descricao?.toLowerCase().includes("dispensa")
-                            ? "Dispensa"
-                            : m.tipo === "ajuste_zeragem"
-                              ? "Ajuste"
-                              : "Débito"}
+                          : m.tipo === "concessao_folga"
+                            ? "Crédito de folga de serviço"
+                            : m.tipo === "utilizacao_folga"
+                              ? "Utilização de folga de serviço"
+                              : m.descricao?.toLowerCase().includes("dispensa")
+                                ? "Dispensa"
+                                : m.tipo === "ajuste_zeragem"
+                                  ? "Ajuste"
+                                  : "Débito"}
                       </span>
                     </td>
                     <td className="p-3 min-w-64">
@@ -444,8 +562,11 @@ export default function NovaInsercaoBancoHoras() {
                     <td
                       className={`p-3 text-right font-bold whitespace-nowrap ${m.tipo === "credito" ? "text-emerald-700" : "text-rose-700"}`}
                     >
-                      {m.tipo === "credito" ? "+" : "−"}
-                      {formatarHoras(m.horas)}
+                      {m.tipo === "concessao_folga"
+                        ? `+${m.quantidade_folgas || 0} folga(s)`
+                        : m.tipo === "utilizacao_folga"
+                          ? `−${m.quantidade_folgas || 1} folga • ${formatarHoras(m.horas_servico)}`
+                          : `${m.tipo === "credito" ? "+" : "−"}${formatarHoras(m.horas)}`}
                     </td>
                   </tr>
                 ))}

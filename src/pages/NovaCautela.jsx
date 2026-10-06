@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { Html5QrcodeScanner } from "html5-qrcode";
 import { Search } from "lucide-react";
+import { TIPOS_CAUTELA, LOCALIZACOES, STATUS_ACERVO } from "../utils/classificacaoAcervo";
 
 const obterPesoHierarquia = (posto) => {
   const p = String(posto || "")
@@ -48,7 +49,10 @@ export default function NovaCautela() {
   const [qtdCarregadores, setQtdCarregadores] = useState(0);
   const [qtdMunicao, setQtdMunicao] = useState(0);
   const [tipoMunicao, setTipoMunicao] = useState("");
+  const [tipoCautela, setTipoCautela] = useState(TIPOS_CAUTELA.TEMPORARIA);
   const [salvandoCautela, setSalvandoCautela] = useState(false);
+
+  const podeEscolherTipoCautela = ["master", "p4"].includes(userRole);
 
   useEffect(() => {
     carregarDadosIniciais();
@@ -289,6 +293,7 @@ export default function NovaCautela() {
       const dadosNovaCautela = {
         policial_id: policialSelecionado,
         status: "ativa",
+        tipo_cautela: tipoCautela,
         status_aceite: "pendente",
         data_cautela: dataHoraAtual,
         armeiro_id: policialLogadoId || null,
@@ -323,7 +328,14 @@ export default function NovaCautela() {
 
       await supabase
         .from("equipamentos")
-        .update({ status: "cautelado" })
+        .update({
+          status: STATUS_ACERVO.INDISPONIVEL,
+          detalhes: {
+            ...(armaEncontrada.detalhes || {}),
+            localizacao_atual: LOCALIZACOES.ACAUTELADA,
+            tipo_cautela: tipoCautela,
+          },
+        })
         .eq("id", armaEncontrada.id);
 
       navigate("/cautelas");
@@ -471,6 +483,29 @@ export default function NovaCautela() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block font-bold text-slate-700 uppercase">
+                  Tipo de Cautela *
+                </label>
+                <select
+                  value={tipoCautela}
+                  onChange={(e) => setTipoCautela(e.target.value)}
+                  disabled={!podeEscolherTipoCautela}
+                  required
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-70"
+                >
+                  <option value="temporaria">Temporária</option>
+                  {podeEscolherTipoCautela && (
+                    <option value="longo_prazo">Longo Prazo</option>
+                  )}
+                </select>
+                <p className="text-[10px] text-slate-500">
+                  {podeEscolherTipoCautela
+                    ? "P4/Master podem escolher o tipo de cautela."
+                    : "Para Armeiro, a cautela é classificada como temporária."}
+                </p>
               </div>
 
               {/* CAMPOS NUMÉRICOS RESTRITOS */}

@@ -3,6 +3,10 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import ModalDetalhesArma from "../components/ModalDetalhesArma";
 import {
+  classificarEquipamento,
+  obterLocalizacaoGravada,
+} from "../utils/classificacaoAcervo";
+import {
   Filter,
   Search,
   FileSpreadsheet,
@@ -27,6 +31,8 @@ function formatarTipo(texto) {
 
 export default function Inventario() {
   const [equipamentos, setEquipamentos] = useState([]);
+  const [cautelasAtivasPorEquipamento, setCautelasAtivasPorEquipamento] =
+    useState({});
   const [radios, setRadios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [armaSelecionada, setArmaSelecionada] = useState(null);
@@ -49,6 +55,8 @@ export default function Inventario() {
   const [filtroModeloArmamento, setFiltroModeloArmamento] = useState("");
   const [filtroIdentificacaoRadio, setFiltroIdentificacaoRadio] = useState("");
   const [filtroStatusRadio, setFiltroStatusRadio] = useState("todos");
+  const [filtroStatusEquipamento, setFiltroStatusEquipamento] =
+    useState("todos");
   const [filtroVencimento, setFiltroVencimento] = useState("todos");
   const [filtroValidadeDe, setFiltroValidadeDe] = useState("");
   const [filtroValidadeAte, setFiltroValidadeAte] = useState("");
@@ -338,6 +346,24 @@ export default function Inventario() {
       if (equipError) throw equipError;
       if (equipData) setEquipamentos(equipData);
 
+      const { data: cautelasAtivas, error: cautelasError } = await supabase
+        .from("cautelas")
+        .select("id, tipo_cautela, cautela_itens(equipamento_id)")
+        .eq("status", "ativa");
+      if (cautelasError) throw cautelasError;
+
+      const mapaCautelas = {};
+      (cautelasAtivas || []).forEach((cautela) => {
+        (cautela.cautela_itens || []).forEach((item) => {
+          if (!item?.equipamento_id) return;
+          mapaCautelas[item.equipamento_id] = {
+            cautelaId: cautela.id,
+            tipo_cautela: cautela.tipo_cautela || null,
+          };
+        });
+      });
+      setCautelasAtivasPorEquipamento(mapaCautelas);
+
       const radioResponse = await fetch("/api/radios", {
         method: "GET",
         credentials: "include",
@@ -552,9 +578,12 @@ export default function Inventario() {
     const serieItem = String(
       item.num_serie || item.numero_serie || "",
     ).toLowerCase();
-    const localizacaoItem = String(
-      item.detalhes?.localizacao_atual || "Estoque da Reserva",
-    ).toLowerCase();
+    // O filtro de localização usa a localização efetivamente gravada no acervo.
+    // A classificação de cautela não deve sobrescrever esse valor, especialmente
+    // enquanto as cautelas de longo prazo ainda não foram geradas pelo sistema.
+    const localizacaoItem = String(obterLocalizacaoGravada(item))
+      .trim()
+      .toLowerCase();
 
     if (filtroSerie && !serieItem.includes(filtroSerie.toLowerCase()))
       return false;
@@ -564,11 +593,15 @@ export default function Inventario() {
       !modeloItem.includes(filtroModeloArmamento.trim().toLowerCase())
     )
       return false;
-    if (
-      filtroLocalizacao !== "todas" &&
-      localizacaoItem !== filtroLocalizacao.toLowerCase()
-    )
-      return false;
+    if (filtroStatusEquipamento !== "todos") {
+      const statusItem = String(item.status || "disponivel").toLowerCase();
+      if (statusItem !== filtroStatusEquipamento.toLowerCase()) return false;
+    }
+
+    if (filtroLocalizacao !== "todas") {
+      const filtroNormalizado = filtroLocalizacao.trim().toLowerCase();
+      if (localizacaoItem !== filtroNormalizado) return false;
+    }
 
     if (tipoItem === "colete") {
       const validade = String(item.detalhes?.data_validade || "").slice(0, 10);
@@ -685,7 +718,19 @@ export default function Inventario() {
         );
       }
 
-      const formatarStatusExcel = (status) => {
+      const formatarStatusExcel = (status, item) => {
+        const classificacao = classificarEquipamento(
+          item,
+          cautelasAtivasPorEquipamento,
+        );
+        if (
+          [
+            "temporaria",
+            "longo_prazo",
+            "acautelada_sem_classificacao",
+          ].includes(classificacao.chave)
+        )
+          return "Cautelado";
         const statusMapeados = {
           disponivel: "Disponível",
           cautelado: "Cautelado",
@@ -696,11 +741,7 @@ export default function Inventario() {
           statusMapeados[String(status || "").toLowerCase()] || status || "N/I"
         );
       };
-      const localizacaoExcel = (item) =>
-        item.localizacao_atual ||
-        item.detalhes?.localizacao_atual ||
-        item.localizacao ||
-        "N/I";
+      const localizacaoExcel = (item) => obterLocalizacaoGravada(item) || "N/I";
       const dataExcel = (valor) => {
         if (!valor) return "N/I";
         const data = String(valor).slice(0, 10);
@@ -727,7 +768,7 @@ export default function Inventario() {
             item.num_serie || "N/I",
             item.detalhes?.calibre || item.calibre || "N/I",
             localizacaoExcel(item),
-            formatarStatusExcel(item.status),
+            formatarStatusExcel(item.status, item),
           ]);
       } else if (abaAtiva === "coletes") {
         colunas = [
@@ -748,7 +789,7 @@ export default function Inventario() {
             item.detalhes?.tamanho || "N/I",
             dataExcel(item.detalhes?.data_validade),
             localizacaoExcel(item),
-            formatarStatusExcel(item.status),
+            formatarStatusExcel(item.status, item),
           ]);
       } else if (abaAtiva === "radios") {
         colunas = [
@@ -765,7 +806,7 @@ export default function Inventario() {
           item.numero_serie || "N/I",
           item.numero_identificacao || "N/I",
           item.localizacao_atual || "N/I",
-          formatarStatusExcel(item.status),
+          formatarStatusExcel(item.status, item),
         ]);
       } else {
         colunas = ["Modelo", "Série / Lote", "Localização", "Status"];
@@ -773,7 +814,7 @@ export default function Inventario() {
           item.modelo_descricao || "N/I",
           item.num_serie || item.detalhes?.lote || "N/I",
           localizacaoExcel(item),
-          formatarStatusExcel(item.status),
+          formatarStatusExcel(item.status, item),
         ]);
       }
 
@@ -894,11 +935,10 @@ export default function Inventario() {
           statusMapeados[String(status || "").toLowerCase()] || status || "N/I"
         );
       };
+      // O PDF deve refletir os mesmos dados usados pelos filtros:
+      // localização cadastrada e status real do registro.
       const formatarLocalizacao = (item) =>
-        item.localizacao_atual ||
-        item.detalhes?.localizacao_atual ||
-        item.localizacao ||
-        "N/I";
+        obterLocalizacaoGravada(item) || "N/I";
       const formatarData = (valor) => {
         if (!valor) return "N/I";
         const data = String(valor).slice(0, 10);
@@ -1121,6 +1161,8 @@ export default function Inventario() {
               setAbaAtiva(id);
               setFiltroTipo("todos");
               setFiltroModeloArmamento("");
+              setFiltroStatusEquipamento("todos");
+              setFiltroStatusRadio("todos");
             }}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${abaAtiva === id ? "bg-white text-blue-600 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
           >
@@ -1137,7 +1179,7 @@ export default function Inventario() {
         </div>
 
         <div
-          className={`grid grid-cols-1 sm:grid-cols-2 ${abaAtiva === "radios" ? "lg:grid-cols-3 xl:grid-cols-6" : abaAtiva === "coletes" ? "lg:grid-cols-3 xl:grid-cols-4" : abaAtiva === "armamentos" ? "lg:grid-cols-3 xl:grid-cols-3" : "lg:grid-cols-3"} gap-3`}
+          className={`grid grid-cols-1 sm:grid-cols-2 ${abaAtiva === "radios" ? "lg:grid-cols-3 xl:grid-cols-6" : abaAtiva === "coletes" ? "lg:grid-cols-3 xl:grid-cols-5" : abaAtiva === "armamentos" ? "lg:grid-cols-3 xl:grid-cols-4" : "lg:grid-cols-3"} gap-3`}
         >
           {abaAtiva === "armamentos" && (
             <div className="space-y-1">
@@ -1210,6 +1252,24 @@ export default function Inventario() {
               </div>
             </>
           )}
+          {abaAtiva !== "radios" && (
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                Status
+              </label>
+              <select
+                value={filtroStatusEquipamento}
+                onChange={(e) => setFiltroStatusEquipamento(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-slate-800 font-medium"
+              >
+                <option value="todos">Todos os Status</option>
+                <option value="disponivel">Disponível</option>
+                <option value="cautelado">Cautelado</option>
+                <option value="em_manutencao">Em manutenção</option>
+                <option value="baixado">Baixado</option>
+              </select>
+            </div>
+          )}
           {abaAtiva === "radios" && (
             <>
               <div className="space-y-1">
@@ -1256,9 +1316,16 @@ export default function Inventario() {
               <option value="Acautelada com Policial">
                 Acautelada com Policial
               </option>
+              <option value="Acautelada (Temporária)">
+                Acautelada (Temporária)
+              </option>
+              <option value="Acautelada com Policial (Longo Prazo)">
+                Acautelada com Policial (Longo Prazo)
+              </option>
               <option value="Apreendida">Apreendida</option>
               <option value="Em Perícia">Em Perícia</option>
               <option value="Manutenção">Manutenção</option>
+              <option value="Baixa Definitiva">Baixa Definitiva</option>
             </select>
           </div>
         </div>
@@ -1316,8 +1383,16 @@ export default function Inventario() {
                   const modeloVal =
                     item.modelo_descricao || item.modelo || "N/I";
                   const serieVal = item.num_serie || item.numero_serie || "N/I";
-                  const localizacaoVal =
-                    item.detalhes?.localizacao_atual || "Estoque da Reserva";
+                  const classificacaoItem = classificarEquipamento(
+                    item,
+                    cautelasAtivasPorEquipamento,
+                  );
+                  const localizacaoVal = obterLocalizacaoGravada(item);
+                  const estaCautelado = [
+                    "temporaria",
+                    "longo_prazo",
+                    "acautelada_sem_classificacao",
+                  ].includes(classificacaoItem.chave);
 
                   let infoExtra = item.detalhes?.calibre || "";
                   if (item.tipo === "municao") {
@@ -1365,11 +1440,17 @@ export default function Inventario() {
                       </td>
                       <td className="p-3.5 text-center">
                         <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${item.status === "disponivel" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${estaCautelado ? "bg-amber-100 text-amber-800" : item.status === "disponivel" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
                         >
-                          {item.status === "disponivel"
-                            ? "Disponível"
-                            : item.status}
+                          {[
+                            "temporaria",
+                            "longo_prazo",
+                            "acautelada_sem_classificacao",
+                          ].includes(classificacaoItem.chave)
+                            ? "Cautelado"
+                            : item.status === "disponivel"
+                              ? "Disponível"
+                              : item.status}
                         </span>
                       </td>
                       <td className="p-3.5 text-center">

@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabaseClient";
+import { LOCALIZACOES, STATUS_ACERVO } from "../utils/classificacaoAcervo";
 
 // Buscar todas as cautelas com dados populados (Policiais + Itens + Equipamentos)
 export async function getCautelas() {
@@ -29,6 +30,7 @@ export async function createCautela({
   operador_id,
   observacoes,
   itens,
+  tipo_cautela = "temporaria",
 }) {
   // 1. Criar o registro mestre da Cautela
   const { data: cautela, error: cautelaError } = await supabase
@@ -39,6 +41,7 @@ export async function createCautela({
         operador_abertura_id: operador_id,
         observacoes,
         status: "ativa",
+        tipo_cautela,
       },
     ])
     .select()
@@ -60,14 +63,28 @@ export async function createCautela({
 
   if (itensError) throw new Error(itensError.message);
 
-  // 3. Atualizar o status dos equipamentos no acervo para 'cautelado'
+  // 3. Atualizar status e localização operacional dos equipamentos.
   const equipamentoIds = itens.map((i) => i.equipamento_id);
-  const { error: updateError } = await supabase
+  const { data: equipamentosAtuais, error: equipamentosError } = await supabase
     .from("equipamentos")
-    .update({ status: "cautelado" })
+    .select("id, detalhes")
     .in("id", equipamentoIds);
+  if (equipamentosError) throw new Error(equipamentosError.message);
 
-  if (updateError) throw new Error(updateError.message);
+  for (const equipamento of equipamentosAtuais || []) {
+    const { error: updateError } = await supabase
+      .from("equipamentos")
+      .update({
+        status: STATUS_ACERVO.INDISPONIVEL,
+        detalhes: {
+          ...(equipamento.detalhes || {}),
+          localizacao_atual: LOCALIZACOES.ACAUTELADA,
+          tipo_cautela,
+        },
+      })
+      .eq("id", equipamento.id);
+    if (updateError) throw new Error(updateError.message);
+  }
 
   return cautela;
 }
@@ -98,11 +115,25 @@ export async function fecharCautela(
 
   if (itens && itens.length > 0) {
     const equipamentoIds = itens.map((i) => i.equipamento_id);
-    const { error: updateError } = await supabase
+    const { data: equipamentosAtuais, error: equipamentosError } = await supabase
       .from("equipamentos")
-      .update({ status: "disponivel" })
+      .select("id, detalhes")
       .in("id", equipamentoIds);
 
-    if (updateError) throw new Error(updateError.message);
+    if (equipamentosError) throw new Error(equipamentosError.message);
+    for (const equipamento of equipamentosAtuais || []) {
+      const { error: updateError } = await supabase
+        .from("equipamentos")
+        .update({
+          status: STATUS_ACERVO.DISPONIVEL,
+          detalhes: {
+            ...(equipamento.detalhes || {}),
+            localizacao_atual: LOCALIZACOES.RESERVA,
+            tipo_cautela: null,
+          },
+        })
+        .eq("id", equipamento.id);
+      if (updateError) throw new Error(updateError.message);
+    }
   }
 }

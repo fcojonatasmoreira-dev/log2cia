@@ -550,6 +550,7 @@ export default function Cautelas() {
             <div><strong>Data/Hora Cautela (Saída):</strong> ${dataCautelaFormatada} | <strong>Armeiro Saída:</strong> ${nomeArmeiroSaida}</div>
             <div><strong>Data/Hora Devolução:</strong> ${dataDevolucaoFormatada} | <strong>Armeiro Baixa:</strong> ${isAtiva ? "Pendente" : nomeArmeiroBaixa}</div>
             <div><strong>Status Atual:</strong> ${isAtiva ? "EM CAUTELA (Ativa)" : "DEVOLVIDO (Finalizada)"}</div>
+            <div><strong>Tipo de Cautela:</strong> ${cautelaVisualizando.tipo_cautela === "longo_prazo" ? "LONGO PRAZO" : "TEMPORÁRIA"}</div>
           </div>
 
           <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 5px; padding: 8px; margin-bottom: 8px;">
@@ -761,6 +762,7 @@ export default function Cautelas() {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-[11px] font-semibold">
                 <th className="p-3.5">Policial / Servidor</th>
+                <th className="p-3.5">Tipo de Cautela</th>
                 <th className="p-3.5">Itens Cautelados</th>
                 <th className="p-3.5">Armeiro Saída</th>
                 <th className="p-3.5">Armeiro Baixa</th>
@@ -771,7 +773,7 @@ export default function Cautelas() {
             <tbody className="divide-y divide-slate-100">
               {cautelasFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="p-8 text-center text-slate-400">
+                  <td colSpan="7" className="p-8 text-center text-slate-400">
                     Nenhuma cautela encontrada com os filtros aplicados.
                   </td>
                 </tr>
@@ -795,6 +797,12 @@ export default function Cautelas() {
                         </span>
                         <span className="text-[11px] text-slate-500 font-mono">
                           Mat: {pol.matricula || "N/I"}
+                        </span>
+                      </td>
+
+                      <td className="p-3.5">
+                        <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold ${c.tipo_cautela === "longo_prazo" ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800"}`}>
+                          {c.tipo_cautela === "longo_prazo" ? "Longo Prazo" : "Temporária"}
                         </span>
                       </td>
 

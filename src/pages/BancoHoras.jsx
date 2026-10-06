@@ -32,8 +32,8 @@ export default function BancoHoras() {
   const [pareceres, setPareceres] = useState({});
   const [buscaPolicial, setBuscaPolicial] = useState("");
   const [policialSelecionado, setPolicialSelecionado] = useState("");
-  const [podeExcluir, setPodeExcluir] = useState(false);
-  const [excluindo, setExcluindo] = useState("");
+  const [podeExcluirMovimentacao, setPodeExcluirMovimentacao] = useState(false);
+  const [excluindoMovimentacao, setExcluindoMovimentacao] = useState("");
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -52,8 +52,8 @@ export default function BancoHoras() {
         throw new Error(pol.error || "Não foi possível carregar os policiais.");
       setSolicitacoes(bh.solicitacoes || []);
       setMovimentacoes(bh.movimentacoes || []);
-      setPodeExcluir(bh.permissoes?.excluir_movimentacao === true);
       setPoliciais(pol.policiais || []);
+      setPodeExcluirMovimentacao(Boolean(bh.permissoes?.excluir_movimentacao));
     } catch (e) {
       setErro(e.message);
     } finally {
@@ -90,16 +90,27 @@ export default function BancoHoras() {
       )
       .map((p) => {
         const movimentos = movimentacoes.filter((m) => m.policial_id === p.id);
-        const saldo = movimentos
-          .filter((m) => !m.excluido_em)
-          .reduce((total, m) => {
-            const horas = Number(m.horas || 0);
-            if (m.tipo === "credito") return total + horas;
-            if (m.tipo === "debito") return total - horas;
-            if (m.tipo === "ajuste_zeragem") return total + horas;
-            return total;
-          }, 0);
-        return { ...p, saldo: Number(saldo.toFixed(2)), movimentos };
+        const saldo = movimentos.reduce((total, m) => {
+          const horas = Number(m.horas || 0);
+          if (m.tipo === "credito") return total + horas;
+          if (m.tipo === "debito") return total - horas;
+          if (m.tipo === "ajuste_zeragem") return total + horas;
+          return total;
+        }, 0);
+        const folgas = movimentos.reduce((total, m) => {
+          if (m.excluido_em) return total;
+          if (m.tipo === "concessao_folga")
+            return total + Number(m.quantidade_folgas || 0);
+          if (m.tipo === "utilizacao_folga")
+            return total - Number(m.quantidade_folgas || 0);
+          return total;
+        }, 0);
+        return {
+          ...p,
+          saldo: Number(saldo.toFixed(2)),
+          folgas: Math.max(0, folgas),
+          movimentos,
+        };
       })
       .sort((a, b) =>
         (a.nome_guerra || a.nome_completo || "").localeCompare(
@@ -113,35 +124,35 @@ export default function BancoHoras() {
   );
 
   const excluirMovimentacao = async (movimentacao) => {
-    if (!podeExcluir || !movimentacao?.id || excluindo) return;
-    const confirmado = window.confirm(
-      "Tem certeza de que deseja excluir definitivamente esta movimentação? Esta ação não pode ser desfeita.",
-    );
-    if (!confirmado) return;
+    if (
+      !window.confirm(
+        "Confirma a exclusão desta movimentação? Esta ação excluirá o lançamento do Banco de Horas e poderá alterar o saldo do policial.",
+      )
+    )
+      return;
 
-    setExcluindo(movimentacao.id);
+    setExcluindoMovimentacao(movimentacao.id);
     setErro("");
     setSucesso("");
     try {
       const response = await fetch("/api/banco-horas", {
-        method: "POST",
+        method: "DELETE",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          acao: "excluir_movimentacao",
-          movimentacao_id: movimentacao.id,
-        }),
+        body: JSON.stringify({ movimentacao_id: movimentacao.id }),
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(json.error || "Não foi possível excluir a movimentação.");
+        throw new Error(
+          json.error || "Não foi possível excluir a movimentação.",
+        );
       }
-      setSucesso("Movimentação excluída definitivamente.");
+      setSucesso("Movimentação excluída com sucesso.");
       await carregar();
     } catch (e) {
-      setErro(e.message || "Erro ao excluir a movimentação.");
+      setErro(e.message || "Não foi possível excluir a movimentação.");
     } finally {
-      setExcluindo("");
+      setExcluindoMovimentacao("");
     }
   };
 
@@ -189,7 +200,8 @@ export default function BancoHoras() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Banco de Horas</h1>
           <p className="text-sm text-slate-500">
-            Análise das solicitações de inclusão de horas e dispensa de serviço.
+            Análise das solicitações de inclusão de horas, crédito de folga e
+            dispensa de serviço.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -279,9 +291,33 @@ export default function BancoHoras() {
                       <p className="text-sm text-slate-600 mt-1">
                         {s.tipo === "dispensa"
                           ? "Dispensa de serviço"
-                          : "Inclusão de horas"}{" "}
-                        • {horasBR(s.horas_solicitadas)} • Data:{" "}
-                        {dataBR(s.data_servico)} • Turno {s.turno || "—"}
+                          : s.tipo === "folga"
+                            ? "Crédito de folga"
+                            : "Inclusão de horas"}{" "}
+                        •{" "}
+                        {s.tipo === "folga"
+                          ? `${s.quantidade_folgas || 1} folga(s)`
+                          : horasBR(s.horas_solicitadas)}
+                        {s.tipo === "folga" ? (
+                          <> • Fato gerador: {dataBR(s.data_fato_beneficio)}</>
+                        ) : (
+                          <>
+                            {" "}
+                            • Data: {dataBR(s.data_servico)} • Turno{" "}
+                            {s.turno === "OUTRO"
+                              ? s.turno_descricao || "Outros"
+                              : s.turno || "—"}
+                            {s.tipo === "dispensa" && s.origem_dispensa ? (
+                              <>
+                                {" "}
+                                • Compensação:{" "}
+                                {s.origem_dispensa === "folga"
+                                  ? "Folga disponível"
+                                  : "Banco de Horas"}
+                              </>
+                            ) : null}
+                          </>
+                        )}
                       </p>
                       {s.numero_ocorrencia && (
                         <p className="text-xs text-slate-500 mt-1">
@@ -393,6 +429,7 @@ export default function BancoHoras() {
                   <th className="text-left p-3">Policial</th>
                   <th className="text-left p-3">Matrícula</th>
                   <th className="text-right p-3">Saldo atual</th>
+                  <th className="text-right p-3">Folgas</th>
                   <th className="text-right p-3">Movimentações</th>
                   <th className="text-right p-3">Ação</th>
                 </tr>
@@ -412,6 +449,9 @@ export default function BancoHoras() {
                       className={`p-3 text-right font-bold ${p.saldo < 0 ? "text-rose-700" : "text-emerald-700"}`}
                     >
                       {horasBR(p.saldo)}
+                    </td>
+                    <td className="p-3 text-right font-bold text-slate-700">
+                      {p.folgas}
                     </td>
                     <td className="p-3 text-right text-slate-600">
                       {p.movimentos.length}
@@ -449,8 +489,11 @@ export default function BancoHoras() {
                   Matrícula: {policialDetalhado.matricula || "—"}
                 </p>
               </div>
-              <div className="text-lg font-extrabold text-slate-900">
-                Saldo: {horasBR(policialDetalhado.saldo)}
+              <div className="text-right text-lg font-extrabold text-slate-900">
+                <div>Saldo: {horasBR(policialDetalhado.saldo)}</div>
+                <div className="text-sm text-slate-500">
+                  Folgas disponíveis: {policialDetalhado.folgas}
+                </div>
               </div>
             </div>
             {policialDetalhado.movimentos.length === 0 ? (
@@ -466,7 +509,9 @@ export default function BancoHoras() {
                       <th className="text-left p-3">Tipo</th>
                       <th className="text-left p-3">Descrição</th>
                       <th className="text-right p-3">Horas</th>
-                      {podeExcluir && <th className="text-right p-3">Ação</th>}
+                      {podeExcluirMovimentacao && (
+                        <th className="text-right p-3">Ação</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -478,31 +523,44 @@ export default function BancoHoras() {
                         <td className="p-3">
                           {m.tipo === "credito"
                             ? "Crédito"
-                            : m.tipo === "ajuste_zeragem"
-                              ? "Ajuste"
-                              : m.descricao?.toLowerCase().includes("dispensa")
-                                ? "Dispensa"
-                                : "Débito"}
+                            : m.tipo === "concessao_folga"
+                              ? "Concessão de folga"
+                              : m.tipo === "utilizacao_folga"
+                                ? "Utilização de folga"
+                                : m.tipo === "ajuste_zeragem"
+                                  ? "Ajuste"
+                                  : m.descricao
+                                        ?.toLowerCase()
+                                        .includes("dispensa")
+                                    ? "Dispensa"
+                                    : "Débito"}
                         </td>
                         <td className="p-3">
                           {m.descricao || "—"}
                           {m.turno ? ` • Turno ${m.turno}` : ""}
                         </td>
                         <td
-                          className={`p-3 text-right font-bold whitespace-nowrap ${m.tipo === "credito" ? "text-emerald-700" : "text-rose-700"}`}
+                          className={`p-3 text-right font-bold whitespace-nowrap ${m.tipo === "credito" || m.tipo === "concessao_folga" ? "text-emerald-700" : "text-rose-700"}`}
                         >
-                          {m.tipo === "credito" ? "+" : "−"}
-                          {horasBR(m.horas)}
+                          {m.tipo === "concessao_folga"
+                            ? `+${m.quantidade_folgas || 0} folga(s)`
+                            : m.tipo === "utilizacao_folga"
+                              ? `−${m.quantidade_folgas || 1} folga • ${horasBR(m.horas_servico)}`
+                              : `${m.tipo === "credito" ? "+" : "−"}${horasBR(m.horas)}`}
                         </td>
-                        {podeExcluir && (
+                        {podeExcluirMovimentacao && (
                           <td className="p-3 text-right">
                             <button
+                              type="button"
                               onClick={() => excluirMovimentacao(m)}
-                              disabled={!!excluindo}
-                              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                              disabled={excluindoMovimentacao === m.id}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                              title="Excluir movimentação"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              {excluindo === m.id ? "Excluindo..." : "Excluir"}
+                              <Trash2 className="w-3.5 h-3.5" />
+                              {excluindoMovimentacao === m.id
+                                ? "Excluindo..."
+                                : "Excluir"}
                             </button>
                           </td>
                         )}
