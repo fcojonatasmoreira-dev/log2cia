@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 import { login } from "../services/sessionService";
 import {
   Shield,
@@ -7,6 +8,8 @@ import {
   Lock,
   AlertCircle,
   HelpCircle,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 // Função utilitária inteligente para senha padrão
@@ -21,10 +24,14 @@ function obterSenhaPadrao(policial) {
 }
 
 export default function Login() {
-  const [matricula, setMatricula] = useState("");
+  const [matricula, setMatricula] = useState(
+    () => localStorage.getItem("log2cia_matricula") || "",
+  );
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [manterConectado, setManterConectado] = useState(false);
 
   // Estados para a Modal de "Esqueci minha senha"
   const [isEsqueciModalOpen, setIsEsqueciModalOpen] = useState(false);
@@ -38,7 +45,17 @@ export default function Login() {
     setCarregando(true);
 
     try {
-      const { user: policial } = await login(matricula.trim(), senha);
+      const { user: policial } = await login(
+        matricula.trim(),
+        senha,
+        manterConectado,
+      );
+
+      if (manterConectado) {
+        localStorage.setItem("log2cia_matricula", matricula.trim());
+      } else {
+        localStorage.removeItem("log2cia_matricula");
+      }
 
       // Mantido temporariamente para compatibilidade com os módulos existentes.
       // A identidade válida passa a ser confirmada pelo cookie HttpOnly no backend.
@@ -65,16 +82,32 @@ export default function Login() {
 
     setEnviandoSolicitacao(true);
     try {
-      const response = await fetch("/api/solicitacoes-senha", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          matricula: matriculaRecuperacao.trim(),
-          motivo: motivoRecuperacao.trim(),
-        }),
-      });
-      const resultado = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(resultado.error || "Não foi possível enviar a solicitação.");
+      const matriculaLimpa = matriculaRecuperacao.trim();
+
+      const { data: policiais, error: errBusca } = await supabase
+        .from("policiais")
+        .select("id, nome_guerra, matricula")
+        .eq("matricula", matriculaLimpa);
+
+      if (errBusca || !policiais || policiais.length === 0) {
+        throw new Error("Militar não encontrado com esta Matrícula.");
+      }
+
+      const policial = policiais[0];
+
+      const { error: errInsert } = await supabase
+        .from("solicitacoes_senha")
+        .insert([
+          {
+            policial_id: policial.id,
+            matricula: policial.matricula,
+            nome_guerra: policial.nome_guerra,
+            motivo: motivoRecuperacao,
+            status: "pendente",
+          },
+        ]);
+
+      if (errInsert) throw errInsert;
 
       alert("Solicitação enviada com sucesso para o painel do Master!");
       setIsEsqueciModalOpen(false);
@@ -128,30 +161,44 @@ export default function Login() {
           </div>
 
           <div>
-            <div className="flex justify-between items-center mb-1">
-              <label className="block text-xs font-semibold text-slate-300 uppercase">
-                Senha
-              </label>
-              <button
-                type="button"
-                onClick={() => setIsEsqueciModalOpen(true)}
-                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-              >
-                Esqueci minha senha
-              </button>
-            </div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+              Senha
+            </label>
             <div className="relative">
               <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
-                type="password"
+                type={mostrarSenha ? "text" : "password"}
                 required
                 placeholder="••••••••"
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-9 pr-11 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              <button
+                type="button"
+                onClick={() => setMostrarSenha((valor) => !valor)}
+                aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
+                title={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                {mostrarSenha ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
             </div>
           </div>
+
+          <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={manterConectado}
+              onChange={(e) => setManterConectado(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-blue-600 focus:ring-blue-500"
+            />
+            <span>Lembrar de mim</span>
+          </label>
 
           <button
             type="submit"
@@ -161,6 +208,16 @@ export default function Login() {
             <KeyRound className="w-4 h-4" />
             <span>{carregando ? "Autenticando..." : "Entrar no Sistema"}</span>
           </button>
+
+          <div className="text-center pt-1">
+            <button
+              type="button"
+              onClick={() => setIsEsqueciModalOpen(true)}
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              Esqueci minha senha
+            </button>
+          </div>
         </form>
       </div>
 

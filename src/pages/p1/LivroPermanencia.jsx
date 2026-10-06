@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Clock,
   Eye,
+  RotateCcw,
 } from "lucide-react";
 import ModalNovoLivro from "./ModalNovoLivro";
 
@@ -61,7 +62,7 @@ export default function LivroPermanencia({ userLogado }) {
             .trim()
             .toLowerCase()
             .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, ""),
+            .replace(/[\\u0300-\\u036f]/g, ""),
         );
 
       const ehMaster =
@@ -141,6 +142,38 @@ export default function LivroPermanencia({ userLogado }) {
       modoVisualizacaoEstrita: true,
     });
     setModalAberto(true);
+  };
+
+  const handleReabrirLivro = async (livro) => {
+    if (!isMaster || livro?.status !== "fechado") return;
+
+    if (
+      !window.confirm(
+        "Deseja reabrir este livro? Ele voltará para Em Andamento e poderá ser editado novamente.",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("livros_permanencia")
+        .update({ status: "em_andamento" })
+        .eq("id", livro.id)
+        .eq("status", "fechado")
+        .select("id, status")
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) {
+        throw new Error("O livro não está mais fechado ou não foi encontrado.");
+      }
+
+      alert("Livro reaberto com sucesso. Ele voltou para Em Andamento.");
+      carregarLivros();
+    } catch (err) {
+      alert("Erro ao reabrir livro: " + err.message);
+    }
   };
 
   if (verificandoAcesso) {
@@ -264,6 +297,15 @@ export default function LivroPermanencia({ userLogado }) {
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
+                              {isMaster && livro.status === "fechado" && (
+                                <button
+                                  onClick={() => handleReabrirLivro(livro)}
+                                  title="Reabrir Livro (Master)"
+                                  className="p-1.5 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-colors"
+                                >
+                                  <RotateCcw className="w-4 h-4" />
+                                </button>
+                              )}
                             </>
                           ) : (
                             <button

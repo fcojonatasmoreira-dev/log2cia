@@ -35,16 +35,6 @@ export default function ModalNovoLivro({
   );
   const [turno, setTurno] = useState("A");
 
-  // Dados da escala de serviço
-  const [comandanteNome, setComandanteNome] = useState("");
-  const [subcomandanteNome, setSubcomandanteNome] = useState("");
-  const [p1Nome, setP1Nome] = useState("");
-  const [fiscalAisNome, setFiscalAisNome] = useState("");
-  const [auxAdmFiscalNome, setAuxAdmFiscalNome] = useState("");
-  const [auxPermanenteNome, setAuxPermanenteNome] = useState("");
-  const [armeiroNome, setArmeiroNome] = useState("");
-  const [buscasEscala, setBuscasEscala] = useState({});
-
   // Estados para busca e seleção de policiais
   const [buscaPermanente, setBuscaPermanente] = useState("");
   const [permanenteSelecionado, setPermanenteSelecionado] = useState(
@@ -113,14 +103,6 @@ export default function ModalNovoLivro({
         setPermanenteSelecionado(livroParaEditar.permanente_nome || "");
         setAntecessorSelecionado(livroParaEditar.antecessor_nome || "");
         setSubstitutoSelecionado(livroParaEditar.substituto_nome || "");
-        setComandanteNome(livroParaEditar.comandante_nome || "");
-        setSubcomandanteNome(livroParaEditar.subcomandante_nome || "");
-        setP1Nome(livroParaEditar.p1_nome || "");
-        setFiscalAisNome(livroParaEditar.fiscal_ais_nome || "");
-        setAuxAdmFiscalNome(livroParaEditar.aux_adm_fiscal_nome || "");
-        setAuxPermanenteNome(livroParaEditar.aux_permanente_nome || "");
-        setArmeiroNome(livroParaEditar.armeiro_nome || "");
-        setBuscasEscala({});
 
         if (livroParaEditar.modoVisualizacaoEstrita === true) {
           setModoVisualizacao(true);
@@ -137,14 +119,6 @@ export default function ModalNovoLivro({
         );
         setAntecessorSelecionado("");
         setSubstitutoSelecionado("");
-        setComandanteNome("");
-        setSubcomandanteNome("");
-        setP1Nome("");
-        setFiscalAisNome("");
-        setAuxAdmFiscalNome("");
-        setAuxPermanenteNome("");
-        setArmeiroNome("");
-        setBuscasEscala({});
         setViaturasLista([
           {
             vtr: "RP 151002",
@@ -251,24 +225,6 @@ export default function ModalNovoLivro({
     }
   }
 
-  async function verificarLivroExistente(
-    data,
-    turnoSelecionado,
-    ignorarId = null,
-  ) {
-    let consulta = supabase
-      .from("livros_permanencia")
-      .select("id")
-      .eq("data_servico", data)
-      .eq("turno", turnoSelecionado);
-
-    if (ignorarId) consulta = consulta.neq("id", ignorarId);
-
-    const { data: existentes, error } = await consulta.limit(1);
-    if (error) throw error;
-    return Boolean(existentes?.length);
-  }
-
   async function carregarDadosFilhos(livroId) {
     try {
       const { data: vtrData } = await supabase
@@ -316,9 +272,7 @@ export default function ModalNovoLivro({
       .filter((p) => {
         const nomeGuerra = String(p.nome_guerra || p.nome || "").toLowerCase();
         const matricula = String(p.matricula || p.mat || "").toLowerCase();
-        const numero = String(
-          p.numeral || p.numero_policial || p.numero || p.nº || p.num || "",
-        ).toLowerCase();
+        const numero = String(p.numero || p.nº || "").toLowerCase();
         const posto = String(p.posto_graduacao || p.posto || "").toLowerCase();
 
         return (
@@ -331,84 +285,23 @@ export default function ModalNovoLivro({
       .slice(0, 5);
   };
 
-  const filtrarPoliciaisPorFuncao = (termo, funcao) => {
-    const normalizar = (valor) =>
-      String(valor || "")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .trim();
-
-    let lista = policiais;
-
-    if (funcao === "comandante" || funcao === "subcomandante") {
-      lista = policiais.filter((p) => {
-        const posto = normalizar(p.posto_graduacao || p.posto);
-        return /tenente|capitao|major|coronel/.test(posto);
-      });
-    } else if (funcao === "armeiro") {
-      lista = policiais.filter(
-        (p) =>
-          String(p.role || "")
-            .trim()
-            .toLowerCase() === "armeiro",
-      );
-    }
-
-    if (!termo || termo.trim() === "") return lista.slice(0, 5);
-    const t = normalizar(termo);
-
-    return lista
-      .filter((p) => {
-        const camposBusca = [
-          p.nome_guerra,
-          p.nome_completo,
-          p.nome,
-          p.matricula,
-          p.numeral,
-          p.numero_policial,
-          p.numero,
-          p.nº,
-          p.num,
-          p.posto_graduacao,
-          p.posto,
-        ];
-        return camposBusca.some((campo) => normalizar(campo).includes(t));
-      })
-      .slice(0, 5);
-  };
-
   const formatarNomeCompletoPolicial = (p) => {
     if (!p) return "";
 
-    // Captura os dados independentemente dos nomes das colunas
+    // Captura as chaves independentemente de como estão no banco de dados
     const posto = p.posto_graduacao || p.posto || p.graduacao || "";
-    const numero =
-      p.numeral || p.numero_policial || p.numero || p.nº || p.num || "";
+    const numero = p.numero || p.nº || p.num || "";
     const guerra = p.nome_guerra || p.guerra || p.nome || "";
+    const mat = p.matricula || p.mat || "";
 
-    // Monta no padrão: Posto/Graduação + Numeral + Nome de Guerra
+    // Monta rigorosamente no padrão: Posto/Grad + Número + Nome de Guerra + Matrícula
     const partes = [];
     if (posto) partes.push(posto);
     if (numero) partes.push(numero);
     if (guerra) partes.push(`– ${guerra}`);
+    if (mat) partes.push(`(Mat: ${mat})`);
 
     return partes.join(" ").replace(/\s+–/, " –").trim();
-  };
-
-  const formatarNomeComMatricula = (nomeCompleto) => {
-    if (!nomeCompleto) return "";
-    const nomeNormalizado = String(nomeCompleto).trim().toLowerCase();
-    const policial = policiais.find(
-      (p) =>
-        formatarNomeCompletoPolicial(p).trim().toLowerCase() ===
-          nomeNormalizado ||
-        String(p.nome_guerra || p.guerra || p.nome || "")
-          .trim()
-          .toLowerCase() === nomeNormalizado,
-    );
-    const matricula = policial?.matricula || policial?.mat || "";
-    return matricula ? `${nomeCompleto} / ${matricula}` : nomeCompleto;
   };
 
   const adicionarViaturaRow = () => {
@@ -464,30 +357,15 @@ export default function ModalNovoLivro({
     setSalvando(true);
 
     try {
-      // Ao gerar a partir de um livro existente, cria o outro turno do mesmo dia.
-      const turnoNovo = String(turno).trim().toUpperCase() === "A" ? "B" : "A";
-      const jaExiste = await verificarLivroExistente(dataServico, turnoNovo);
-      if (jaExiste) {
-        alert(`Já existe um livro para ${dataServico} no turno ${turnoNovo}.`);
-        return;
-      }
-
       const { data: livroCriado, error: livroErr } = await supabase
         .from("livros_permanencia")
         .insert([
           {
             data_servico: dataServico,
-            turno: turnoNovo,
+            turno: turno,
             permanente_nome: permanenteSelecionado,
             antecessor_nome: antecessorSelecionado,
             substituto_nome: substitutoSelecionado,
-            comandante_nome: comandanteNome,
-            subcomandante_nome: subcomandanteNome,
-            p1_nome: p1Nome,
-            fiscal_ais_nome: fiscalAisNome,
-            aux_adm_fiscal_nome: auxAdmFiscalNome,
-            aux_permanente_nome: auxPermanenteNome,
-            armeiro_nome: armeiroNome,
             status: "em_andamento",
           },
         ])
@@ -514,12 +392,8 @@ export default function ModalNovoLivro({
         await supabase.from("livro_viaturas").insert(viaturasPayload);
       }
 
-      const ocorrenciasPreenchidas = ocorrencias
-        .map((o) => ({ ...o, descricao: (o.descricao || "").trim() }))
-        .filter((o) => o.descricao);
-
-      if (ocorrenciasPreenchidas.length > 0) {
-        const ocoPayload = ocorrenciasPreenchidas.map((o, idx) => ({
+      if (ocorrencias.length > 0) {
+        const ocoPayload = ocorrencias.map((o, idx) => ({
           livro_id: novoLivroId,
           ordem: idx + 1,
           descricao: o.descricao,
@@ -527,9 +401,7 @@ export default function ModalNovoLivro({
         await supabase.from("livro_ocorrencias").insert(ocoPayload);
       }
 
-      alert(
-        `Novo rascunho do turno ${turnoNovo} gerado com sucesso a partir deste livro!`,
-      );
+      alert("Novo rascunho gerado com sucesso a partir do histórico!");
       onSuccess();
       onClose();
     } catch (err) {
@@ -547,16 +419,6 @@ export default function ModalNovoLivro({
       const statusAtual = fecharTurno ? "fechado" : "em_andamento";
       let livroId = livroParaEditar?.id;
 
-      const jaExiste = await verificarLivroExistente(
-        dataServico,
-        turno,
-        livroId,
-      );
-      if (jaExiste) {
-        alert(`Já existe um livro para ${dataServico} no turno ${turno}.`);
-        return;
-      }
-
       if (livroId && !modoVisualizacao) {
         const { error: updErr } = await supabase
           .from("livros_permanencia")
@@ -566,13 +428,6 @@ export default function ModalNovoLivro({
             permanente_nome: permanenteSelecionado,
             antecessor_nome: antecessorSelecionado,
             substituto_nome: substitutoSelecionado,
-            comandante_nome: comandanteNome,
-            subcomandante_nome: subcomandanteNome,
-            p1_nome: p1Nome,
-            fiscal_ais_nome: fiscalAisNome,
-            aux_adm_fiscal_nome: auxAdmFiscalNome,
-            aux_permanente_nome: auxPermanenteNome,
-            armeiro_nome: armeiroNome,
             status: statusAtual,
           })
           .eq("id", livroId);
@@ -594,13 +449,6 @@ export default function ModalNovoLivro({
               permanente_nome: permanenteSelecionado,
               antecessor_nome: antecessorSelecionado,
               substituto_nome: substitutoSelecionado,
-              comandante_nome: comandanteNome,
-              subcomandante_nome: subcomandanteNome,
-              p1_nome: p1Nome,
-              fiscal_ais_nome: fiscalAisNome,
-              aux_adm_fiscal_nome: auxAdmFiscalNome,
-              aux_permanente_nome: auxPermanenteNome,
-              armeiro_nome: armeiroNome,
               status: statusAtual,
             },
           ])
@@ -632,12 +480,8 @@ export default function ModalNovoLivro({
         if (vtrErr) throw vtrErr;
       }
 
-      const ocorrenciasPreenchidas = ocorrencias
-        .map((o) => ({ ...o, descricao: (o.descricao || "").trim() }))
-        .filter((o) => o.descricao);
-
-      if (ocorrenciasPreenchidas.length > 0) {
-        const ocoPayload = ocorrenciasPreenchidas.map((o, idx) => ({
+      if (ocorrencias.length > 0) {
+        const ocoPayload = ocorrencias.map((o, idx) => ({
           livro_id: livroId,
           ordem: idx + 1,
           descricao: o.descricao,
@@ -671,176 +515,47 @@ export default function ModalNovoLivro({
 
   const handleBaixarPdfOficial = async () => {
     setGerandoPdf(true);
-    const elemento = document.getElementById("conteudo-pdf-oficial");
-    const rodape = elemento?.querySelector("img[data-pdf-rodape]");
-    const displayOriginal = elemento?.style.display;
-    const rodapeDisplayOriginal = rodape?.style.display;
-
     try {
+      const elemento = document.getElementById("conteudo-pdf-oficial");
       if (!elemento) throw new Error("Elemento de impressão não encontrado.");
 
       elemento.style.display = "block";
-      if (rodape) rodape.style.display = "none";
 
       const { jsPDF } = await import("jspdf");
       const canvas = await html2canvas(elemento, {
         scale: 2,
         useCORS: true,
         logging: false,
-        backgroundColor: "#ffffff",
       });
 
-      elemento.style.display = displayOriginal || "none";
-      if (rodape) rodape.style.display = rodapeDisplayOriginal || "";
+      elemento.style.display = "none";
 
+      const imgData = canvas.toDataURL("image/jpeg", 0.98);
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
-      const alturaRodape = 8;
-      const espacoNumeracao = 7;
-      const alturaConteudo = pdfHeight - alturaRodape - espacoNumeracao;
-      const pixelsPorMm = canvas.width / pdfWidth;
-      const alturaFatia = Math.floor(alturaConteudo * pixelsPorMm);
 
-      // Define pontos de quebra em limites de linhas/tabelas para não
-      // cortar uma tabela no meio quando houver espaço para movê-la.
-      const retanguloElemento = elemento.getBoundingClientRect();
-      const escalaY = canvas.height / Math.max(retanguloElemento.height, 1);
-      const topoElemento = retanguloElemento.top;
-      const tabelas = Array.from(elemento.querySelectorAll("table")).map(
-        (tabela) => {
-          const retanguloTabela = tabela.getBoundingClientRect();
-          const titulo = tabela.previousElementSibling;
-          const tituloTexto = titulo?.textContent?.trim() || "";
-          const topoTitulo =
-            titulo && /PARTE|CONTROLE/i.test(tituloTexto)
-              ? Math.max(
-                  0,
-                  (titulo.getBoundingClientRect().top - topoElemento) * escalaY,
-                )
-              : Math.max(0, (retanguloTabela.top - topoElemento) * escalaY);
-          return {
-            topo: Math.max(0, (retanguloTabela.top - topoElemento) * escalaY),
-            base: Math.min(
-              canvas.height,
-              (retanguloTabela.bottom - topoElemento) * escalaY,
-            ),
-            topoTitulo,
-            linhas: Array.from(tabela.querySelectorAll("tr")).map((linha) =>
-              Math.min(
-                canvas.height,
-                (linha.getBoundingClientRect().bottom - topoElemento) * escalaY,
-              ),
-            ),
-          };
-        },
-      );
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
 
-      const cortes = [];
-      let inicioCorte = 0;
-      while (inicioCorte < canvas.height) {
-        let fimCorte = Math.min(inicioCorte + alturaFatia, canvas.height);
+      pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, imgHeight);
+      heightLeft -= pdfHeight;
 
-        if (fimCorte < canvas.height) {
-          const tabelaAtingida = tabelas.find(
-            (tabela) => tabela.topo < fimCorte && tabela.base > fimCorte,
-          );
-
-          if (tabelaAtingida) {
-            // Se o título e a tabela ainda cabem juntos na página seguinte,
-            // inicia o conjunto lá. Caso contrário, quebra entre linhas.
-            const alturaGrupo = tabelaAtingida.base - tabelaAtingida.topoTitulo;
-            if (
-              tabelaAtingida.topoTitulo > inicioCorte + 20 &&
-              alturaGrupo <= alturaFatia
-            ) {
-              fimCorte = tabelaAtingida.topoTitulo;
-            } else {
-              const limitesSeguros = tabelaAtingida.linhas.filter(
-                (limite) => limite > inicioCorte + 20 && limite <= fimCorte,
-              );
-              if (limitesSeguros.length) {
-                fimCorte = limitesSeguros[limitesSeguros.length - 1];
-              } else if (tabelaAtingida.topo > inicioCorte + 20) {
-                fimCorte = tabelaAtingida.topoTitulo;
-              }
-            }
-          }
-        }
-
-        if (fimCorte <= inicioCorte) {
-          fimCorte = Math.min(inicioCorte + alturaFatia, canvas.height);
-        }
-        cortes.push({ inicio: inicioCorte, fim: fimCorte });
-        inicioCorte = fimCorte;
-      }
-      const totalPaginas = cortes.length;
-
-      let rodapeData = null;
-      if (rodape?.complete && rodape.naturalWidth > 0) {
-        const canvasRodape = document.createElement("canvas");
-        canvasRodape.width = rodape.naturalWidth;
-        canvasRodape.height = rodape.naturalHeight;
-        const contextoRodape = canvasRodape.getContext("2d");
-        contextoRodape.drawImage(rodape, 0, 0);
-        rodapeData = canvasRodape.toDataURL("image/png");
-      }
-
-      for (let pagina = 0; pagina < totalPaginas; pagina += 1) {
-        if (pagina > 0) pdf.addPage();
-
-        const { inicio: inicioY, fim: fimY } = cortes[pagina];
-        const alturaAtual = fimY - inicioY;
-        const paginaCanvas = document.createElement("canvas");
-        paginaCanvas.width = canvas.width;
-        paginaCanvas.height = alturaAtual;
-        const contexto = paginaCanvas.getContext("2d");
-        contexto.fillStyle = "#ffffff";
-        contexto.fillRect(0, 0, paginaCanvas.width, paginaCanvas.height);
-        contexto.drawImage(
-          canvas,
-          0,
-          inicioY,
-          canvas.width,
-          alturaAtual,
-          0,
-          0,
-          canvas.width,
-          alturaAtual,
-        );
-
-        const imagemPagina = paginaCanvas.toDataURL("image/jpeg", 0.98);
-        const alturaImagemMm = alturaAtual / pixelsPorMm;
-        pdf.addImage(imagemPagina, "JPEG", 0, 0, pdfWidth, alturaImagemMm);
-
-        if (rodapeData) {
-          pdf.addImage(
-            rodapeData,
-            "PNG",
-            0,
-            pdfHeight - alturaRodape,
-            pdfWidth,
-            alturaRodape,
-          );
-        }
-
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(8);
-        pdf.text(
-          `Página ${pagina + 1} de ${totalPaginas}`,
-          pdfWidth - 10,
-          pdfHeight - alturaRodape - 2,
-          { align: "right" },
-        );
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, imgHeight);
+        heightLeft -= pdfHeight;
       }
 
       pdf.save(`Livro_Permanencia_${dataServico}_Turno_${turno}.pdf`);
       onSuccess();
     } catch (err) {
       alert("Erro ao gerar PDF oficial: " + err.message);
+      const elem = document.getElementById("conteudo-pdf-oficial");
+      if (elem) elem.style.display = "none";
     } finally {
-      if (elemento) elemento.style.display = displayOriginal || "none";
-      if (rodape) rodape.style.display = rodapeDisplayOriginal || "";
       setGerandoPdf(false);
     }
   };
@@ -1095,134 +810,6 @@ export default function ModalNovoLivro({
                   )}
               </div>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              {[
-                [
-                  "comandante",
-                  "Comandante da 2ª CIA / 15º BPM",
-                  comandanteNome,
-                  setComandanteNome,
-                ],
-                [
-                  "subcomandante",
-                  "Subcomandante da 2ª CIA / 15º BPM",
-                  subcomandanteNome,
-                  setSubcomandanteNome,
-                ],
-                ["p1", "P-1 da 2ª CIA / 15º BPM", p1Nome, setP1Nome],
-                [
-                  "fiscalAis",
-                  "Fiscal da AIS 15",
-                  fiscalAisNome,
-                  setFiscalAisNome,
-                ],
-                [
-                  "auxAdmFiscal",
-                  "Aux. Adm. do Fiscal",
-                  auxAdmFiscalNome,
-                  setAuxAdmFiscalNome,
-                ],
-                [
-                  "auxPermanente",
-                  "Aux. Permanente da Guarda",
-                  auxPermanenteNome,
-                  setAuxPermanenteNome,
-                ],
-                [
-                  "armeiro",
-                  "Armeiro da 2ª CIA / 15º BPM",
-                  armeiroNome,
-                  setArmeiroNome,
-                ],
-              ].map(([chave, label, valor, atualizar]) => (
-                <div key={chave} className="relative">
-                  <label className="block font-bold text-slate-700 uppercase mb-1">
-                    {label}
-                  </label>
-                  {chave === "armeiro" ? (
-                    <select
-                      disabled={modoVisualizacao || loadingPoliciais}
-                      value={valor}
-                      onChange={(e) => atualizar(e.target.value)}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl uppercase outline-none disabled:bg-slate-100 disabled:text-slate-600"
-                    >
-                      <option value="">
-                        {loadingPoliciais
-                          ? "Carregando armeiros..."
-                          : "Selecione o armeiro..."}
-                      </option>
-                      {policiais
-                        .filter(
-                          (p) =>
-                            String(p.role || "")
-                              .trim()
-                              .toLowerCase() === "armeiro",
-                        )
-                        .map((p) => {
-                          const nomeFormatado = formatarNomeCompletoPolicial(p);
-                          return (
-                            <option key={p.id} value={nomeFormatado}>
-                              {nomeFormatado}
-                            </option>
-                          );
-                        })}
-                    </select>
-                  ) : (
-                    <>
-                      <div className="relative">
-                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                        <input
-                          type="text"
-                          disabled={modoVisualizacao}
-                          value={buscasEscala[chave] ?? valor}
-                          onChange={(e) => {
-                            const termo = e.target.value;
-                            atualizar(termo);
-                            setBuscasEscala((anterior) => ({
-                              ...anterior,
-                              [chave]: termo,
-                            }));
-                          }}
-                          placeholder="Digite nome de guerra ou numeral..."
-                          className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl uppercase outline-none disabled:bg-slate-100 disabled:text-slate-600"
-                        />
-                      </div>
-                      {buscasEscala[chave] &&
-                        !modoVisualizacao &&
-                        filtrarPoliciaisPorFuncao(buscasEscala[chave], chave)
-                          .length > 0 && (
-                          <div className="absolute z-30 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
-                            {filtrarPoliciaisPorFuncao(
-                              buscasEscala[chave],
-                              chave,
-                            ).map((p) => {
-                              const nomeFormatado =
-                                formatarNomeCompletoPolicial(p);
-                              return (
-                                <div
-                                  key={p.id}
-                                  onClick={() => {
-                                    atualizar(nomeFormatado);
-                                    setBuscasEscala((anterior) => {
-                                      const novasBuscas = { ...anterior };
-                                      delete novasBuscas[chave];
-                                      return novasBuscas;
-                                    });
-                                  }}
-                                  className="p-2 hover:bg-blue-50 cursor-pointer text-slate-700 font-medium border-b border-slate-100 last:border-none"
-                                >
-                                  {nomeFormatado}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* BLOCO 2: 3ª PARTE - CONTROLE DE VIATURAS */}
@@ -1269,7 +856,7 @@ export default function ModalNovoLivro({
                       className="w-full p-2 bg-slate-50 border rounded-lg uppercase text-xs disabled:bg-slate-100 disabled:text-slate-600"
                     />
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-1">
                     <label className="block text-[10px] font-bold text-slate-600">
                       KM Inicial
                     </label>
@@ -1283,7 +870,7 @@ export default function ModalNovoLivro({
                       className="w-full p-2 bg-slate-50 border rounded-lg font-mono text-xs disabled:bg-slate-100 disabled:text-slate-600"
                     />
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-1">
                     <label className="block text-[10px] font-bold text-slate-600">
                       KM Final
                     </label>
@@ -1297,7 +884,7 @@ export default function ModalNovoLivro({
                       className="w-full p-2 bg-slate-50 border rounded-lg font-mono text-xs disabled:bg-slate-100 disabled:text-slate-600"
                     />
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-1">
                     <label className="block text-[10px] font-bold text-slate-600">
                       KM Abast.
                     </label>
@@ -1337,6 +924,21 @@ export default function ModalNovoLivro({
                       value={vtrItem.valor}
                       onChange={(e) =>
                         atualizarViatura(idx, "valor", e.target.value)
+                      }
+                      className="w-full p-2 bg-slate-50 border rounded-lg font-mono text-xs disabled:bg-slate-100 disabled:text-slate-600"
+                    />
+                  </div>
+                  <div className="sm:col-span-1">
+                    <label className="block text-[10px] font-bold text-slate-600">
+                      Saldo
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      disabled={modoVisualizacao}
+                      value={vtrItem.saldo}
+                      onChange={(e) =>
+                        atualizarViatura(idx, "saldo", e.target.value)
                       }
                       className="w-full p-2 bg-slate-50 border rounded-lg font-mono text-xs disabled:bg-slate-100 disabled:text-slate-600"
                     />
@@ -1869,32 +1471,47 @@ export default function ModalNovoLivro({
             }}
           >
             <tbody>
-              {[
-                ["COMANDANTE DA 2ªCIA / 15ºBPM", comandanteNome],
-                ["SUB. COMANDANTE DA 2ªCIA / 15ºBPM", subcomandanteNome],
-                ["P-1 DA 2ªCIA / 15ºBPM", p1Nome],
-                ["FISCAL DA AIS 15", fiscalAisNome],
-                ["AUX. ADM. DO FISCAL", auxAdmFiscalNome],
-                ["PERMANENTE DA GUARDA", permanenteSelecionado],
-                ["AUX. PERMANENTE DA GUARDA", auxPermanenteNome],
-                ["ARMEIRO DA 2ªCIA / 15ºBPM", armeiroNome],
-              ].map(([funcao, nome]) => (
-                <tr key={funcao}>
-                  <td
-                    style={{
-                      border: "1px solid #000",
-                      padding: "4px",
-                      width: "50%",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {funcao}
-                  </td>
-                  <td style={{ border: "1px solid #000", padding: "4px" }}>
-                    {nome || "—"}
-                  </td>
-                </tr>
-              ))}
+              <tr>
+                <td
+                  style={{
+                    border: "1px solid #000",
+                    padding: "4px",
+                    width: "45%",
+                    fontWeight: "bold",
+                  }}
+                >
+                  COMANDANTE DA 2ªCIA / 15ºBPM
+                </td>
+                <td style={{ border: "1px solid #000", padding: "4px" }}>
+                  1.º TEN QOPM – TEIXEIRA
+                </td>
+              </tr>
+              <tr>
+                <td
+                  style={{
+                    border: "1px solid #000",
+                    padding: "4px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  SUB. COMANDANTE DA 2ªCIA / 15ºBPM
+                </td>
+                <td style={{ border: "1px solid #000", padding: "4px" }}>—</td>
+              </tr>
+              <tr>
+                <td
+                  style={{
+                    border: "1px solid #000",
+                    padding: "4px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  PERMANENTE DA GUARDA
+                </td>
+                <td style={{ border: "1px solid #000", padding: "4px" }}>
+                  {permanenteSelecionado}
+                </td>
+              </tr>
             </tbody>
           </table>
 
@@ -1984,116 +1601,6 @@ export default function ModalNovoLivro({
             </tbody>
           </table>
 
-          {/* 2.ª PARTE — VIATURAS BAIXADAS */}
-          <div
-            style={{
-              fontSize: "12px",
-              fontWeight: "bold",
-              textAlign: "center",
-              margin: "15px 0",
-            }}
-          >
-            VIATURAS BAIXADAS (OFICINA / MANUTENÇÃO)
-          </div>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: "10px",
-              textAlign: "center",
-              marginBottom: "15px",
-            }}
-          >
-            <thead>
-              <tr style={{ background: "#f2f2f2" }}>
-                {["VIATURA", "MOTORISTA CIENTE", "MOTIVO", "LOCAL"].map(
-                  (titulo) => (
-                    <th
-                      key={titulo}
-                      style={{ border: "1px solid #000", padding: "4px" }}
-                    >
-                      {titulo}
-                    </th>
-                  ),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {viaturasBaixadas.map((v, i) => (
-                <tr key={i}>
-                  {[v.vtr, v.motorista, v.motivo, v.local].map((valor, j) => (
-                    <td
-                      key={j}
-                      style={{ border: "1px solid #000", padding: "4px" }}
-                    >
-                      {valor || "-"}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {/* 3.ª PARTE — SAÍDA E CHEGADA */}
-          <div
-            style={{
-              fontSize: "12px",
-              fontWeight: "bold",
-              textAlign: "center",
-              margin: "15px 0",
-            }}
-          >
-            CONTROLE DE SAÍDA E CHEGADA DAS VTRS DISPONÍVEIS
-          </div>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: "10px",
-              textAlign: "center",
-              marginBottom: "15px",
-            }}
-          >
-            <thead>
-              <tr style={{ background: "#f2f2f2" }}>
-                {[
-                  "VIATURA",
-                  "KM / HR SAÍDA",
-                  "KM / HR CHEGADA",
-                  "MOTORISTA",
-                  "DESTINO",
-                ].map((titulo) => (
-                  <th
-                    key={titulo}
-                    style={{ border: "1px solid #000", padding: "4px" }}
-                  >
-                    {titulo}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {viaturasSaida.map((v, i) => (
-                <tr key={i}>
-                  {[
-                    v.vtr,
-                    v.km_hr_saida,
-                    v.km_hr_chegada,
-                    v.motorista,
-                    v.destino,
-                  ].map((valor, j) => (
-                    <td
-                      key={j}
-                      style={{ border: "1px solid #000", padding: "4px" }}
-                    >
-                      {valor || "-"}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
           {/* 4.ª PARTE */}
           <div
             style={{
@@ -2143,18 +1650,12 @@ export default function ModalNovoLivro({
               marginBottom: "20px",
             }}
           >
-            {ocorrencias.filter((oco) => (oco.descricao || "").trim())
-              .length === 0 ? (
-              <div>Sem alterações</div>
-            ) : (
-              ocorrencias
-                .filter((oco) => (oco.descricao || "").trim())
-                .map((oco, idx) => (
-                  <div key={idx} style={{ marginBottom: "8px" }}>
-                    <b>{idx + 1}</b> – {oco.descricao.trim()}
-                  </div>
-                ))
-            )}
+            {ocorrencias.map((oco, idx) => (
+              <div key={idx} style={{ marginBottom: "8px" }}>
+                <b>{idx + 1}</b> –{" "}
+                {oco.descricao || "Nenhuma alteração registrada."}
+              </div>
+            ))}
           </div>
 
           {/* 6.ª PARTE */}
@@ -2192,7 +1693,7 @@ export default function ModalNovoLivro({
             <br />
             ____________________________________________________________
             <br />
-            <b>{formatarNomeComMatricula(permanenteSelecionado)}</b>
+            <b>{permanenteSelecionado}</b>
             <br />
             Permanente da Guarda
             <br />
@@ -2200,9 +1701,8 @@ export default function ModalNovoLivro({
           </div>
 
           {/* FAIXA COLORIDA DE RODAPÉ INSTITUCIONAL */}
-          <div style={{ marginTop: "0", textAlign: "center" }}>
+          <div style={{ marginTop: "50px", textAlign: "center" }}>
             <img
-              data-pdf-rodape
               src="/rodape.png"
               alt="Rodapé"
               style={{ width: "100%", height: "20px", objectFit: "cover" }}

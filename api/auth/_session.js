@@ -2,26 +2,26 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 const COOKIE_NAME = "log2cia_session";
 const MAX_AGE = 60 * 60 * 8;
+const MIN_AGE = 60 * 60;
 
 function secret() {
   const value = process.env.SESSION_SECRET;
-
   if (!value || value.length < 32) {
     throw new Error("SESSION_SECRET deve ter pelo menos 32 caracteres.");
   }
-
   return value;
 }
 
-export function criarSessao(usuario) {
+export function criarSessao(usuario, manterConectado = false) {
   const agora = Math.floor(Date.now() / 1000);
+  const maxAge = manterConectado ? MAX_AGE : MIN_AGE;
 
   const payload = Buffer.from(
     JSON.stringify({
       sub: usuario.id,
       ver: Number.isInteger(usuario.auth_version) ? usuario.auth_version : 0,
       iat: agora,
-      exp: agora + MAX_AGE,
+      exp: agora + maxAge,
     }),
   ).toString("base64url");
 
@@ -50,7 +50,6 @@ export function lerSessao(req) {
   if (!payload || !assinatura) return null;
 
   let recebida;
-
   try {
     recebida = Buffer.from(assinatura, "base64url");
   } catch {
@@ -58,7 +57,6 @@ export function lerSessao(req) {
   }
 
   const esperada = createHmac("sha256", secret()).update(payload).digest();
-
   if (
     recebida.length !== esperada.length ||
     !timingSafeEqual(recebida, esperada)
@@ -70,7 +68,6 @@ export function lerSessao(req) {
     const dados = JSON.parse(
       Buffer.from(payload, "base64url").toString("utf8"),
     );
-
     const agora = Math.floor(Date.now() / 1000);
 
     if (
@@ -83,6 +80,7 @@ export function lerSessao(req) {
       dados.iat > agora + 60 ||
       dados.exp <= agora ||
       dados.exp <= dados.iat ||
+      dados.exp - dados.iat < MIN_AGE ||
       dados.exp - dados.iat > MAX_AGE
     ) {
       return null;
@@ -94,10 +92,11 @@ export function lerSessao(req) {
   }
 }
 
-export function definirCookie(res, token) {
+export function definirCookie(res, token, manterConectado = false) {
+  const maxAge = manterConectado ? MAX_AGE : MIN_AGE;
   res.setHeader(
     "Set-Cookie",
-    `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${MAX_AGE}`,
+    `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
   );
 }
 

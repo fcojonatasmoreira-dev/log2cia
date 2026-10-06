@@ -11,8 +11,11 @@ async function request(path, options = {}) {
   return body;
 }
 
-export async function login(matricula, senha) {
-  return request('login', { method: 'POST', body: JSON.stringify({ matricula, senha }) });
+export async function login(matricula, senha, manterConectado = false) {
+  return request('login', {
+    method: 'POST',
+    body: JSON.stringify({ matricula, senha, manterConectado }),
+  });
 }
 
 export async function obterSessao() {
