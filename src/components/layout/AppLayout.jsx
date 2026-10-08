@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LogOut, Key, Shield, BookOpen, Clock3 } from "lucide-react";
+import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive } from "lucide-react";
 
 export default function AppLayout({ onLogout }) {
   const navigate = useNavigate();
@@ -59,12 +59,13 @@ export default function AppLayout({ onLogout }) {
     .replace(/[\u0300-\u036f]/g, "");
   const isMaster = userRole === "master" || usuario?.is_master === true;
   const isArmeiroOrAdmin = isMaster || ["p4", "armeiro"].includes(userRole);
-  const isBancoHorasGestor = isMaster || userRole === "p1";
+  const isOficial = userRole === "oficial";
+  const isBancoHorasGestor = isMaster || userRole === "p1" || isOficial;
 
   // Livro da Permanência: mantém os perfis já autorizados e inclui Permanente da Guarda.
   const isP1OrAuthorized =
     isMaster ||
-    ["p1", "permanente", "permanente da guarda", "armeiro"].includes(userRole);
+    ["p1", "permanente", "permanente da guarda", "armeiro", "oficial"].includes(userRole);
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-100">
@@ -140,8 +141,8 @@ export default function AppLayout({ onLogout }) {
               <Clock3 className="w-4 h-4 text-emerald-400" /> Banco de Horas
             </button>
 
-            {/* ACERVO / INVENTÁRIO - EXCLUSIVO PARA ARMEIRO, P4 E MASTER */}
-            {isArmeiroOrAdmin && (
+            {/* ACERVO / INVENTÁRIO - consulta também disponível ao Oficial */}
+            {(isArmeiroOrAdmin || isOficial) && (
               <button
                 onClick={() => navegarPara("/inventario")}
                 className={`w-full ${getLinkClass("/inventario")}`}
@@ -150,13 +151,23 @@ export default function AppLayout({ onLogout }) {
               </button>
             )}
 
-            {/* ABA POLICIAIS - EXCLUSIVA PARA ARMEIRO, P4 E MASTER */}
-            {isArmeiroOrAdmin && (
+            {/* ABA POLICIAIS - consulta também disponível ao Oficial */}
+            {(isArmeiroOrAdmin || isOficial) && (
               <button
                 onClick={() => navegarPara("/policiais")}
                 className={`w-full ${getLinkClass("/policiais")}`}
               >
                 <span>👥</span> Policiais
+              </button>
+            )}
+
+            {/* OFÍCIOS - consulta/registro para perfis administrativos autorizados */}
+            {(isMaster || ["p4", "p1", "oficial"].includes(userRole)) && (
+              <button
+                onClick={() => navegarPara("/oficios")}
+                className={`w-full ${getLinkClass("/oficios")}`}
+              >
+                <FileText className="w-4 h-4 text-sky-400" /> Ofícios
               </button>
             )}
 
@@ -171,6 +182,18 @@ export default function AppLayout({ onLogout }) {
                 }`}
               >
                 <span>🛡️</span> Painel Master
+              </button>
+            )}
+            {(isMaster || userRole === "p1") && (
+              <button
+                onClick={() => navegarPara("/gerenciamento-arquivo")}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all border border-slate-700 ${
+                  location.pathname === "/gerenciamento-arquivo"
+                    ? "bg-slate-700 text-white shadow"
+                    : "text-slate-300 bg-slate-800/40 hover:bg-slate-800 hover:text-white"
+                }`}
+              >
+                <Archive className="w-4 h-4 text-blue-400" /> Gerenciar Arquivo
               </button>
             )}
           </nav>

@@ -28,7 +28,13 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const { data, error } = await db.from("policiais").select("*").order("nome_guerra", { ascending: true });
       if (error) throw error;
-      return res.status(200).json({ policiais: (data || []).map(semSenha) });
+      const policiais = (data || []).map(semSenha);
+      if (role === "oficial") {
+        policiais.forEach((policial) => {
+          delete policial.role;
+        });
+      }
+      return res.status(200).json({ policiais });
     }
 
     if (req.method === "POST") {

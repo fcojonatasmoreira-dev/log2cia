@@ -1052,7 +1052,7 @@ export default function Inventario() {
             Gestão e controle de equipamentos e materiais bélicos
           </p>
           <p className="mt-1 text-[10px] font-medium text-slate-400">
-            Arquivo: Inventario.jsx · Entrega incremental 2026-10-02 · v2
+            Consulta e controle do acervo de armamentos, coletes, munições e rádios.
           </p>
         </div>
 

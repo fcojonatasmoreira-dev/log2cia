@@ -316,15 +316,18 @@ export default function Policiais() {
   const exportarExcel = () => {
     setBaixandoExcel(true);
     setTimeout(() => {
-      const dadosFormatados = filteredPoliciais.map((p) => ({
-        "Posto / Graduação": p.posto_graduacao,
-        "Nome de Guerra": p.nome_guerra,
-        Matrícula: p.matricula || "N/I",
-        "Nome Completo": p.nome_completo,
-        Numeral: p.numeral || "—",
-        Perfil: p.role || "policial",
-        Situação: p.status,
-      }));
+      const dadosFormatados = filteredPoliciais.map((p) => {
+        const registro = {
+          "Posto / Graduação": p.posto_graduacao,
+          "Nome de Guerra": p.nome_guerra,
+          Matrícula: p.matricula || "N/I",
+          "Nome Completo": p.nome_completo,
+          Numeral: p.numeral || "—",
+          Situação: p.status,
+        };
+        if (isMaster) registro.Perfil = p.role || "policial";
+        return registro;
+      });
 
       const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
       const workbook = XLSX.utils.book_new();
@@ -984,6 +987,7 @@ export default function Policiais() {
                       <option value="armeiro">Armeiro</option>
                       <option value="p1">P1</option>
                       <option value="p4">P4</option>
+                      <option value="oficial">Oficial</option>
                       <option value="master">Master</option>
                     </select>
                   </div>

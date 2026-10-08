@@ -35,35 +35,24 @@ export default function LivroPermanencia({ userLogado }) {
       const usuarioSalvo = localStorage.getItem("log2cia_user");
       const dadosSalvos = usuarioSalvo ? JSON.parse(usuarioSalvo) : {};
 
-      let dadosBanco = null;
-      const matriculaLogada = userLogado?.matricula || dadosSalvos?.matricula;
+      const normalizarPerfil = (perfil) =>
+        String(perfil || "")
+          .trim()
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
 
-      if (matriculaLogada) {
-        const { data, error } = await supabase
-          .from("policiais")
-          .select("role, matricula")
-          .eq("matricula", matriculaLogada)
-          .maybeSingle();
-
-        if (error) throw error;
-        dadosBanco = data;
-      }
-
+      // A sessão autenticada é a fonte principal da permissão.
+      // Uma falha de RLS em uma consulta complementar não deve retirar
+      // o acesso de um usuário que já está autenticado com a role correta.
       const perfis = [
         userLogado?.role,
         userLogado?.perfil,
         dadosSalvos?.role,
         dadosSalvos?.perfil,
-        dadosBanco?.role,
       ]
         .filter(Boolean)
-        .map((perfil) =>
-          String(perfil)
-            .trim()
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[\\u0300-\\u036f]/g, ""),
-        );
+        .map(normalizarPerfil);
 
       const ehMaster =
         userLogado?.is_master === true ||
@@ -71,9 +60,10 @@ export default function LivroPermanencia({ userLogado }) {
         perfis.includes("master");
 
       const ehPermanente = perfis.includes("permanente da guarda");
+      const ehOficial = perfis.includes("oficial");
 
       setIsMaster(ehMaster);
-      setTemAcesso(ehMaster || ehPermanente);
+      setTemAcesso(ehMaster || ehPermanente || ehOficial);
     } catch (err) {
       console.error("Erro ao verificar acesso ao Livro da Permanência:", err);
       setIsMaster(false);
@@ -100,12 +90,19 @@ export default function LivroPermanencia({ userLogado }) {
     }
   }
 
+  const ehOficial = String(userLogado?.role || "").trim().toLowerCase() === "oficial";
+
   const handleNovoLivroClick = () => {
+    if (ehOficial) return;
     setLivroSelecionadoParaEdicao(null);
     setModalAberto(true);
   };
 
   const handleEditarLivro = (livro) => {
+    if (ehOficial) {
+      visualizarLivro(livro);
+      return;
+    }
     setLivroSelecionadoParaEdicao({
       ...livro,
       modoVisualizacaoEstrita: false,
@@ -205,12 +202,14 @@ export default function LivroPermanencia({ userLogado }) {
             de Livro da OPM
           </p>
         </div>
+        {!ehOficial && (
         <button
           onClick={handleNovoLivroClick}
           className="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-blue-700 shadow-md transition-all"
         >
           <Plus className="w-4 h-4" /> Novo Livro de Turno
         </button>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">

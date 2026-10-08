@@ -85,7 +85,7 @@ export default function Cautelas() {
 
       setUserId(policialIdEncontrado);
 
-      const temAcessoTotal = ["master", "p4", "armeiro"].includes(roleLida);
+      const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(roleLida);
       await carregarCautelas(temAcessoTotal, policialIdEncontrado);
       await carregarEquipamentosDisponiveis();
     } catch (err) {
@@ -206,6 +206,10 @@ export default function Cautelas() {
   };
 
   const handleAceitarCautela = async (cautelaObj) => {
+    if (userRole === "oficial") {
+      alert("O perfil Oficial possui acesso somente para consulta de cautelas.");
+      return;
+    }
     setProcessando(true);
     try {
       const dataHoraAtual = new Date().toISOString();
@@ -227,7 +231,7 @@ export default function Cautelas() {
 
       if (error) throw error;
       alert("Cautela aceita e validada eletronicamente com sucesso!");
-      const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
+      const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(userRole);
       await carregarCautelas(temAcessoTotal, userId);
 
       if (cautelaVisualizando && cautelaVisualizando.id === cautelaObj.id) {
@@ -285,7 +289,7 @@ export default function Cautelas() {
 
       alert("Cautela cancelada com sucesso!");
       setCautelaVisualizando(null);
-      const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
+      const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(userRole);
       await carregarCautelas(temAcessoTotal, userId);
       await carregarEquipamentosDisponiveis();
     } catch (err) {
@@ -373,7 +377,7 @@ export default function Cautelas() {
       alert(
         "Ok, devolução homologada com sucesso! O armamento voltou a ficar disponível.",
       );
-      const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
+      const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(userRole);
       await carregarCautelas(temAcessoTotal, userId);
       await carregarEquipamentosDisponiveis();
     } catch (err) {
@@ -417,7 +421,7 @@ export default function Cautelas() {
 
       setCautelaVisualizando(null);
       alert("Cautela excluída com sucesso!");
-      const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
+      const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(userRole);
       await carregarCautelas(temAcessoTotal, userId);
       await carregarEquipamentosDisponiveis();
     } catch (err) {
@@ -465,7 +469,7 @@ export default function Cautelas() {
 
       alert("Cautela atualizada com sucesso!");
       setCautelaEditando(null);
-      const temAcessoTotal = ["master", "p4", "armeiro"].includes(userRole);
+      const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(userRole);
       await carregarCautelas(temAcessoTotal, userId);
       await carregarEquipamentosDisponiveis();
     } catch (err) {
@@ -601,14 +605,16 @@ export default function Cautelas() {
   };
 
   const isMaster = userRole === "master";
+  const isOficial = userRole === "oficial";
   const isArmeiroOrP4 = ["master", "armeiro", "p4"].includes(userRole);
+  const podeConsultarTodas = isArmeiroOrP4 || isOficial;
 
   const cautelasFiltradas = cautelas.filter((c) => {
     const pol = c.policial || {};
     let matchTexto = true;
     let matchStatus = true;
 
-    if (isArmeiroOrP4) {
+    if (podeConsultarTodas) {
       const nomeGuerra = String(pol.nome_guerra || "").toLowerCase();
       const matricula = String(pol.matricula || "").toLowerCase();
       const termo = filtroTexto.toLowerCase();
@@ -641,14 +647,18 @@ export default function Cautelas() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
-            {isArmeiroOrP4
-              ? "Controle de Cautelas e Devoluções"
-              : "Minhas Cautelas"}
+            {isOficial
+              ? "Consulta de Cautelas"
+              : isArmeiroOrP4
+                ? "Controle de Cautelas e Devoluções"
+                : "Minhas Cautelas"}
           </h1>
           <p className="text-sm text-slate-500">
-            {isArmeiroOrP4
-              ? "Registro de saída e devolução homologada de material bélico."
-              : "Acompanhe seus armamentos acautelados."}
+            {isOficial
+              ? "Consulta de cautelas, situação e histórico do acervo acautelado."
+              : isArmeiroOrP4
+                ? "Registro de saída e devolução homologada de material bélico."
+                : "Acompanhe seus armamentos acautelados."}
           </p>
         </div>
 
@@ -667,7 +677,7 @@ export default function Cautelas() {
         <div className="flex items-center gap-2 pb-3 border-b border-slate-100 text-slate-800 font-bold text-xs uppercase tracking-wide">
           <Filter className="w-4 h-4 text-blue-600" />
           <span>
-            {isArmeiroOrP4
+            {podeConsultarTodas
               ? "Filtros e Localização de Cautelas"
               : "Filtrar por Período"}
           </span>
@@ -676,7 +686,7 @@ export default function Cautelas() {
         <div
           className={`grid grid-cols-1 sm:grid-cols-2 ${isArmeiroOrP4 ? "lg:grid-cols-5" : "lg:grid-cols-2"} gap-4 items-end`}
         >
-          {isArmeiroOrP4 && (
+          {podeConsultarTodas && (
             <div className="space-y-1.5 lg:col-span-1">
               <label className="block text-[11px] font-bold text-slate-600 uppercase">
                 Policial / Matrícula
@@ -694,7 +704,7 @@ export default function Cautelas() {
             </div>
           )}
 
-          {isArmeiroOrP4 && (
+          {podeConsultarTodas && (
             <div className="space-y-1.5">
               <label className="block text-[11px] font-bold text-slate-600 uppercase">
                 Status
@@ -895,7 +905,8 @@ export default function Cautelas() {
                       <td className="p-3.5 text-right space-x-1">
                         {isAtiva &&
                           statusAceite === "pendente" &&
-                          isMeuRegistro && (
+                          isMeuRegistro &&
+                          !isOficial && (
                             <button
                               onClick={() => handleAceitarCautela(c)}
                               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-xs"
@@ -979,7 +990,7 @@ export default function Cautelas() {
                   {isAtiva && statusAceite === "pendente" && (
                     <div className="p-3 bg-orange-50 border border-orange-200 text-orange-800 rounded-xl flex items-center justify-between">
                       <span>⚠️ Esta cautela aguarda aceite digital.</span>
-                      {isOwnerPolicial && (
+                      {isOwnerPolicial && !isOficial && (
                         <button
                           type="button"
                           onClick={() =>

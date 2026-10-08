@@ -5,7 +5,7 @@ import {
   normalizarRole,
 } from "../_server.js";
 
-const PERFIS_GESTAO = ["master", "p1"];
+const PERFIS_GESTAO = ["master", "p1", "oficial"];
 const TIPOS_SOLICITACAO = ["inclusao_horas", "dispensa", "folga"];
 
 function texto(valor) {
@@ -76,17 +76,17 @@ export default async function handler(req, res) {
         saldo: Number(saldo.toFixed(2)),
         folgas_disponiveis: Math.max(0, folgasDisponiveis),
         permissoes: {
-          excluir_movimentacao: normalizarRole(usuario) === "master",
+          excluir_movimentacao: ["master", "oficial"].includes(normalizarRole(usuario)),
         },
       });
     }
 
     if (req.method === "DELETE") {
-      if (normalizarRole(usuario) !== "master") {
+      if (!["master", "oficial"].includes(normalizarRole(usuario))) {
         return respostaErro(
           res,
           403,
-          "Apenas o Master pode excluir movimentações.",
+          "Apenas Master e Oficial podem excluir movimentações.",
         );
       }
 
@@ -119,11 +119,11 @@ export default async function handler(req, res) {
         return respostaErro(res, 400, "Dados inválidos.");
 
       if (body.acao === "excluir_movimentacao") {
-        if (normalizarRole(usuario) !== "master") {
+        if (!["master", "oficial"].includes(normalizarRole(usuario))) {
           return respostaErro(
             res,
             403,
-            "Apenas o Master pode excluir movimentações.",
+            "Apenas Master e Oficial podem excluir movimentações.",
           );
         }
         const movimentacaoId = texto(body.movimentacao_id);
@@ -167,7 +167,7 @@ export default async function handler(req, res) {
       }
 
       if (body.acao === "movimentar") {
-        if (!gestor)
+        if (!["master", "p1"].includes(normalizarRole(usuario)))
           return respostaErro(
             res,
             403,
@@ -216,7 +216,7 @@ export default async function handler(req, res) {
       }
 
       if (body.acao === "conceder_folga") {
-        if (!gestor)
+        if (!["master", "p1"].includes(normalizarRole(usuario)))
           return respostaErro(
             res,
             403,
@@ -257,7 +257,7 @@ export default async function handler(req, res) {
       }
 
       if (body.acao === "utilizar_folga") {
-        if (!gestor)
+        if (!["master", "p1"].includes(normalizarRole(usuario)))
           return respostaErro(
             res,
             403,

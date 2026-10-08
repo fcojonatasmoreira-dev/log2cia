@@ -16,6 +16,8 @@ import LivroPermanencia from "../pages/p1/LivroPermanencia";
 import BancoHoras from "../pages/BancoHoras";
 import BancoHorasPolicial from "../pages/BancoHorasPolicial";
 import NovaInsercaoBancoHoras from "../pages/NovaInsercaoBancoHoras";
+import Oficios from "../pages/Oficios";
+import GerenciamentoArquivo from "../pages/GerenciamentoArquivo";
 import { obterSessao, logout } from "../services/sessionService";
 
 export default function AppRoutes() {
@@ -89,14 +91,23 @@ export default function AppRoutes() {
             <Route path="cautelas" element={<Cautelas />} />
             <Route path="inventario" element={<Inventario />} />
             <Route path="policiais" element={<Policiais />} />
-            <Route path="cautelas/nova" element={<NovaCautela />} />
-            <Route path="minhas-cautelas" element={<MinhasCautelas />} />
-            <Route path="devolucao" element={<Devolucao />} />
+            {(usuario.is_master === true || ["master", "p4", "p1", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+              <Route path="oficios" element={<Oficios />} />
+            )}
+            {(usuario.is_master === true || ["master", "p4", "armeiro"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+              <Route path="cautelas/nova" element={<NovaCautela />} />
+            )}
+            {String(usuario.role || "").trim().toLowerCase() !== "oficial" && (
+              <Route path="minhas-cautelas" element={<MinhasCautelas />} />
+            )}
+            {(usuario.is_master === true || ["master", "p4", "armeiro"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+              <Route path="devolucao" element={<Devolucao />} />
+            )}
 
             <Route
               path="banco-horas"
               element={
-                usuario.is_master === true || ["master", "p1"].includes(String(usuario.role || "").trim().toLowerCase())
+                usuario.is_master === true || ["master", "p1", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())
                   ? <BancoHoras />
                   : <BancoHorasPolicial />
               }
@@ -113,7 +124,7 @@ export default function AppRoutes() {
                 .toLowerCase()
                 .normalize("NFD")
                 .replace(/[\u0300-\u036f]/g, "") === "master" ||
-              ["p1", "permanente", "permanente da guarda", "armeiro"].includes(
+              ["p1", "permanente", "permanente da guarda", "armeiro", "oficial"].includes(
                 String(usuario.role || "")
                   .trim()
                   .toLowerCase()
@@ -131,6 +142,9 @@ export default function AppRoutes() {
 
             {usuario.role === "master" && (
               <Route path="painel-master" element={<PainelMaster />} />
+            )}
+            {(usuario.is_master === true || ["master", "p1"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+              <Route path="gerenciamento-arquivo" element={<GerenciamentoArquivo />} />
             )}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

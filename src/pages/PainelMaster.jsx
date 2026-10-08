@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Shield,
   KeyRound,
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 
 export default function PainelMaster() {
+  const navigate = useNavigate();
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOperador, setModalOperador] = useState(false);
@@ -151,7 +153,16 @@ export default function PainelMaster() {
           </p>
         </div>
 
-        <button
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate("/gerenciamento-arquivo")}
+            className="bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2.5 rounded-xl shadow text-xs flex items-center gap-2 transition-all"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Gerenciar Arquivo</span>
+          </button>
+          <button
           type="button"
           onClick={() => setModalOperador(true)}
           className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl shadow text-xs flex items-center gap-2 transition-all"
@@ -159,6 +170,7 @@ export default function PainelMaster() {
           <UserPlus className="w-4 h-4" />
           <span>Novo Operador</span>
         </button>
+        </div>
       </div>
 
       {modalOperador && (
@@ -287,6 +299,7 @@ export default function PainelMaster() {
                     </option>
                     <option value="armeiro">Armeiro</option>
                     <option value="p4">P4</option>
+                    <option value="oficial">Oficial</option>
                     <option value="master">Master</option>
                   </select>
                 </div>

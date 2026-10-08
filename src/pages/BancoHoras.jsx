@@ -205,12 +205,18 @@ export default function BancoHoras() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => navigate("/banco-horas/nova")}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
-          >
-            <PlusCircle className="w-4 h-4" /> Nova inserção
-          </button>
+          {(() => {
+            const usuarioSalvo = JSON.parse(localStorage.getItem("log2cia_user") || "{}");
+            const role = String(usuarioSalvo?.role || "").trim().toLowerCase();
+            return ["master", "p1"].includes(role) ? (
+              <button
+                onClick={() => navigate("/banco-horas/nova")}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+              >
+                <PlusCircle className="w-4 h-4" /> Nova inserção
+              </button>
+            ) : null;
+          })()}
           <button
             onClick={carregar}
             disabled={carregando}
@@ -340,14 +346,22 @@ export default function BancoHoras() {
                       {s.justificativa || "—"}
                     </p>
                   </div>
-                  {!pendente && s.parecer && (
-                    <div className="rounded-xl bg-slate-50 p-3">
+                  {!pendente && (s.parecer || s.analisada_por) && (
+                    <div className="rounded-xl bg-slate-50 p-3 space-y-1">
                       <p className="text-xs font-bold uppercase text-slate-500 mb-1">
                         Parecer
                       </p>
-                      <p className="text-sm text-slate-700 whitespace-pre-wrap">
-                        {s.parecer}
-                      </p>
+                      {s.parecer && (
+                        <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                          {s.parecer}
+                        </p>
+                      )}
+                      {s.analisada_por && (
+                        <p className="text-xs text-slate-500">
+                          Analisada por: {policiaisPorId.get(s.analisada_por)?.nome_guerra || s.analisada_por}
+                          {s.analisada_em ? ` • ${new Date(s.analisada_em).toLocaleString("pt-BR")}` : ""}
+                        </p>
+                      )}
                     </div>
                   )}
                   {pendente && (

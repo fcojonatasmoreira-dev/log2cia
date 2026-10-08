@@ -8,7 +8,7 @@ export default async function handler(req, res) {
     const id = String(req.query?.id || "").trim();
     if (!id) return respostaErro(res, 400, "Identificador do policial inválido.");
     const role = normalizarRole(usuario);
-    const acessoTotal = ["master", "p4", "armeiro"].includes(role);
+    const acessoTotal = ["master", "p4", "armeiro", "oficial"].includes(role);
     if (!acessoTotal && String(usuario.id) !== id) {
       return respostaErro(res, 403, "Você não tem permissão para consultar as cautelas deste policial.");
     }
