@@ -3,6 +3,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock3,
+  Pencil,
   PlusCircle,
   RefreshCw,
   Search,
@@ -33,7 +34,10 @@ export default function BancoHoras() {
   const [buscaPolicial, setBuscaPolicial] = useState("");
   const [policialSelecionado, setPolicialSelecionado] = useState("");
   const [podeExcluirMovimentacao, setPodeExcluirMovimentacao] = useState(false);
+  const [podeEditarMovimentacao, setPodeEditarMovimentacao] = useState(false);
   const [excluindoMovimentacao, setExcluindoMovimentacao] = useState("");
+  const [editandoMovimentacao, setEditandoMovimentacao] = useState(null);
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -53,6 +57,7 @@ export default function BancoHoras() {
       setSolicitacoes(bh.solicitacoes || []);
       setMovimentacoes(bh.movimentacoes || []);
       setPoliciais(pol.policiais || []);
+      setPodeEditarMovimentacao(Boolean(bh.permissoes?.editar_movimentacao));
       setPodeExcluirMovimentacao(Boolean(bh.permissoes?.excluir_movimentacao));
     } catch (e) {
       setErro(e.message);
@@ -153,6 +158,72 @@ export default function BancoHoras() {
       setErro(e.message || "Não foi possível excluir a movimentação.");
     } finally {
       setExcluindoMovimentacao("");
+    }
+  };
+
+  const editarMovimentacao = (movimentacao) => {
+    if (!["credito", "debito", "concessao_folga"].includes(movimentacao.tipo)) {
+      setErro(
+        "Este tipo de movimentação não pode ser editado por esta tela.",
+      );
+      return;
+    }
+
+    setErro("");
+    setSucesso("");
+    setEditandoMovimentacao({
+      ...movimentacao,
+      horas: Number(movimentacao.horas || 0),
+      quantidade_folgas: Number(movimentacao.quantidade_folgas || 0),
+      descricao: movimentacao.descricao || "",
+      data_referencia: movimentacao.data_referencia || "",
+      turno: movimentacao.turno || "",
+      turno_descricao: movimentacao.turno_descricao || "",
+    });
+  };
+
+  const salvarEdicaoMovimentacao = async (event) => {
+    event.preventDefault();
+
+    if (!editandoMovimentacao) return;
+
+    setSalvandoEdicao(true);
+    setErro("");
+    setSucesso("");
+
+    try {
+      const response = await fetch("/api/banco-horas", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          acao: "editar_movimentacao",
+          movimentacao_id: editandoMovimentacao.id,
+          tipo: editandoMovimentacao.tipo,
+          horas: editandoMovimentacao.horas,
+          quantidade_folgas: editandoMovimentacao.quantidade_folgas,
+          descricao: editandoMovimentacao.descricao,
+          data_referencia: editandoMovimentacao.data_referencia || null,
+          turno: editandoMovimentacao.turno || null,
+          turno_descricao: editandoMovimentacao.turno_descricao || "",
+        }),
+      });
+
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          json.error || "Não foi possível editar a movimentação.",
+        );
+      }
+
+      setSucesso("Movimentação atualizada com sucesso.");
+      setEditandoMovimentacao(null);
+      await carregar();
+    } catch (e) {
+      setErro(e.message || "Não foi possível editar a movimentação.");
+    } finally {
+      setSalvandoEdicao(false);
     }
   };
 
@@ -523,7 +594,7 @@ export default function BancoHoras() {
                       <th className="text-left p-3">Tipo</th>
                       <th className="text-left p-3">Descrição</th>
                       <th className="text-right p-3">Horas</th>
-                      {podeExcluirMovimentacao && (
+                      {(podeEditarMovimentacao || podeExcluirMovimentacao) && (
                         <th className="text-right p-3">Ação</th>
                       )}
                     </tr>
@@ -562,20 +633,36 @@ export default function BancoHoras() {
                               ? `−${m.quantidade_folgas || 1} folga • ${horasBR(m.horas_servico)}`
                               : `${m.tipo === "credito" ? "+" : "−"}${horasBR(m.horas)}`}
                         </td>
-                        {podeExcluirMovimentacao && (
+                        {(podeEditarMovimentacao || podeExcluirMovimentacao) && (
                           <td className="p-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() => excluirMovimentacao(m)}
-                              disabled={excluindoMovimentacao === m.id}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
-                              title="Excluir movimentação"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              {excluindoMovimentacao === m.id
-                                ? "Excluindo..."
-                                : "Excluir"}
-                            </button>
+                            <div className="inline-flex items-center gap-2">
+                              {podeEditarMovimentacao &&
+                                ["credito", "debito", "concessao_folga"].includes(m.tipo) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => editarMovimentacao(m)}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                                    title="Editar movimentação"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                    Editar
+                                  </button>
+                                )}
+                              {podeExcluirMovimentacao && (
+                                <button
+                                  type="button"
+                                  onClick={() => excluirMovimentacao(m)}
+                                  disabled={excluindoMovimentacao === m.id}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                                  title="Excluir movimentação"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  {excluindoMovimentacao === m.id
+                                    ? "Excluindo..."
+                                    : "Excluir"}
+                                </button>
+                              )}
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -587,6 +674,213 @@ export default function BancoHoras() {
           </div>
         )}
       </section>
+        {editandoMovimentacao && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Editar movimentação
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Altere somente os dados do lançamento.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditandoMovimentacao(null)}
+                  disabled={salvandoEdicao}
+                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                  title="Fechar"
+                >
+                  <XCircle className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form onSubmit={salvarEdicaoMovimentacao} className="mt-4 space-y-4">
+                {editandoMovimentacao.tipo === "concessao_folga" ? (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold text-slate-600">
+                        Tipo
+                      </span>
+                      <input
+                        type="text"
+                        value="Concessão de folga"
+                        disabled
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold text-slate-600">
+                        Quantidade de folgas
+                      </span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="99"
+                        step="1"
+                        required
+                        value={editandoMovimentacao.quantidade_folgas}
+                        onChange={(e) =>
+                          setEditandoMovimentacao((atual) => ({
+                            ...atual,
+                            quantidade_folgas: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold text-slate-600">
+                        Tipo
+                      </span>
+                      <select
+                        value={editandoMovimentacao.tipo}
+                        onChange={(e) =>
+                          setEditandoMovimentacao((atual) => ({
+                            ...atual,
+                            tipo: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                      >
+                        <option value="credito">Crédito</option>
+                        <option value="debito">Débito</option>
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold text-slate-600">
+                        Horas
+                      </span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        required
+                        value={editandoMovimentacao.horas}
+                        onChange={(e) =>
+                          setEditandoMovimentacao((atual) => ({
+                            ...atual,
+                            horas: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold text-slate-600">
+                    Descrição
+                  </span>
+                  <textarea
+                    required
+                    rows={3}
+                    value={editandoMovimentacao.descricao}
+                    onChange={(e) =>
+                      setEditandoMovimentacao((atual) => ({
+                        ...atual,
+                        descricao: e.target.value,
+                      }))
+                    }
+                    className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  />
+                </label>
+
+                <div className={editandoMovimentacao.tipo === "concessao_folga" ? "grid grid-cols-1 gap-4" : "grid grid-cols-1 gap-4 sm:grid-cols-2"}>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-semibold text-slate-600">
+                      Data de referência
+                    </span>
+                    <input
+                      type="date"
+                      value={editandoMovimentacao.data_referencia}
+                      onChange={(e) =>
+                        setEditandoMovimentacao((atual) => ({
+                          ...atual,
+                          data_referencia: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    />
+                  </label>
+
+                  {editandoMovimentacao.tipo !== "concessao_folga" && (
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold text-slate-600">
+                        Turno
+                      </span>
+                      <select
+                        value={editandoMovimentacao.turno}
+                        onChange={(e) =>
+                          setEditandoMovimentacao((atual) => ({
+                            ...atual,
+                            turno: e.target.value,
+                            turno_descricao:
+                              e.target.value === "OUTRO"
+                                ? atual.turno_descricao
+                                : "",
+                          }))
+                        }
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                      >
+                        <option value="">Não informado</option>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="OUTRO">Outros</option>
+                      </select>
+                    </label>
+                  )}
+                </div>
+
+                {editandoMovimentacao.tipo !== "concessao_folga" && editandoMovimentacao.turno === "OUTRO" && (
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-semibold text-slate-600">
+                      Descrição do turno
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={editandoMovimentacao.turno_descricao}
+                      onChange={(e) =>
+                        setEditandoMovimentacao((atual) => ({
+                          ...atual,
+                          turno_descricao: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    />
+                  </label>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditandoMovimentacao(null)}
+                    disabled={salvandoEdicao}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={salvandoEdicao}
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {salvandoEdicao ? "Salvando..." : "Salvar alterações"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
     </div>
   );
 }

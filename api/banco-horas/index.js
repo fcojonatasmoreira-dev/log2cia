@@ -76,17 +76,22 @@ export default async function handler(req, res) {
         saldo: Number(saldo.toFixed(2)),
         folgas_disponiveis: Math.max(0, folgasDisponiveis),
         permissoes: {
-          excluir_movimentacao: ["master", "oficial"].includes(normalizarRole(usuario)),
+          editar_movimentacao: ["master", "p1"].includes(
+            normalizarRole(usuario),
+          ),
+          excluir_movimentacao: ["master", "p1", "oficial"].includes(
+            normalizarRole(usuario),
+          ),
         },
       });
     }
 
     if (req.method === "DELETE") {
-      if (!["master", "oficial"].includes(normalizarRole(usuario))) {
+      if (!["master", "p1", "oficial"].includes(normalizarRole(usuario))) {
         return respostaErro(
           res,
           403,
-          "Apenas Master e Oficial podem excluir movimentações.",
+          "Apenas Master, P1 e Oficial podem excluir movimentações.",
         );
       }
 
@@ -119,11 +124,11 @@ export default async function handler(req, res) {
         return respostaErro(res, 400, "Dados inválidos.");
 
       if (body.acao === "excluir_movimentacao") {
-        if (!["master", "oficial"].includes(normalizarRole(usuario))) {
+        if (!["master", "p1", "oficial"].includes(normalizarRole(usuario))) {
           return respostaErro(
             res,
             403,
-            "Apenas Master e Oficial podem excluir movimentações.",
+            "Apenas Master, P1 e Oficial podem excluir movimentações.",
           );
         }
         const movimentacaoId = texto(body.movimentacao_id);
@@ -412,13 +417,99 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "PATCH") {
+      const body = req.body;
+
+      if (body?.acao === "editar_movimentacao") {
+        if (!["master", "p1"].includes(normalizarRole(usuario))) {
+          return respostaErro(
+            res,
+            403,
+            "Apenas P1 e Master podem editar movimentações.",
+          );
+        }
+
+        const movimentacaoId = texto(body.movimentacao_id);
+        const tipo = texto(body.tipo);
+        const eConcessaoFolga = tipo === "concessao_folga";
+        const horas = eConcessaoFolga ? 0 : numeroPositivo(body.horas);
+        const quantidadeFolgas = eConcessaoFolga
+          ? Number(body.quantidade_folgas)
+          : 0;
+        const descricao = texto(body.descricao);
+        const dataReferencia =
+          body.data_referencia == null || body.data_referencia === ""
+            ? null
+            : texto(body.data_referencia);
+        const turno =
+          body.turno == null || body.turno === ""
+            ? null
+            : texto(body.turno).toUpperCase();
+        const turnoDescricao = texto(body.turno_descricao);
+
+        const dadosValidos = eConcessaoFolga
+          ? Number.isInteger(quantidadeFolgas) &&
+            quantidadeFolgas > 0 &&
+            quantidadeFolgas <= 99 &&
+            !!descricao &&
+            (turno === null || turno === "")
+          : !!horas &&
+            ["credito", "debito"].includes(tipo) &&
+            !!descricao &&
+            (turno === null || ["A", "B", "OUTRO"].includes(turno)) &&
+            (turno !== "OUTRO" || !!turnoDescricao);
+
+        if (!movimentacaoId || !dadosValidos) {
+          return respostaErro(
+            res,
+            400,
+            eConcessaoFolga
+              ? "Informe a quantidade de folgas e a descrição da concessão."
+              : "Informe tipo, quantidade positiva de horas, descrição e turno válido.",
+          );
+        }
+
+        const { data, error } = await db
+          .from("banco_horas_movimentacoes")
+          .update({
+            tipo,
+            horas,
+            quantidade_folgas: eConcessaoFolga ? quantidadeFolgas : 0,
+            descricao,
+            data_referencia: dataReferencia,
+            turno: eConcessaoFolga ? null : turno,
+            turno_descricao: eConcessaoFolga
+              ? null
+              : turno === "OUTRO"
+                ? turnoDescricao
+                : null,
+          })
+          .eq("id", movimentacaoId)
+          .is("excluido_em", null)
+          .select("*")
+          .maybeSingle();
+
+        if (error) throw error;
+        if (!data) {
+          return respostaErro(
+            res,
+            404,
+            "Movimentação não encontrada ou já excluída.",
+          );
+        }
+
+        return res.status(200).json({
+          sucesso: true,
+          movimentacao: data,
+        });
+      }
+
       if (!gestor)
         return respostaErro(
           res,
           403,
           "Apenas P1 e Master podem analisar solicitações.",
         );
-      const body = req.body;
+
       const solicitacaoId = texto(body?.solicitacao_id);
       const status = texto(body?.status);
       const parecer = texto(body?.parecer);
