@@ -6,8 +6,15 @@ async function request(url, options = {}) {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...options.headers },
   });
+
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || "Falha ao acessar o gerenciamento do arquivo.");
+
+  if (!response.ok) {
+    throw new Error(
+      body.error || "Falha ao acessar o gerenciamento do arquivo.",
+    );
+  }
+
   return body;
 }
 
@@ -18,13 +25,31 @@ export async function getEstruturaArquivo() {
 export async function criarItemArquivo(tipo, nome, parentId = null) {
   return request(API, {
     method: "POST",
-    body: JSON.stringify({ tipo, nome, parent_id: parentId }),
+    body: JSON.stringify({
+      tipo,
+      nome,
+      parent_id: parentId,
+    }),
   });
 }
 
 export async function atualizarItemArquivo(tipo, id, dados) {
   return request(API, {
     method: "PATCH",
-    body: JSON.stringify({ tipo, id, ...dados }),
+    body: JSON.stringify({
+      tipo,
+      id,
+      ...dados,
+    }),
+  });
+}
+
+export async function excluirItemArquivo(tipo, id) {
+  return request(API, {
+    method: "DELETE",
+    body: JSON.stringify({
+      tipo,
+      id,
+    }),
   });
 }
