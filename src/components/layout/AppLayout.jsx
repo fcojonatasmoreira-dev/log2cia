@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive } from "lucide-react";
+import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car } from "lucide-react";
 
 export default function AppLayout({ onLogout }) {
   const navigate = useNavigate();
@@ -148,6 +148,16 @@ export default function AppLayout({ onLogout }) {
                 className={`w-full ${getLinkClass("/inventario")}`}
               >
                 <span>📦</span> Acervo / Inventário
+              </button>
+            )}
+
+            {/* VIATURAS - gestão P4/Master e consulta do Oficial */}
+            {(isMaster || ["p4", "oficial"].includes(userRole)) && (
+              <button
+                onClick={() => navegarPara("/viaturas")}
+                className={`w-full ${getLinkClass("/viaturas")}`}
+              >
+                <Car className="w-4 h-4 text-cyan-400" /> Viaturas
               </button>
             )}
 

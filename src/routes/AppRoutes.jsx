@@ -18,6 +18,7 @@ import BancoHorasPolicial from "../pages/BancoHorasPolicial";
 import NovaInsercaoBancoHoras from "../pages/NovaInsercaoBancoHoras";
 import Oficios from "../pages/Oficios";
 import GerenciamentoArquivo from "../pages/GerenciamentoArquivo";
+import Viaturas from "../pages/Viaturas";
 import { obterSessao, logout } from "../services/sessionService";
 
 export default function AppRoutes() {
@@ -90,6 +91,9 @@ export default function AppRoutes() {
             <Route index element={<Dashboard />} />
             <Route path="cautelas" element={<Cautelas />} />
             <Route path="inventario" element={<Inventario />} />
+            {(usuario.is_master === true || ["master", "p4", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+              <Route path="viaturas" element={<Viaturas />} />
+            )}
             <Route path="policiais" element={<Policiais />} />
             {(usuario.is_master === true || ["master", "p4", "p1", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
               <Route path="oficios" element={<Oficios />} />
