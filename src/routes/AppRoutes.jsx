@@ -19,6 +19,8 @@ import NovaInsercaoBancoHoras from "../pages/NovaInsercaoBancoHoras";
 import Oficios from "../pages/Oficios";
 import GerenciamentoArquivo from "../pages/GerenciamentoArquivo";
 import Viaturas from "../pages/Viaturas";
+import DRSO from "../pages/DRSO";
+import EfetivoExternoDRSO from "../pages/EfetivoExternoDRSO";
 import { obterSessao, logout } from "../services/sessionService";
 
 export default function AppRoutes() {
@@ -75,6 +77,8 @@ export default function AppRoutes() {
       <Routes>
         {!usuario ? (
           <Route path="*" element={<Login />} />
+        ) : usuario.tipo_acesso === "drso_externo" ? (
+          <Route path="*" element={<div className="min-h-screen bg-slate-100"><header className="flex items-center justify-between bg-slate-900 px-4 py-3 text-white"><div><strong>Log2CIA · DRSO</strong><p className="text-xs text-slate-300">Acesso externo restrito ao voluntariado</p></div><button className="rounded-lg border border-slate-600 px-3 py-2 text-sm" onClick={handleLogout}>Sair</button></header><main className="mx-auto max-w-7xl p-4"><DRSO /></main></div>} />
         ) : usuario.primeiro_acesso ? (
           <Route path="*" element={<AlterarSenhaObrigatoria />} />
         ) : (
@@ -90,6 +94,10 @@ export default function AppRoutes() {
           >
             <Route index element={<Dashboard />} />
             <Route path="cautelas" element={<Cautelas />} />
+            <Route path="drso" element={<DRSO />} />
+            {(usuario.is_master === true || ["master", "p1"].includes(String(usuario.role || "").trim().toLowerCase()) || usuario.permissoes?.gerenciar_drso === true || usuario.drso_escalante === true) && (
+              <Route path="drso/efetivo-externo" element={<EfetivoExternoDRSO />} />
+            )}
             <Route path="inventario" element={<Inventario />} />
             {(usuario.is_master === true || ["master", "p4", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
               <Route path="viaturas" element={<Viaturas />} />

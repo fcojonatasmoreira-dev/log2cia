@@ -2,7 +2,7 @@ import { supabaseAdmin, usuarioAutenticado, normalizarRole, respostaErro, semSen
 
 const CAMPOS = [
   "nome_completo", "nome_guerra", "matricula", "posto_graduacao",
-  "numeral", "role", "unidade", "status", "primeiro_acesso",
+  "numeral", "role", "unidade", "status", "primeiro_acesso", "drso_escalante",
 ];
 
 function validarDados(body, permitirRole) {
@@ -15,6 +15,8 @@ function validarDados(body, permitirRole) {
   if (Object.prototype.hasOwnProperty.call(body, "senha")) return null;
   if (Object.prototype.hasOwnProperty.call(body, "primeiro_acesso") &&
       typeof body.primeiro_acesso !== "boolean") return null;
+  if (Object.prototype.hasOwnProperty.call(body, "drso_escalante") &&
+      typeof body.drso_escalante !== "boolean") return null;
   return dados;
 }
 
@@ -40,6 +42,7 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       if (!["master", "p4"].includes(role)) return respostaErro(res, 403, "Sem permissão para cadastrar policiais.");
       const dados = validarDados(req.body, role === "master");
+      if (dados && role !== "master") delete dados.drso_escalante;
       if (!dados || !dados.nome_completo || !dados.nome_guerra || !dados.matricula) {
         return respostaErro(res, 400, "Informe nome completo, nome de guerra e matrícula.");
       }

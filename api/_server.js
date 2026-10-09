@@ -24,7 +24,7 @@ export async function usuarioAutenticado(req, res) {
   const db = supabaseAdmin();
   const { data, error } = await db
     .from("policiais")
-    .select("id, nome_completo, nome_guerra, matricula, posto_graduacao, numeral, role, unidade, status, primeiro_acesso, auth_version")
+    .select("id, nome_completo, nome_guerra, matricula, posto_graduacao, numeral, role, unidade, status, primeiro_acesso, drso_escalante, auth_version")
     .eq("id", sessao.sub)
     .maybeSingle();
   if (error) throw error;

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car } from "lucide-react";
+import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car, CalendarDays } from "lucide-react";
 
 export default function AppLayout({ onLogout }) {
   const navigate = useNavigate();
@@ -133,6 +133,13 @@ export default function AppLayout({ onLogout }) {
                 <BookOpen className="w-4 h-4 text-blue-400" /> Livro Digital
               </button>
             )}
+
+            <button
+              onClick={() => navegarPara("/drso")}
+              className={`w-full ${getLinkClass("/drso")}`}
+            >
+              <CalendarDays className="w-4 h-4 text-amber-400" /> Escalas DRSO
+            </button>
 
             <button
               onClick={() => navegarPara("/banco-horas")}

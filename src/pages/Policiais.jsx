@@ -90,6 +90,7 @@ export default function Policiais() {
     role: "policial",
     unidade: "2ª CIA / 15º BPM",
     status: "EM ATIVIDADE",
+    drso_escalante: false,
   });
 
   const checkUserRole = () => {
@@ -133,6 +134,7 @@ export default function Policiais() {
       role: "policial",
       unidade: "2ª CIA / 15º BPM",
       status: "EM ATIVIDADE",
+      drso_escalante: false,
     });
     setIsModalOpen(true);
   };
@@ -157,6 +159,7 @@ export default function Policiais() {
       role: p.role || "policial",
       unidade: p.unidade || "2ª CIA / 15º BPM",
       status: p.status || "EM ATIVIDADE",
+      drso_escalante: p.drso_escalante === true,
     });
     setIsModalOpen(true);
   };
@@ -237,6 +240,7 @@ export default function Policiais() {
 
       const dadosParaSalvar = {
         ...formData,
+        drso_escalante: isMaster && formData.role === "p1" ? formData.drso_escalante === true : false,
         numeral:
           !isOficialOrSub && formData.numeral && formData.numeral.trim() !== ""
             ? formData.numeral.trim()
@@ -991,6 +995,17 @@ export default function Policiais() {
                       <option value="master">Master</option>
                     </select>
                   </div>
+                )}
+                {isMaster && formData.role === "p1" && (
+                  <label className="col-span-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={formData.drso_escalante === true}
+                      onChange={(e) => setFormData({ ...formData, drso_escalante: e.target.checked })}
+                      className="mt-0.5"
+                    />
+                    <span><strong>Escalante DRSO</strong><br />Concede acesso de gerenciamento das escalas DRSO além das funções normais do P1. Não habilita automaticamente os demais usuários P1.</span>
+                  </label>
                 )}
                 <div>
                   <label className="block font-bold text-slate-700 uppercase mb-1">

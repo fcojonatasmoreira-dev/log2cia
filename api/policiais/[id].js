@@ -1,6 +1,6 @@
 import { supabaseAdmin, usuarioAutenticado, normalizarRole, respostaErro, semSenha } from "../_server.js";
 
-const CAMPOS = ["nome_completo", "nome_guerra", "matricula", "posto_graduacao", "numeral", "role", "unidade", "status"];
+const CAMPOS = ["nome_completo", "nome_guerra", "matricula", "posto_graduacao", "numeral", "role", "unidade", "status", "drso_escalante"];
 
 export default async function handler(req, res) {
   try {
@@ -13,7 +13,7 @@ export default async function handler(req, res) {
 
     if (req.method === "PATCH" || req.method === "PUT") {
       if (!["master", "p4"].includes(role)) return respostaErro(res, 403, "Sem permissão para editar policiais.");
-      const { data: alvo, error: alvoError } = await db.from("policiais").select("id, role").eq("id", id).maybeSingle();
+      const { data: alvo, error: alvoError } = await db.from("policiais").select("id, role, drso_escalante").eq("id", id).maybeSingle();
       if (alvoError) throw alvoError;
       if (!alvo) return respostaErro(res, 404, "Policial não encontrado.");
       const roleAlvo = normalizarRole(alvo);
@@ -26,6 +26,7 @@ export default async function handler(req, res) {
       for (const campo of CAMPOS) {
         if (Object.prototype.hasOwnProperty.call(body, campo)) {
           if (campo === "role" && role !== "master") continue;
+          if (campo === "drso_escalante" && role !== "master") continue;
           dados[campo] = body[campo];
         }
       }
