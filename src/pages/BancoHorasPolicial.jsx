@@ -106,6 +106,7 @@ export default function BancoHorasPolicial() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tipo,
+          origem_dispensa: tipo === "dispensa" ? origemDispensa : null,
           horas_solicitadas:
             tipo === "folga" ? 0 : tipo === "dispensa" ? 12 : Number(horas),
           quantidade_folgas: tipo === "folga" ? Number(quantidadeFolgas) : 0,

@@ -14,8 +14,24 @@ import { useNavigate } from "react-router-dom";
 
 const dataBR = (valor) => {
   if (!valor) return "—";
-  const d = new Date(`${valor}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? valor : d.toLocaleDateString("pt-BR");
+
+  const texto = String(valor).trim();
+
+  // Datas sem horário: preserva exatamente o dia informado.
+  const dataSimples = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (dataSimples) {
+    return `${dataSimples[3]}/${dataSimples[2]}/${dataSimples[1]}`;
+  }
+
+  // Timestamps: converte para a data local de Fortaleza.
+  const data = new Date(texto);
+
+  if (Number.isNaN(data.getTime())) return valor;
+
+  return data.toLocaleDateString("pt-BR", {
+    timeZone: "America/Fortaleza",
+  });
 };
 const horasBR = (valor) =>
   `${Number(valor || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} h`;
@@ -103,7 +119,6 @@ export default function BancoHoras() {
           return total;
         }, 0);
         const folgas = movimentos.reduce((total, m) => {
-          if (m.excluido_em) return total;
           if (m.tipo === "concessao_folga")
             return total + Number(m.quantidade_folgas || 0);
           if (m.tipo === "utilizacao_folga")
@@ -163,9 +178,7 @@ export default function BancoHoras() {
 
   const editarMovimentacao = (movimentacao) => {
     if (!["credito", "debito", "concessao_folga"].includes(movimentacao.tipo)) {
-      setErro(
-        "Este tipo de movimentação não pode ser editado por esta tela.",
-      );
+      setErro("Este tipo de movimentação não pode ser editado por esta tela.");
       return;
     }
 
@@ -277,8 +290,12 @@ export default function BancoHoras() {
         </div>
         <div className="flex flex-wrap gap-2">
           {(() => {
-            const usuarioSalvo = JSON.parse(localStorage.getItem("log2cia_user") || "{}");
-            const role = String(usuarioSalvo?.role || "").trim().toLowerCase();
+            const usuarioSalvo = JSON.parse(
+              localStorage.getItem("log2cia_user") || "{}",
+            );
+            const role = String(usuarioSalvo?.role || "")
+              .trim()
+              .toLowerCase();
             return ["master", "p1"].includes(role) ? (
               <button
                 onClick={() => navigate("/banco-horas/nova")}
@@ -429,8 +446,12 @@ export default function BancoHoras() {
                       )}
                       {s.analisada_por && (
                         <p className="text-xs text-slate-500">
-                          Analisada por: {policiaisPorId.get(s.analisada_por)?.nome_guerra || s.analisada_por}
-                          {s.analisada_em ? ` • ${new Date(s.analisada_em).toLocaleString("pt-BR")}` : ""}
+                          Analisada por:{" "}
+                          {policiaisPorId.get(s.analisada_por)?.nome_guerra ||
+                            s.analisada_por}
+                          {s.analisada_em
+                            ? ` • ${new Date(s.analisada_em).toLocaleString("pt-BR")}`
+                            : ""}
                         </p>
                       )}
                     </div>
@@ -633,11 +654,16 @@ export default function BancoHoras() {
                               ? `−${m.quantidade_folgas || 1} folga • ${horasBR(m.horas_servico)}`
                               : `${m.tipo === "credito" ? "+" : "−"}${horasBR(m.horas)}`}
                         </td>
-                        {(podeEditarMovimentacao || podeExcluirMovimentacao) && (
+                        {(podeEditarMovimentacao ||
+                          podeExcluirMovimentacao) && (
                           <td className="p-3 text-right">
                             <div className="inline-flex items-center gap-2">
                               {podeEditarMovimentacao &&
-                                ["credito", "debito", "concessao_folga"].includes(m.tipo) && (
+                                [
+                                  "credito",
+                                  "debito",
+                                  "concessao_folga",
+                                ].includes(m.tipo) && (
                                   <button
                                     type="button"
                                     onClick={() => editarMovimentacao(m)}
@@ -674,173 +700,183 @@ export default function BancoHoras() {
           </div>
         )}
       </section>
-        {editandoMovimentacao && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">
-                    Editar movimentação
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Altere somente os dados do lançamento.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditandoMovimentacao(null)}
-                  disabled={salvandoEdicao}
-                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
-                  title="Fechar"
-                >
-                  <XCircle className="h-5 w-5" />
-                </button>
+      {editandoMovimentacao && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Editar movimentação
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Altere somente os dados do lançamento.
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setEditandoMovimentacao(null)}
+                disabled={salvandoEdicao}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                title="Fechar"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
 
-              <form onSubmit={salvarEdicaoMovimentacao} className="mt-4 space-y-4">
-                {editandoMovimentacao.tipo === "concessao_folga" ? (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-semibold text-slate-600">
-                        Tipo
-                      </span>
-                      <input
-                        type="text"
-                        value="Concessão de folga"
-                        disabled
-                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-semibold text-slate-600">
-                        Quantidade de folgas
-                      </span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="99"
-                        step="1"
-                        required
-                        value={editandoMovimentacao.quantidade_folgas}
-                        onChange={(e) =>
-                          setEditandoMovimentacao((atual) => ({
-                            ...atual,
-                            quantidade_folgas: e.target.value,
-                          }))
-                        }
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
-                      />
-                    </label>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-semibold text-slate-600">
-                        Tipo
-                      </span>
-                      <select
-                        value={editandoMovimentacao.tipo}
-                        onChange={(e) =>
-                          setEditandoMovimentacao((atual) => ({
-                            ...atual,
-                            tipo: e.target.value,
-                          }))
-                        }
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
-                      >
-                        <option value="credito">Crédito</option>
-                        <option value="debito">Débito</option>
-                      </select>
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-semibold text-slate-600">
-                        Horas
-                      </span>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        required
-                        value={editandoMovimentacao.horas}
-                        onChange={(e) =>
-                          setEditandoMovimentacao((atual) => ({
-                            ...atual,
-                            horas: e.target.value,
-                          }))
-                        }
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
-                      />
-                    </label>
-                  </div>
-                )}
-
-                <label className="block">
-                  <span className="mb-1 block text-xs font-semibold text-slate-600">
-                    Descrição
-                  </span>
-                  <textarea
-                    required
-                    rows={3}
-                    value={editandoMovimentacao.descricao}
-                    onChange={(e) =>
-                      setEditandoMovimentacao((atual) => ({
-                        ...atual,
-                        descricao: e.target.value,
-                      }))
-                    }
-                    className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
-                  />
-                </label>
-
-                <div className={editandoMovimentacao.tipo === "concessao_folga" ? "grid grid-cols-1 gap-4" : "grid grid-cols-1 gap-4 sm:grid-cols-2"}>
+            <form
+              onSubmit={salvarEdicaoMovimentacao}
+              className="mt-4 space-y-4"
+            >
+              {editandoMovimentacao.tipo === "concessao_folga" ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="block">
                     <span className="mb-1 block text-xs font-semibold text-slate-600">
-                      Data de referência
+                      Tipo
                     </span>
                     <input
-                      type="date"
-                      value={editandoMovimentacao.data_referencia}
+                      type="text"
+                      value="Concessão de folga"
+                      disabled
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-semibold text-slate-600">
+                      Quantidade de folgas
+                    </span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="99"
+                      step="1"
+                      required
+                      value={editandoMovimentacao.quantidade_folgas}
                       onChange={(e) =>
                         setEditandoMovimentacao((atual) => ({
                           ...atual,
-                          data_referencia: e.target.value,
+                          quantidade_folgas: e.target.value,
                         }))
                       }
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
                     />
                   </label>
-
-                  {editandoMovimentacao.tipo !== "concessao_folga" && (
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-semibold text-slate-600">
-                        Turno
-                      </span>
-                      <select
-                        value={editandoMovimentacao.turno}
-                        onChange={(e) =>
-                          setEditandoMovimentacao((atual) => ({
-                            ...atual,
-                            turno: e.target.value,
-                            turno_descricao:
-                              e.target.value === "OUTRO"
-                                ? atual.turno_descricao
-                                : "",
-                          }))
-                        }
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
-                      >
-                        <option value="">Não informado</option>
-                        <option value="A">A</option>
-                        <option value="B">B</option>
-                        <option value="OUTRO">Outros</option>
-                      </select>
-                    </label>
-                  )}
                 </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-semibold text-slate-600">
+                      Tipo
+                    </span>
+                    <select
+                      value={editandoMovimentacao.tipo}
+                      onChange={(e) =>
+                        setEditandoMovimentacao((atual) => ({
+                          ...atual,
+                          tipo: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    >
+                      <option value="credito">Crédito</option>
+                      <option value="debito">Débito</option>
+                    </select>
+                  </label>
 
-                {editandoMovimentacao.tipo !== "concessao_folga" && editandoMovimentacao.turno === "OUTRO" && (
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-semibold text-slate-600">
+                      Horas
+                    </span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      required
+                      value={editandoMovimentacao.horas}
+                      onChange={(e) =>
+                        setEditandoMovimentacao((atual) => ({
+                          ...atual,
+                          horas: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    />
+                  </label>
+                </div>
+              )}
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-slate-600">
+                  Descrição
+                </span>
+                <textarea
+                  required
+                  rows={3}
+                  value={editandoMovimentacao.descricao}
+                  onChange={(e) =>
+                    setEditandoMovimentacao((atual) => ({
+                      ...atual,
+                      descricao: e.target.value,
+                    }))
+                  }
+                  className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </label>
+
+              <div
+                className={
+                  editandoMovimentacao.tipo === "concessao_folga"
+                    ? "grid grid-cols-1 gap-4"
+                    : "grid grid-cols-1 gap-4 sm:grid-cols-2"
+                }
+              >
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold text-slate-600">
+                    Data de referência
+                  </span>
+                  <input
+                    type="date"
+                    value={editandoMovimentacao.data_referencia}
+                    onChange={(e) =>
+                      setEditandoMovimentacao((atual) => ({
+                        ...atual,
+                        data_referencia: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  />
+                </label>
+
+                {editandoMovimentacao.tipo !== "concessao_folga" && (
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-semibold text-slate-600">
+                      Turno
+                    </span>
+                    <select
+                      value={editandoMovimentacao.turno}
+                      onChange={(e) =>
+                        setEditandoMovimentacao((atual) => ({
+                          ...atual,
+                          turno: e.target.value,
+                          turno_descricao:
+                            e.target.value === "OUTRO"
+                              ? atual.turno_descricao
+                              : "",
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    >
+                      <option value="">Não informado</option>
+                      <option value="A">A</option>
+                      <option value="B">B</option>
+                      <option value="OUTRO">Outros</option>
+                    </select>
+                  </label>
+                )}
+              </div>
+
+              {editandoMovimentacao.tipo !== "concessao_folga" &&
+                editandoMovimentacao.turno === "OUTRO" && (
                   <label className="block">
                     <span className="mb-1 block text-xs font-semibold text-slate-600">
                       Descrição do turno
@@ -860,27 +896,27 @@ export default function BancoHoras() {
                   </label>
                 )}
 
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditandoMovimentacao(null)}
-                    disabled={salvandoEdicao}
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={salvandoEdicao}
-                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-                  >
-                    {salvandoEdicao ? "Salvando..." : "Salvar alterações"}
-                  </button>
-                </div>
-              </form>
-            </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditandoMovimentacao(null)}
+                  disabled={salvandoEdicao}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvandoEdicao}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {salvandoEdicao ? "Salvando..." : "Salvar alterações"}
+                </button>
+              </div>
+            </form>
           </div>
-        )}
+        </div>
+      )}
     </div>
   );
 }

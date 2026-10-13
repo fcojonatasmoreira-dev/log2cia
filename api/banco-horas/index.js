@@ -27,6 +27,7 @@ export default async function handler(req, res) {
 
     if (req.method === "GET") {
       const solicitado = texto(req.query?.policial_id);
+
       if (!gestor && solicitado && solicitado !== usuario.id) {
         return respostaErro(
           res,
@@ -34,42 +35,56 @@ export default async function handler(req, res) {
           "Você só pode consultar seu próprio banco de horas.",
         );
       }
+
       const policialId = gestor ? solicitado || null : usuario.id;
+
       let movQuery = db
         .from("banco_horas_movimentacoes")
         .select("*")
         .order("created_at", { ascending: false });
+
       let solQuery = db
         .from("banco_horas_solicitacoes")
         .select("*")
         .order("created_at", { ascending: false });
+
       if (policialId) {
         movQuery = movQuery.eq("policial_id", policialId);
         solQuery = solQuery.eq("policial_id", policialId);
       }
+
       const [
         { data: movimentacoes, error: erroMov },
         { data: solicitacoes, error: erroSol },
       ] = await Promise.all([movQuery, solQuery]);
+
       if (erroMov) throw erroMov;
       if (erroSol) throw erroSol;
-      const movimentacoesAtivas = (movimentacoes || []).filter(
-        (item) => !item.excluido_em,
-      );
+
+      const movimentacoesAtivas = movimentacoes || [];
+
       const saldo = movimentacoesAtivas.reduce((total, item) => {
         const horas = Number(item.horas || 0);
+
         if (item.tipo === "credito") return total + horas;
         if (item.tipo === "debito") return total - horas;
         if (item.tipo === "ajuste_zeragem") return total + horas;
+
         return total;
       }, 0);
+
       const folgasDisponiveis = movimentacoesAtivas.reduce((total, item) => {
-        if (item.tipo === "concessao_folga")
+        if (item.tipo === "concessao_folga") {
           return total + Number(item.quantidade_folgas || 0);
-        if (item.tipo === "utilizacao_folga")
+        }
+
+        if (item.tipo === "utilizacao_folga") {
           return total - Number(item.quantidade_folgas || 0);
+        }
+
         return total;
       }, 0);
+
       return res.status(200).json({
         movimentacoes: movimentacoes || [],
         solicitacoes: solicitacoes || [],
@@ -96,9 +111,11 @@ export default async function handler(req, res) {
       }
 
       const body = req.body;
+
       const movimentacaoId = texto(
         body?.movimentacao_id || req.query?.movimentacao_id,
       );
+
       if (!movimentacaoId) {
         return respostaErro(res, 400, "Informe a movimentação a ser excluída.");
       }
@@ -111,82 +128,45 @@ export default async function handler(req, res) {
         .maybeSingle();
 
       if (error) throw error;
+
       if (!data) {
         return respostaErro(res, 404, "Movimentação não encontrada.");
       }
 
-      return res.status(200).json({ sucesso: true, movimentacao_id: data.id });
+      return res.status(200).json({
+        sucesso: true,
+        movimentacao_id: data.id,
+      });
     }
 
     if (req.method === "POST") {
       const body = req.body;
-      if (!body || typeof body !== "object" || Array.isArray(body))
-        return respostaErro(res, 400, "Dados inválidos.");
 
-      if (body.acao === "excluir_movimentacao") {
-        if (!["master", "p1", "oficial"].includes(normalizarRole(usuario))) {
-          return respostaErro(
-            res,
-            403,
-            "Apenas Master, P1 e Oficial podem excluir movimentações.",
-          );
-        }
-        const movimentacaoId = texto(body.movimentacao_id);
-        const motivo = texto(body.motivo_exclusao);
-        if (!movimentacaoId || !motivo) {
-          return respostaErro(
-            res,
-            400,
-            "Informe a movimentação e a justificativa da exclusão.",
-          );
-        }
-        if (motivo.length > 1000) {
-          return respostaErro(
-            res,
-            400,
-            "A justificativa deve ter no máximo 1000 caracteres.",
-          );
-        }
-        const { data, error } = await db
-          .from("banco_horas_movimentacoes")
-          .update({
-            excluido_em: new Date().toISOString(),
-            excluido_por: usuario.id,
-            motivo_exclusao: motivo,
-          })
-          .eq("id", movimentacaoId)
-          .is("excluido_em", null)
-          .select("id")
-          .maybeSingle();
-        if (error) throw error;
-        if (!data) {
-          return respostaErro(
-            res,
-            404,
-            "Movimentação não encontrada ou já excluída.",
-          );
-        }
-        return res
-          .status(200)
-          .json({ sucesso: true, movimentacao_id: data.id });
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return respostaErro(res, 400, "Dados inválidos.");
       }
 
       if (body.acao === "movimentar") {
-        if (!["master", "p1"].includes(normalizarRole(usuario)))
+        if (!["master", "p1"].includes(normalizarRole(usuario))) {
           return respostaErro(
             res,
             403,
             "Apenas P1 e Master podem registrar movimentações.",
           );
+        }
+
         const policialId = texto(body.policial_id);
         const tipo = texto(body.tipo);
         const horas = numeroPositivo(body.horas);
         const descricao = texto(body.descricao);
+
         const turno =
           body.turno == null || body.turno === ""
             ? null
             : texto(body.turno).toUpperCase();
+
         const turnoDescricao = texto(body.turno_descricao);
+
         if (
           !policialId ||
           !["credito", "debito"].includes(tipo) ||
@@ -201,6 +181,7 @@ export default async function handler(req, res) {
             "Informe policial, tipo, quantidade positiva de horas e o turno. Se escolher Outros, descreva o turno.",
           );
         }
+
         const { data, error } = await db
           .from("banco_horas_movimentacoes")
           .insert({
@@ -216,20 +197,25 @@ export default async function handler(req, res) {
           })
           .select("*")
           .single();
+
         if (error) throw error;
+
         return res.status(201).json({ movimentacao: data });
       }
 
       if (body.acao === "conceder_folga") {
-        if (!["master", "p1"].includes(normalizarRole(usuario)))
+        if (!["master", "p1"].includes(normalizarRole(usuario))) {
           return respostaErro(
             res,
             403,
             "Apenas P1 e Master podem conceder folgas.",
           );
+        }
+
         const policialId = texto(body.policial_id);
         const quantidade = Number(body.quantidade_folgas);
         const descricao = texto(body.descricao);
+
         if (
           !policialId ||
           !Number.isInteger(quantidade) ||
@@ -243,6 +229,7 @@ export default async function handler(req, res) {
             "Informe policial, quantidade inteira de folgas e a justificativa.",
           );
         }
+
         const { data, error } = await db
           .from("banco_horas_movimentacoes")
           .insert({
@@ -257,29 +244,38 @@ export default async function handler(req, res) {
           })
           .select("*")
           .single();
+
         if (error) throw error;
+
         return res.status(201).json({ movimentacao: data });
       }
 
       if (body.acao === "utilizar_folga") {
-        if (!["master", "p1"].includes(normalizarRole(usuario)))
+        if (!["master", "p1"].includes(normalizarRole(usuario))) {
           return respostaErro(
             res,
             403,
             "Apenas P1 e Master podem registrar utilização de folga.",
           );
+        }
+
         const policialId = texto(body.policial_id);
+
         const horasServico =
           body.horas_servico == null || body.horas_servico === ""
             ? null
             : numeroPositivo(body.horas_servico);
+
         const dataReferencia = texto(body.data_referencia);
+
         const turno =
           body.turno == null || body.turno === ""
             ? null
             : texto(body.turno).toUpperCase();
+
         const turnoDescricao = texto(body.turno_descricao);
         const descricao = texto(body.descricao);
+
         if (
           !policialId ||
           !/^\d{4}-\d{2}-\d{2}$/.test(dataReferencia) ||
@@ -293,6 +289,7 @@ export default async function handler(req, res) {
             "Informe policial, data, justificativa e o turno. Se escolher Outros, descreva o turno.",
           );
         }
+
         const { data, error } = await db.rpc(
           "registrar_utilizacao_folga_banco_horas_v2",
           {
@@ -305,32 +302,45 @@ export default async function handler(req, res) {
             p_registrado_por: usuario.id,
           },
         );
+
         if (error) {
-          if (error.message?.includes("FOLGA_INDISPONIVEL"))
+          if (error.message?.includes("FOLGA_INDISPONIVEL")) {
             return respostaErro(
               res,
               409,
               "O policial não possui folga de serviço disponível.",
             );
-          if (error.message?.includes("TURNO_DESCRICAO_OBRIGATORIA"))
+          }
+
+          if (error.message?.includes("TURNO_DESCRICAO_OBRIGATORIA")) {
             return respostaErro(res, 400, "Descreva o outro turno.");
+          }
+
           throw error;
         }
+
         return res.status(201).json({ movimentacao: data });
       }
 
       const tipo = texto(body.tipo);
+
       const origemDispensa =
         tipo === "dispensa" ? texto(body.origem_dispensa) : null;
+
       const eFolga = tipo === "folga";
       const horas = eFolga ? 0 : numeroPositivo(body.horas_solicitadas);
+
       const quantidadeFolgas = eFolga ? Number(body.quantidade_folgas || 1) : 0;
+
       const dataFatoBeneficio = eFolga ? texto(body.data_fato_beneficio) : null;
+
       const dataServico = eFolga ? null : texto(body.data_servico);
       const turno = eFolga ? null : texto(body.turno).toUpperCase();
       const turnoDescricao = eFolga ? null : texto(body.turno_descricao);
+
       const justificativa = texto(body.justificativa);
       const ocorrencia = texto(body.numero_ocorrencia);
+
       const dadosValidos = eFolga
         ? TIPOS_SOLICITACAO.includes(tipo) &&
           Number.isInteger(quantidadeFolgas) &&
@@ -345,6 +355,7 @@ export default async function handler(req, res) {
           ["A", "B", "OUTRO"].includes(turno) &&
           (turno !== "OUTRO" || !!turnoDescricao) &&
           !!justificativa;
+
       if (!dadosValidos) {
         return respostaErro(
           res,
@@ -354,6 +365,7 @@ export default async function handler(req, res) {
             : "Informe tipo, data do serviço, carga horária, turno e justificativa. Se escolher Outros, descreva o turno.",
         );
       }
+
       if (
         tipo === "dispensa" &&
         !["banco_horas", "folga"].includes(origemDispensa)
@@ -364,6 +376,7 @@ export default async function handler(req, res) {
           "Informe se a dispensa será abatida do Banco de Horas ou de uma folga disponível.",
         );
       }
+
       if (tipo === "inclusao_horas" && !ocorrencia) {
         return respostaErro(
           res,
@@ -371,13 +384,15 @@ export default async function handler(req, res) {
           "Informe a referência da ocorrência no livro.",
         );
       }
+
       if (tipo === "dispensa" && origemDispensa === "folga") {
         const { data: movimentos, error: erroMov } = await db
           .from("banco_horas_movimentacoes")
           .select("tipo, quantidade_folgas")
-          .eq("policial_id", usuario.id)
-          .is("excluido_em", null);
+          .eq("policial_id", usuario.id);
+
         if (erroMov) throw erroMov;
+
         const disponiveis = (movimentos || []).reduce(
           (total, item) =>
             total +
@@ -388,13 +403,16 @@ export default async function handler(req, res) {
                 : 0),
           0,
         );
-        if (disponiveis < 1)
+
+        if (disponiveis < 1) {
           return respostaErro(
             res,
             409,
             "Você não possui folga de serviço disponível para solicitar esta dispensa.",
           );
+        }
       }
+
       const { data, error } = await db
         .from("banco_horas_solicitacoes")
         .insert({
@@ -412,7 +430,9 @@ export default async function handler(req, res) {
         })
         .select("*")
         .single();
+
       if (error) throw error;
+
       return res.status(201).json({ solicitacao: data });
     }
 
@@ -432,18 +452,23 @@ export default async function handler(req, res) {
         const tipo = texto(body.tipo);
         const eConcessaoFolga = tipo === "concessao_folga";
         const horas = eConcessaoFolga ? 0 : numeroPositivo(body.horas);
+
         const quantidadeFolgas = eConcessaoFolga
           ? Number(body.quantidade_folgas)
           : 0;
+
         const descricao = texto(body.descricao);
+
         const dataReferencia =
           body.data_referencia == null || body.data_referencia === ""
             ? null
             : texto(body.data_referencia);
+
         const turno =
           body.turno == null || body.turno === ""
             ? null
             : texto(body.turno).toUpperCase();
+
         const turnoDescricao = texto(body.turno_descricao);
 
         const dadosValidos = eConcessaoFolga
@@ -484,17 +509,13 @@ export default async function handler(req, res) {
                 : null,
           })
           .eq("id", movimentacaoId)
-          .is("excluido_em", null)
           .select("*")
           .maybeSingle();
 
         if (error) throw error;
+
         if (!data) {
-          return respostaErro(
-            res,
-            404,
-            "Movimentação não encontrada ou já excluída.",
-          );
+          return respostaErro(res, 404, "Movimentação não encontrada.");
         }
 
         return res.status(200).json({
@@ -503,16 +524,18 @@ export default async function handler(req, res) {
         });
       }
 
-      if (!gestor)
+      if (!gestor) {
         return respostaErro(
           res,
           403,
           "Apenas P1 e Master podem analisar solicitações.",
         );
+      }
 
       const solicitacaoId = texto(body?.solicitacao_id);
       const status = texto(body?.status);
       const parecer = texto(body?.parecer);
+
       if (!solicitacaoId || !["deferida", "indeferida"].includes(status)) {
         return respostaErro(
           res,
@@ -520,9 +543,11 @@ export default async function handler(req, res) {
           "Informe a solicitação e o resultado da análise.",
         );
       }
+
       if (status === "indeferida" && !parecer) {
         return respostaErro(res, 400, "Informe o motivo do indeferimento.");
       }
+
       const { data, error } = await db.rpc(
         "analisar_solicitacao_banco_horas_v3",
         {
@@ -532,6 +557,7 @@ export default async function handler(req, res) {
           p_analisada_por: usuario.id,
         },
       );
+
       if (error) {
         if (error.message?.includes("SOLICITACAO_NAO_PENDENTE")) {
           return respostaErro(
@@ -540,12 +566,15 @@ export default async function handler(req, res) {
             "Esta solicitação já foi analisada ou não está pendente.",
           );
         }
+
         if (error.message?.includes("SOLICITACAO_NAO_ENCONTRADA")) {
           return respostaErro(res, 404, "Solicitação não encontrada.");
         }
+
         if (error.message?.includes("PARECER_OBRIGATORIO")) {
           return respostaErro(res, 400, "Informe o motivo do indeferimento.");
         }
+
         if (error.message?.includes("FOLGA_INDISPONIVEL")) {
           return respostaErro(
             res,
@@ -553,15 +582,19 @@ export default async function handler(req, res) {
             "A folga disponível já foi utilizada ou não está mais disponível.",
           );
         }
+
         throw error;
       }
+
       return res.status(200).json({ solicitacao: data });
     }
 
-    res.setHeader("Allow", "GET, POST, PATCH");
+    res.setHeader("Allow", "GET, POST, PATCH, DELETE");
+
     return respostaErro(res, 405, "Método não permitido.");
   } catch (error) {
     console.error("Erro na API do Banco de Horas:", error);
+
     return respostaErro(
       res,
       500,
