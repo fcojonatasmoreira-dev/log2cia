@@ -1,7 +1,7 @@
 # CONTRATO DE COLABORAÇÃO TÉCNICA --- LOG2CIA
 
-**Versão:** 1.7\
-**Data de atualização:** 06/10/2026\
+**Versão:** 1.9\
+**Data de atualização:** 13/10/2026\
 **Finalidade:** servir como documento de recuperação de contexto para
 retomar o trabalho sobre o sistema Log2CIA caso o histórico da conversa
 não esteja disponível.
@@ -27,7 +27,7 @@ não esteja disponível.
 
 ## 2. Tecnologias identificadas
 
-Conforme o `package.json` enviado pelo usuário:
+Dependências declaradas no `package.json` inspecionado em 13/10/2026:
 
 ---
 
@@ -82,6 +82,9 @@ qrcode.react \^4.2.0 Geração de QR Code
 xlsx \^0.18.5 Manipulação de
 planilhas
 
+xlsx-js-style \^1.2.0 Exportação de
+planilhas com estilos
+
 oxlint \^1.81.0 Lint
 
 ---
@@ -91,67 +94,50 @@ desenvolvimento com Vite. - `npm run build`: gera a versão de
 produção. - `npm run lint`: executa o Oxlint. - `npm run preview`:
 pré-visualiza o build.
 
-As versões acima são as declaradas no arquivo compartilhado; não
-significam que tenham sido verificadas no ambiente instalado.
+As versões acima são as declaradas no `package.json` inspecionado em
+13/10/2026; não confirmam instalação no ambiente nem funcionamento em execução.
 
 ## 3. Estrutura de pastas observada
 
-A estrutura abaixo foi identificada nas capturas de tela e no mapa de
-arquitetura fornecidos. Ela pode estar incompleta ou ter mudado desde
-então.
+A árvore abaixo substitui a fotografia histórica desta seção e foi conferida
+diretamente no repositório em 13/10/2026. É uma estrutura resumida de arquivos
+de aplicação e documentação; a presença de código não confirma funcionamento.
 
 ```text
 src/
-├── assets/
-├── components/
-│   ├── layout/
-│   │   └── AppLayout.jsx
-│   ├── p1/
-│   │   └── (componentes do módulo P1)
-│   ├── qr/
-│   ├── ui/
-│   ├── EtiquetaArmamento.jsx
-│   └── ModalDetalhesArma.jsx
-├── contexts/
-├── hooks/
-├── lib/
-│   └── supabaseClient.js
-├── pages/
-│   ├── p1/
-│   │   └── LivroPermanencia.jsx
-│   ├── AlterarSenhaObrigatoria.jsx
-│   ├── Cautelas.jsx
-│   ├── Dashboard.jsx
-│   ├── Devolucao.jsx
-│   ├── Inventario.jsx
-│   ├── Login.jsx
-│   ├── MinhasCautelas.jsx
-│   ├── NovaCautela.jsx
-│   ├── Onboarding.jsx
-│   ├── PainelMaster.jsx
-│   └── Policiais.jsx
-├── routes/
-│   └── AppRoutes.jsx
-├── services/
-│   ├── authService.js
-│   ├── cautelaService.js
-│   ├── dashboardService.js
-│   ├── equipamentoService.js
-│   ├── masterService.js
-│   ├── policiaisService.js
-│   └── storageService.js
-├── utils/
+├── components/ (layout, p1, qr, ui, EtiquetaArmamento, ModalDetalhesArma)
+├── hooks/useSessionTimeout.js
+├── lib/supabaseClient.js
+├── pages/ (p1, DRSO, viaturas, banco de horas, Ofícios e demais telas)
+├── routes/AppRoutes.jsx
+├── services/ (arquivo, auth, banco de horas, cautelas, dashboard, DRSO,
+│              equipamentos, master, ofícios, policiais, sessão, storage,
+│              viaturas)
+├── utils/classificacaoAcervo.js
 ├── App.jsx
 ├── index.css
 └── main.jsx
+api/
+├── auth/ ([action].js, _change-password.js, _login.js, _logout.js,
+│          _me.js, _password.js, _session.js)
+├── banco-horas/index.js
+├── drso/index.js
+├── equipamentos/index.js
+├── policiais/ (index.js, [id].js, [id]/[action].js)
+├── radios/index.js
+├── solicitacoes-senha/index.js
+├── viaturas/index.js
+├── _server.js
+├── arquivo.js
+└── oficios.js
+public/ (ícones, logos e imagens)
+Raiz: package.json, package-lock.json, vite.config.js, vercel.json,
+      vercel.local.json, index.html e documentos de referência
+Também existem: .github/workflows/keep-alive.yml, .gitignore,
+                .oxlintrc.json e .env.example
 ```
 
-Observações: - `AppLayout.jsx` foi descrito no mapa como responsável
-pela estrutura de layout e restrição de acesso/RBAC na navegação
-lateral. - `supabaseClient.js` é o conector do Supabase. -
-`AppRoutes.jsx` concentra as rotas da aplicação. - Os arquivos e
-subpastas reais devem ser conferidos antes de assumir que esse mapa
-permanece atualizado.
+Esta árvore é resumida por grupos; o mapa HTML lista os caminhos completos observados. A árvore antiga fica registrada em versões anteriores deste contrato, mas não representa a estrutura atual.
 
 ## 4. Módulos e funcionalidades conhecidos
 
@@ -417,6 +403,11 @@ A primeira implementação deverá ser delimitada somente após esse levantament
 
 ### 11.3 Controle de versão e revogação
 
+**Registro histórico de 01/10/2026:** os itens abaixo registram a proposta e
+as dúvidas existentes naquela atualização. A seção 15.1 contém registro
+posterior relatado pelo usuário; esta fotografia documental não consultou o
+banco e não confirma o estado atual do schema ou de todas as APIs.
+
 - Foi proposto adicionar `public.policiais.auth_version` como inteiro não nulo, padrão `0`, para permitir revogação de tokens.
 - A implementação de troca de senha pressupõe que essa coluna exista e que o token contenha `ver`.
 - O logout básico apaga o cookie do navegador. A revogação efetiva no servidor depende de todas as APIs protegidas compararem a versão do token com a versão atual do banco.
@@ -424,6 +415,12 @@ A primeira implementação deverá ser delimitada somente após esse levantament
 - A existência da coluna no banco e a aplicação da validação em todas as APIs ainda precisam ser confirmadas. Não presumir que todas as rotas estejam protegidas.
 
 ### 11.4 Pendências de segurança
+
+**Estado histórico em 01/10/2026:** a lista foi registrada antes das
+atualizações da seção 15.1. Os itens sobre versão de sessão e logout não devem
+ser tratados como confirmação do estado atual; permanecem pendentes quando não
+houver evidência posterior suficiente. A auditoria de todas as APIs e a
+verificação do schema continuam sem confirmação nesta fotografia.
 
 1. Conferir o schema real de `public.policiais`, incluindo o campo que representa a situação ativa/inativa do policial.
 2. Verificar se `/api/auth/me` consulta a versão atual e rejeita sessões revogadas e usuários inativos.
@@ -434,12 +431,16 @@ A primeira implementação deverá ser delimitada somente após esse levantament
 
 ### 11.5 Arquivos relacionados
 
+**Caminhos registrados na atualização de 01/10/2026, corrigidos nesta revisão
+para refletir os arquivos de autenticação presentes no repositório:**
+
 - `api/auth/_session.js`
 - `api/auth/_password.js`
-- `api/auth/login.js`
-- `api/auth/me.js`
-- `api/auth/logout.js`
-- `api/auth/change-password.js`
+- `api/auth/[action].js`
+- `api/auth/_login.js`
+- `api/auth/_me.js`
+- `api/auth/_logout.js`
+- `api/auth/_change-password.js`
 - `src/services/sessionService.js`
 - `src/pages/Login.jsx`
 - `src/routes/AppRoutes.jsx`
@@ -578,6 +579,12 @@ O código entregue procura os campos `posto_graduacao`/`posto`/`graduacao`, `num
 **Status:** parte das alterações de autenticação e publicação foi integrada pelo usuário. O limite de funções da Vercel foi tratado; as alterações mais recentes do Inventário continuam pendentes de validação integral no projeto.
 
 ### 15.1 Revogação de sessão por `auth_version`
+
+**Registro histórico de 06/10/2026, conforme informação registrada à época.**
+A existência e o valor atual da coluna no banco não foram verificados nesta
+revisão documental; considerar esse ponto pendente de confirmação. Os arquivos
+atuais contêm validações de versão em caminhos de sessão, mas isso não confirma
+que todas as APIs estejam auditadas nem substitui a verificação do banco.
 
 - Foi criada no banco a coluna `public.policiais.auth_version`:
   `integer NOT NULL DEFAULT 0`.
@@ -760,3 +767,98 @@ Em especial, não transformar automaticamente `disponivel` em `cautelado`, nem o
 - Não alterar dados históricos para compensar inconsistências que são consequência do fluxo ainda não implantado.
 - PDF e Excel devem refletir os filtros ativos quando a solicitação for de relatório filtrado.
 - Qualquer afirmação de build, teste, deploy ou funcionamento em produção deve ser acompanhada do resultado efetivamente obtido.
+
+## 20. Fotografia do repositório e estado documental — 13/10/2026
+
+Esta seção registra uma inspeção de leitura do repositório nesta data. Não
+houve consulta ao banco, execução de build, lint ou testes, nem validação de
+produção nesta inspeção. Os registros históricos das seções anteriores foram
+preservados; quando divergem desta fotografia, devem ser lidos como estado
+histórico da época em que foram escritos.
+
+### 20.1 Vocabulário de confirmação
+
+- **Presente no código:** arquivos ou trechos correspondentes existem no
+  repositório inspecionado. Isso, por si só, não prova funcionamento.
+- **Validado funcionalmente:** existe resultado de teste funcional registrado
+  para o fluxo e escopo especificados. Registrar quem validou e quando, se
+  conhecido; não ampliar a conclusão para outros fluxos.
+- **Confirmado pelo usuário:** fato relatado ou confirmado explicitamente pelo
+  usuário. Indicar data e contexto quando disponíveis; não inferir confirmação
+  a partir de código.
+- **Confirmado em produção:** publicação e funcionamento foram explicitamente
+  confirmados para o escopo indicado. Build local ou funcionamento em Vercel
+  Dev não bastam.
+- **Planejado ou pendente:** requisito, proposta ou validação ainda não
+  comprovada. Não apresentar como concluído.
+
+### 20.2 Módulos observados
+
+| Módulo/fluxo | Presente no código | Validação funcional / confirmação do usuário | Confirmado em produção | Planejado ou pendente |
+| --- | --- | --- | --- | --- |
+| Sessão, login e alteração de senha | Frontend e endpoints próprios presentes. | Histórico registra confirmação do usuário de funcionamento local e troca de senha/novo login, no escopo relatado. | Validação abrangente em produção não confirmada. | Revisão de todas as APIs e permissões. |
+| P1 — Livro da Permanência | Páginas, formulário, consultas e geração local de PDF presentes. | Histórico registra ajustes e confirmação de navegação. | Não confirmado nesta inspeção. | Integração Gov.br e upload/armazenamento do PDF assinado não confirmados. |
+| Inventário e cautelas | Telas, fluxos, devolução, QR e exportação presentes. | Histórico contém entregas pendentes de validação e confirmações pontuais, sem validação integral registrada aqui. | Não confirmado nesta inspeção. | Confirmar fluxos completos, schema e estado de publicação. |
+| Gestão de viaturas (P4) | Página, serviço e endpoint presentes. | Não há validação funcional completa confirmada nesta inspeção. | Não confirmado nesta inspeção. | Requisitos completos e integração prevista com P1. |
+| Banco de Horas | Páginas e endpoint presentes. | Histórico relata migração inicial executada pelo usuário; validação integral pendente. | Não confirmado nesta inspeção. | Schema e estado atual do banco não foram consultados. |
+| Policiais, Painel Master, Dashboard, DRSO, Ofícios e gerenciamento de arquivos | Páginas e/ou endpoints correspondentes presentes. | Não confirmada nesta inspeção além dos relatos históricos específicos. | Não confirmado nesta inspeção. | Completude e validação de cada fluxo. |
+
+### 20.3 Limites e divergências a preservar
+
+- O mapa anterior chamava de planejamento a Gestão de Viaturas; a presença
+  atual de página, serviço e API substitui apenas essa descrição de estado no
+  código, não os requisitos ainda pendentes.
+- O código P1 gera PDF e exibe estado “Assinado Gov.br”; isso não comprova
+  integração de assinatura externa nem upload do documento assinado.
+- A árvore da seção 3 e do mapa foi atualizada com base nos arquivos
+  observados, mas não inclui artefatos locais/gerados nem constitui auditoria
+  do estado publicado.
+- Os nomes de tabelas e campos mencionados nas seções anteriores são registros
+  documentais ou referências usadas pelo código. Não constituem confirmação
+  do schema atual. Não consultar nem alterar o banco sem pedido e autorização
+  específicos para a tarefa.
+- Não há declaração de teste, build, lint, migração ou publicação realizada
+  nesta atualização documental.
+
+### Registro desta atualização
+
+- Atualizada a versão do contrato para 1.8.
+- Atualizada a fotografia da estrutura e acrescentada uma legenda de estados
+  de confirmação para evitar confundir código presente com funcionamento ou
+  publicação.
+- Preservados os registros históricos anteriores, inclusive pendências e
+  relatos de validação datados.
+
+## 21. Cadastro de Macroáreas e Microáreas de Operação — 13/10/2026
+
+**Estado:** interface, API e migration preparadas no repositório. A migration
+SQL não foi executada no Supabase; a funcionalidade depende da aplicação dela e
+de validação funcional posterior.
+
+- Macroáreas podem conter microáreas, usadas como bairros.
+- Viaturas podem ter vínculo opcional com uma macroárea. Ao desativar uma
+  macroárea, a migration instala trigger para desvincular suas viaturas.
+- O perfil `oficial` e `p1_escalante_servico_ordinario` gerenciam macroáreas e
+  microáreas. Perfis autenticados, exceto `policial` e `armeiro`, podem
+  consultá-las.
+- O acesso ao Livro da Permanência foi encaminhado por `/api/viaturas?recurso=livro-permanencia`.
+  A API valida a sessão e consulta o papel atual no servidor. Master e P1
+  escalante do serviço ordinário recebem as ações privilegiadas somente nesse
+  módulo; Permanente da Guarda mantém as ações de escrita existentes e Oficial
+  mantém consulta. A migration habilita RLS e revoga o acesso direto do cliente
+  às três tabelas P1. Esta proteção depende da aplicação da migration e da
+  publicação do código correspondente; ambas seguem pendentes.
+- As microáreas preservam seu estado `ativa` próprio quando uma macroárea é
+  desativada, mas só podem ser ativadas sob macroárea ativa. A consulta deverá
+  considerar também o estado da macroárea.
+- A API de áreas usa a função existente `/api/viaturas` para evitar acrescentar
+  uma função serverless ao limite registrado para a Vercel Hobby.
+- A migration zera os valores textuais existentes em `viaturas.area_operacao`,
+  conforme autorização do usuário, e mantém a coluna no schema.
+- O schema informado pelo usuário confirma `area_operacao` como texto opcional,
+  `policiais.role` como texto sem constraint listada e ausência de tabelas com
+  “area” no nome. A consulta de policies não retornou policies para `viaturas`;
+  o estado de RLS dessa tabela não foi confirmado.
+- `npm run lint` terminou sem erros e com avisos; `npm run build` concluiu com
+  avisos de chunk grande e import dinâmico/estático de `jspdf`. Não foram
+  executados testes funcionais, migration, deploy ou validação em produção.

@@ -4,13 +4,31 @@ import {
   normalizarRole,
   respostaErro,
 } from "../_server.js";
+import processarLivroPermanencia from "../_livroPermanencia.js";
 
 const PERFIS_GESTAO = ["master", "p4"];
+const PERFIS_GESTAO_AREAS = ["master", "oficial", "p1_escalante_servico_ordinario"];
+const PERFIS_BLOQUEADOS_AREAS = ["policial", "armeiro"];
 const SITUACOES_VALIDAS = ["operando", "baixada", "manutencao", "inativa"];
 const TIPOS_VALIDOS = ["organica", "locada", "locada_req"];
+const UUID_VALIDO = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function texto(valor) {
   return typeof valor === "string" ? valor.trim() : "";
+}
+
+function validarLinkGoogleMaps(valor) {
+  if (valor === null || valor === undefined || valor === "") return null;
+  if (typeof valor !== "string" || valor.length > 2048) return undefined;
+  try {
+    const url = new URL(valor.trim());
+    const hostPermitido = url.hostname === "maps.app.goo.gl"
+      || url.hostname === "google.com"
+      || url.hostname.endsWith(".google.com");
+    return url.protocol === "https:" && hostPermitido ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function numeroInteiro(valor) {
@@ -46,6 +64,151 @@ async function anexarNomeAtualizacao(db, viaturas) {
   });
 }
 
+async function macroareaAtiva(db, id) {
+  if (!id) return true;
+  if (!UUID_VALIDO.test(id)) return false;
+  const { data, error } = await db
+    .from("macroareas_operacao")
+    .select("id")
+    .eq("id", id)
+    .eq("ativa", true)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function validarAtivacaoMicroarea(db, microareaId, macroareaIdInformada) {
+  let macroareaId = macroareaIdInformada;
+  if (!macroareaId) {
+    const { data, error } = await db
+      .from("microareas_operacao")
+      .select("macroarea_id")
+      .eq("id", microareaId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return false;
+    macroareaId = data.macroarea_id;
+  }
+  return macroareaAtiva(db, macroareaId);
+}
+
+async function processarAreasOperacao(req, res, db, role) {
+  if (PERFIS_BLOQUEADOS_AREAS.includes(role)) {
+    return respostaErro(res, 403, "Sem permissão para consultar áreas de operação.");
+  }
+
+  if (req.method === "GET") {
+    const { data, error } = await db
+      .from("macroareas_operacao")
+      .select("id, nome, descricao, ativa, created_at, updated_at, microareas_operacao(id, macroarea_id, nome, google_maps_url, latitude, longitude, comentario, ativa, created_at, updated_at)")
+      .order("nome", { ascending: true });
+    if (error) throw error;
+    return res.status(200).json({ macroareas: data || [] });
+  }
+
+  if (!PERFIS_GESTAO_AREAS.includes(role)) {
+    return respostaErro(res, 403, "Sem permissão para gerenciar áreas de operação.");
+  }
+  if (!["POST", "PATCH"].includes(req.method)) {
+    return res.setHeader("Allow", "GET, POST, PATCH").status(405).json({ error: "Método não permitido." });
+  }
+
+  const body = req.body;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return respostaErro(res, 400, "Dados da área inválidos.");
+  }
+  const tipo = texto(body.tipo).toLowerCase();
+  const tabela = tipo === "microarea" ? "microareas_operacao" : tipo === "macroarea" ? "macroareas_operacao" : null;
+  if (!tabela) return respostaErro(res, 400, "Tipo de área inválido.");
+
+  const dados = { updated_at: new Date().toISOString() };
+  if (Object.prototype.hasOwnProperty.call(body, "nome")) {
+    dados.nome = texto(body.nome);
+    if (!dados.nome) return respostaErro(res, 400, "Informe o nome da área.");
+  }
+  if (tipo === "macroarea" && Object.prototype.hasOwnProperty.call(body, "descricao")) {
+    dados.descricao = texto(body.descricao) || null;
+  }
+  if (tipo === "microarea" && Object.prototype.hasOwnProperty.call(body, "google_maps_url")) {
+    dados.google_maps_url = validarLinkGoogleMaps(body.google_maps_url);
+    if (dados.google_maps_url === undefined) {
+      return respostaErro(res, 400, "Informe um link HTTPS válido do Google Maps.");
+    }
+  }
+  if (tipo === "microarea" && Object.prototype.hasOwnProperty.call(body, "comentario")) {
+    if (typeof body.comentario !== "string" || body.comentario.length > 1000) {
+      return respostaErro(res, 400, "O comentário deve ter até 1000 caracteres.");
+    }
+    dados.comentario = texto(body.comentario) || null;
+  }
+  if (tipo === "microarea" && (Object.prototype.hasOwnProperty.call(body, "latitude") || Object.prototype.hasOwnProperty.call(body, "longitude"))) {
+    if (!Object.prototype.hasOwnProperty.call(body, "latitude") || !Object.prototype.hasOwnProperty.call(body, "longitude")) {
+      return respostaErro(res, 400, "Informe latitude e longitude juntas.");
+    }
+    const latitudeVazia = body.latitude === null || body.latitude === "";
+    const longitudeVazia = body.longitude === null || body.longitude === "";
+    if (latitudeVazia !== longitudeVazia) {
+      return respostaErro(res, 400, "Informe latitude e longitude juntas.");
+    }
+    if (latitudeVazia) {
+      dados.latitude = null;
+      dados.longitude = null;
+    } else {
+      const latitude = Number(body.latitude);
+      const longitude = Number(body.longitude);
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+        return respostaErro(res, 400, "Latitude ou longitude fora dos limites válidos.");
+      }
+      dados.latitude = latitude;
+      dados.longitude = longitude;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "ativa")) {
+    if (typeof body.ativa !== "boolean") return respostaErro(res, 400, "Situação da área inválida.");
+    dados.ativa = body.ativa;
+  }
+  if (tipo === "microarea" && Object.prototype.hasOwnProperty.call(body, "macroarea_id")) {
+    dados.macroarea_id = texto(body.macroarea_id);
+    if (!dados.macroarea_id || !(await macroareaAtiva(db, dados.macroarea_id))) {
+      return respostaErro(res, 400, "Selecione uma macroárea ativa para a microárea.");
+    }
+  }
+  if (tipo === "microarea" && body.ativa === true) {
+    const macroareaId = dados.macroarea_id || null;
+    if (!(await validarAtivacaoMicroarea(db, req.query?.id, macroareaId))) {
+      return respostaErro(res, 400, "Uma microárea só pode ficar ativa sob uma macroárea ativa.");
+    }
+  }
+
+  if (req.method === "POST") {
+    if (!dados.nome) return respostaErro(res, 400, "Informe o nome da área.");
+    if (tipo === "microarea") {
+      if (!dados.macroarea_id) return respostaErro(res, 400, "Selecione uma macroárea ativa para a microárea.");
+    }
+    const { data, error } = await db.from(tabela).insert(dados).select("*").single();
+    if (error) {
+      if (error.code === "23503" || error.code === "23505") return respostaErro(res, 400, "Não foi possível salvar a área. Confira os dados e a macroárea selecionada.");
+      throw error;
+    }
+    return res.status(201).json({ area: data });
+  }
+
+  const id = texto(req.query?.id);
+  if (!id) return respostaErro(res, 400, "Identificador da área inválido.");
+  if (tipo === "microarea" && Object.prototype.hasOwnProperty.call(dados, "macroarea_id") && (!dados.macroarea_id || !(await macroareaAtiva(db, dados.macroarea_id)))) {
+    return respostaErro(res, 400, "Selecione uma macroárea ativa para a microárea.");
+  }
+  if (Object.keys(dados).length === 1) return respostaErro(res, 400, "Nenhum campo permitido para atualização.");
+
+  const { data, error } = await db.from(tabela).update(dados).eq("id", id).select("*").maybeSingle();
+  if (error) {
+    if (error.code === "23503" || error.code === "23505") return respostaErro(res, 400, "Não foi possível atualizar a área. Confira os dados e a macroárea selecionada.");
+    throw error;
+  }
+  if (!data) return respostaErro(res, 404, "Área não encontrada.");
+  return res.status(200).json({ area: data });
+}
+
 export default async function handler(req, res) {
   try {
     const usuario = await usuarioAutenticado(req, res);
@@ -54,15 +217,26 @@ export default async function handler(req, res) {
     const db = supabaseAdmin();
     const role = normalizarRole(usuario);
 
+    if (req.query?.recurso === "areas-operacao") {
+      return await processarAreasOperacao(req, res, db, role);
+    }
+    if (req.query?.recurso === "livro-permanencia") {
+      return await processarLivroPermanencia(req, res, db, role);
+    }
+
     if (req.method === "GET") {
+      const podeConsultarAreas = !PERFIS_BLOQUEADOS_AREAS.includes(role);
       const { data, error } = await db
         .from("viaturas")
-        .select("*")
+        .select(podeConsultarAreas ? "*, macroareas_operacao(id, nome)" : "*")
         .order("ativo", { ascending: false })
         .order("identificacao", { ascending: true });
 
       if (error) throw error;
-      const viaturas = await anexarNomeAtualizacao(db, data || []);
+      const viaturasSemAreas = podeConsultarAreas
+        ? data || []
+        : (data || []).map(({ macroarea_id, area_operacao, ...viatura }) => viatura);
+      const viaturas = await anexarNomeAtualizacao(db, viaturasSemAreas);
       return res.status(200).json({ viaturas });
     }
 
@@ -92,7 +266,8 @@ export default async function handler(req, res) {
         situacao === "manutencao"
           ? "Pátio da oficina"
           : localizacaoInformada || "Pátio da CIA";
-      const areaOperacao = texto(body.area_operacao);
+      const macroareaIdInformada = texto(body.macroarea_id);
+      const macroareaId = situacao === "operando" ? macroareaIdInformada || null : null;
       const dataManutencao = texto(body.data_manutencao) || null;
       const motivoManutencao = texto(body.motivo_manutencao);
       const quilometragemAtual = numeroNaoNegativo(body.quilometragem_atual);
@@ -117,6 +292,10 @@ export default async function handler(req, res) {
 
       if (!TIPOS_VALIDOS.includes(tipo)) {
         return respostaErro(res, 400, "Tipo da viatura inválido.");
+      }
+
+      if (macroareaId && !(await macroareaAtiva(db, macroareaId))) {
+        return respostaErro(res, 400, "Selecione uma macroárea ativa.");
       }
 
       if (situacao !== "manutencao" && (!localizacaoAtual || localizacaoAtual === "Outro" || localizacaoAtual === "Pátio da oficina")) {
@@ -165,7 +344,8 @@ export default async function handler(req, res) {
           motivo_baixa: situacao === "baixada" ? motivoBaixa || null : null,
           oficina: ["baixada", "manutencao"].includes(situacao) ? oficina || null : null,
           localizacao_atual: localizacaoAtual,
-          area_operacao: situacao === "operando" ? areaOperacao || null : null,
+          area_operacao: null,
+          macroarea_id: macroareaId,
           data_manutencao: situacao === "manutencao" ? dataManutencao : null,
           motivo_manutencao: situacao === "manutencao" ? motivoManutencao || null : null,
           quilometragem_atual: quilometragemAtual,
@@ -216,6 +396,7 @@ export default async function handler(req, res) {
         "oficina",
         "localizacao_atual",
         "area_operacao",
+        "macroarea_id",
         "data_manutencao",
         "motivo_manutencao",
         "quilometragem_atual",
@@ -278,6 +459,25 @@ export default async function handler(req, res) {
         }
       }
 
+      if (Object.prototype.hasOwnProperty.call(dados, "macroarea_id")) {
+        dados.macroarea_id = texto(dados.macroarea_id) || null;
+        if (dados.macroarea_id && !(await macroareaAtiva(db, dados.macroarea_id))) {
+          return respostaErro(res, 400, "Selecione uma macroárea ativa.");
+        }
+        if (dados.macroarea_id) {
+          const { data: viaturaAtual, error: erroViaturaAtual } = await db
+            .from("viaturas")
+            .select("situacao")
+            .eq("id", id)
+            .maybeSingle();
+          if (erroViaturaAtual) throw erroViaturaAtual;
+          const situacaoEfetiva = texto(dados.situacao || viaturaAtual?.situacao).toLowerCase();
+          if (viaturaAtual && situacaoEfetiva !== "operando") {
+            return respostaErro(res, 400, "Somente viaturas operando podem receber uma macroárea.");
+          }
+        }
+      }
+
       if (Object.prototype.hasOwnProperty.call(dados, "situacao")) {
         dados.situacao = texto(dados.situacao).toLowerCase();
         if (!SITUACOES_VALIDAS.includes(dados.situacao)) {
@@ -303,6 +503,7 @@ export default async function handler(req, res) {
         }
         if (dados.situacao !== "operando") {
           dados.area_operacao = null;
+          dados.macroarea_id = null;
         }
         if (dados.situacao === "operando" || dados.situacao === "inativa") {
           dados.oficina = null;
@@ -325,7 +526,7 @@ export default async function handler(req, res) {
         dados.localizacao_atual = texto(dados.localizacao_atual) || null;
       }
       if (Object.prototype.hasOwnProperty.call(dados, "area_operacao")) {
-        dados.area_operacao = texto(dados.area_operacao) || null;
+        dados.area_operacao = null;
       }
       if (Object.prototype.hasOwnProperty.call(dados, "data_manutencao")) {
         dados.data_manutencao = texto(dados.data_manutencao) || null;
@@ -359,11 +560,15 @@ export default async function handler(req, res) {
       dados.atualizado_por = usuario.id;
       dados.atualizado_em = new Date().toISOString();
 
+      if (Object.prototype.hasOwnProperty.call(dados, "macroarea_id") && !Object.prototype.hasOwnProperty.call(dados, "situacao")) {
+        dados.area_operacao = null;
+      }
+
       const { data, error } = await db
         .from("viaturas")
         .update(dados)
         .eq("id", id)
-        .select("*")
+        .select("*, macroareas_operacao(id, nome)")
         .maybeSingle();
 
       if (error) {

@@ -297,6 +297,7 @@ export default function PainelMaster() {
                     <option value="permanente da guarda">
                       Permanente da Guarda
                     </option>
+                    <option value="p1_escalante_servico_ordinario">P1 Escalante — Serviço Ordinário</option>
                     <option value="armeiro">Armeiro</option>
                     <option value="p4">P4</option>
                     <option value="oficial">Oficial</option>

@@ -1,5 +1,9 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import {
+  excluirLivroPermanencia,
+  listarLivrosPermanencia,
+  reabrirLivroPermanencia,
+} from "../../services/livroPermanenciaService";
 import {
   BookOpen,
   Plus,
@@ -29,60 +33,32 @@ export default function LivroPermanencia({ userLogado }) {
     verificarAcesso();
   }, [userLogado]);
 
-  async function verificarAcesso() {
+  function verificarAcesso() {
     setVerificandoAcesso(true);
-    try {
-      const usuarioSalvo = localStorage.getItem("log2cia_user");
-      const dadosSalvos = usuarioSalvo ? JSON.parse(usuarioSalvo) : {};
+    const normalizarPerfil = (perfil) =>
+      String(perfil || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    const role = normalizarPerfil(userLogado?.role);
+    const ehMaster =
+      userLogado?.is_master === true ||
+      role === "master" ||
+      role === "p1_escalante_servico_ordinario";
+    const ehPermanente = role === "permanente da guarda";
+    const ehOficial = role === "oficial";
 
-      const normalizarPerfil = (perfil) =>
-        String(perfil || "")
-          .trim()
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "");
-
-      // A sessão autenticada é a fonte principal da permissão.
-      // Uma falha de RLS em uma consulta complementar não deve retirar
-      // o acesso de um usuário que já está autenticado com a role correta.
-      const perfis = [
-        userLogado?.role,
-        userLogado?.perfil,
-        dadosSalvos?.role,
-        dadosSalvos?.perfil,
-      ]
-        .filter(Boolean)
-        .map(normalizarPerfil);
-
-      const ehMaster =
-        userLogado?.is_master === true ||
-        dadosSalvos?.is_master === true ||
-        perfis.includes("master");
-
-      const ehPermanente = perfis.includes("permanente da guarda");
-      const ehOficial = perfis.includes("oficial");
-
-      setIsMaster(ehMaster);
-      setTemAcesso(ehMaster || ehPermanente || ehOficial);
-    } catch (err) {
-      console.error("Erro ao verificar acesso ao Livro da Permanência:", err);
-      setIsMaster(false);
-      setTemAcesso(false);
-    } finally {
-      setVerificandoAcesso(false);
-    }
+    setIsMaster(ehMaster);
+    setTemAcesso(ehMaster || ehPermanente || ehOficial);
+    setVerificandoAcesso(false);
   }
 
   async function carregarLivros() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("livros_permanencia")
-        .select("*")
-        .order("data_servico", { ascending: false });
-
-      if (error) throw error;
-      if (data) setLivros(data);
+      const { livros: data } = await listarLivrosPermanencia();
+      setLivros(data || []);
     } catch (err) {
       console.error("Erro ao carregar livros:", err.message);
     } finally {
@@ -111,6 +87,7 @@ export default function LivroPermanencia({ userLogado }) {
   };
 
   const handleExcluirLivro = async (livroId) => {
+    if (!isMaster) return;
     if (
       !window.confirm(
         "Tem certeza que deseja excluir permanentemente este livro de turno?",
@@ -118,14 +95,7 @@ export default function LivroPermanencia({ userLogado }) {
     )
       return;
     try {
-      await supabase.from("livro_viaturas").delete().eq("livro_id", livroId);
-      await supabase.from("livro_ocorrencias").delete().eq("livro_id", livroId);
-      const { error } = await supabase
-        .from("livros_permanencia")
-        .delete()
-        .eq("id", livroId);
-
-      if (error) throw error;
+      await excluirLivroPermanencia(livroId);
       alert("Livro excluído com sucesso!");
       carregarLivros();
     } catch (err) {
@@ -153,18 +123,7 @@ export default function LivroPermanencia({ userLogado }) {
     }
 
     try {
-      const { data, error } = await supabase
-        .from("livros_permanencia")
-        .update({ status: "em_andamento" })
-        .eq("id", livro.id)
-        .eq("status", "fechado")
-        .select("id, status")
-        .maybeSingle();
-
-      if (error) throw error;
-      if (!data) {
-        throw new Error("O livro não está mais fechado ou não foi encontrado.");
-      }
+      await reabrirLivroPermanencia(livro.id);
 
       alert("Livro reaberto com sucesso. Ele voltou para Em Andamento.");
       carregarLivros();

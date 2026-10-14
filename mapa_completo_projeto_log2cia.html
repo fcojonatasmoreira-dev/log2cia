@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>
-      PROJECT_MAP - Log2CIA | Regras, Arquitetura e Estado do Projeto v1.8
+      PROJECT_MAP - Log2CIA | Regras, Arquitetura e Estado do Projeto v1.9
     </title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   </head>
@@ -18,15 +18,14 @@
           <span class="text-3xl">🛡️</span>
           <h1 class="text-2xl md:text-3xl font-bold tracking-tight text-white">
             PROJECT_MAP — Log2CIA | Regras, Assinatura, P1, P4 & Arquitetura —
-            v1.8
+            v1.9
           </h1>
         </div>
         <p class="text-sm text-slate-400">
           Documentação de referência do Log2CIA: regras de negócio, arquitetura,
           módulos, ambiente local e fluxo de publicação. Atualizada em
-          06/10/2026 (v1.8). Mapeamento estrutural reorganizado; confirmar a
-          árvore real do repositório antes de tratar itens não verificados como
-          existentes.
+          13/10/2026 (v1.9), com árvore conferida no repositório. Presença de
+          código não confirma funcionamento, validação pelo usuário ou produção.
         </p>
       </header>
 
@@ -96,9 +95,10 @@
             >
             <h3 class="font-bold text-white text-sm">Governança & Gov.br</h3>
             <p class="text-slate-300 leading-relaxed">
-              Geração do PDF oficial nos moldes da PMCE, assinatura externa no
-              Gov.br e upload para o servidor local / Google Drive, permitindo
-              auditoria instantânea pelo P1 e Master.
+              Fluxo documentado/planejado: gerar o PDF, assiná-lo externamente
+              no Gov.br e anexar o documento para consulta. A integração Gov.br
+              e o upload do PDF assinado não foram encontrados confirmados no
+              código inspecionado.
             </p>
           </div>
         </div>
@@ -109,15 +109,19 @@
         <h2
           class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
         >
-          2. Arquitetura Operacional do Módulo P1 (Livro Digital)
+          2. Arquitetura Documentada do Módulo P1 (Livro Digital)
         </h2>
         <div
           class="bg-slate-950 p-5 rounded-xl border border-slate-700 space-y-3 text-xs"
         >
+          <p class="text-amber-300 leading-relaxed">
+            Esta seção preserva requisitos e descrições anteriores; não atesta
+            que cada fluxo esteja implementado. A presença de geração local de
+            PDF no código não comprova assinatura Gov.br nem upload do arquivo.
+          </p>
           <p class="text-slate-300 leading-relaxed">
-            O Módulo P1 digitaliza o tradicional Livro da Permanência da 2ª CIA
-            / 15º BPM (Cascavel-CE), eliminando erros de digitação e formatação
-            do Word:
+            O Módulo P1 foi concebido para digitalizar o Livro da Permanência
+            da 2ª CIA / 15º BPM (Cascavel-CE):
           </p>
           <ul
             class="list-disc list-inside text-slate-300 space-y-2 leading-relaxed"
@@ -138,10 +142,10 @@
               Disciplina, Ocorrências do Turno e Passagem de Serviço.
             </li>
             <li>
-              <strong>Armazenamento Híbrido de Documentos:</strong> O PDF
-              assinado via Gov.br é descarregado para a pasta compartilhada do
-              servidor local (sincronizada com o Google Drive) e sua URL pública
-              é referenciada no sistema para visualização em 1 clique.
+              <strong>Armazenamento de documentos — requisito planejado:</strong>
+              a documentação prevê anexar o PDF assinado e referenciar o
+              arquivo. O destino em servidor/Google Drive descrito em versões
+              anteriores não foi confirmado no código atual.
             </li>
           </ul>
         </div>
@@ -216,12 +220,12 @@
         </div>
       </section>
 
-      <!-- Seção 4: Schema Atualizado do Banco de Dados (Supabase) -->
+      <!-- Seção 4: Referências de banco registradas nos documentos — não verificadas -->
       <section class="space-y-4">
         <h2
           class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
         >
-          4. Schema Atualizado do Banco de Dados (Supabase / Postgres)
+          4. Referências de banco registradas nos documentos — não verificadas
         </h2>
         <div class="space-y-3 text-xs">
           <div
@@ -288,14 +292,10 @@
           class="bg-slate-950 p-5 rounded-xl border border-emerald-700 space-y-2 text-xs"
         >
           <p class="text-emerald-300 font-bold">
-            Mapa lógico dos componentes e arquivos identificados na documentação
-            e nas entregas analisadas até 06/10/2026.
+            Árvore resumida dos arquivos de aplicação e documentação encontrados no repositório em 13/10/2026.
           </p>
           <p class="text-slate-300 leading-relaxed">
-            Este mapa distingue arquivos conhecidos de diretórios cuja
-            composição completa ainda depende da conferência do repositório
-            atual. Não representa uma listagem obtida diretamente do GitHub ou
-            do computador do usuário.
+            A árvore abaixo foi conferida localmente nesta data. Artefatos gerados e arquivos de ambiente locais não estão enumerados. Presença no código não comprova funcionamento, estado do banco ou publicação em produção.
           </p>
         </div>
 
@@ -309,48 +309,100 @@
             class="text-[11px] leading-relaxed text-slate-300 whitespace-pre-wrap font-mono"
           >
 Log2CIA/
-├── api/                              # Backend: funções/API executadas no servidor
-│   ├── _server.js                    # Autenticação/autorização e utilitários compartilhados
+├── api/
+│   ├── _server.js
+│   ├── arquivo.js
+│   ├── oficios.js
 │   ├── auth/
-│   │   ├── _session.js               # Assinatura e leitura da sessão (HMAC-SHA256)
-│   │   ├── _password.js              # Geração e verificação de hash scrypt
-│   │   ├── login.js                  # Entrada e migração de senha legada
-│   │   ├── me.js                     # Consulta do usuário da sessão
-│   │   ├── change-password.js        # Alteração de senha e incremento de auth_version
-│   │   └── logout.js                 # Encerramento/revogação da sessão
-│   └── radios/
-│       └── index.js                  # API de consulta e gestão de rádios
-├── src/                              # Aplicação React (frontend)
+│   │   ├── [action].js
+│   │   ├── _change-password.js
+│   │   ├── _login.js
+│   │   ├── _logout.js
+│   │   ├── _me.js
+│   │   ├── _password.js
+│   │   └── _session.js
+│   ├── banco-horas/index.js
+│   ├── drso/index.js
+│   ├── equipamentos/index.js
+│   ├── policiais/
+│   │   ├── index.js
+│   │   ├── [id].js
+│   │   └── [id]/[action].js
+│   ├── radios/index.js
+│   ├── solicitacoes-senha/index.js
+│   └── viaturas/index.js
+├── src/
 │   ├── components/
-│   │   ├── layout/
-│   │   │   └── AppLayout.jsx         # Estrutura visual e navegação por perfil
-│   │   ├── p1/
-│   │   │   └── ModalNovoLivro.jsx    # Formulário do Livro Digital
-│   │   └── ModalDetalhesArma.jsx     # Ficha/modal de detalhes do acervo
+│   │   ├── layout/AppLayout.jsx
+│   │   ├── p1/ModalNovoLivro.jsx
+│   │   ├── qr/QrScanner.jsx
+│   │   ├── ui/BadgeStatus.jsx
+│   │   ├── ui/CardMetric.jsx
+│   │   ├── EtiquetaArmamento.jsx
+│   │   └── ModalDetalhesArma.jsx
+│   ├── hooks/useSessionTimeout.js
+│   ├── lib/supabaseClient.js
 │   ├── pages/
-│   │   ├── p1/
-│   │   │   └── LivroPermanencia.jsx  # Página do Livro Digital
-│   │   ├── Login.jsx                # Tela de autenticação
+│   │   ├── p1/LivroPermanencia.jsx
+│   │   ├── p1/ModalNovoLivro.jsx
 │   │   ├── AlterarSenhaObrigatoria.jsx
-│   │   ├── Dashboard.jsx
-│   │   ├── Policiais.jsx
+│   │   ├── BancoHoras.jsx
+│   │   ├── BancoHorasGestao.jsx
+│   │   ├── BancoHorasPolicial.jsx
 │   │   ├── Cautelas.jsx
-│   │   ├── Inventario.jsx           # Armamentos, coletes, munições e rádios
-│   │   └── PainelMaster.jsx
+│   │   ├── Devolucao.jsx
+│   │   ├── DRSO.jsx
+│   │   ├── Dashboard.jsx
+│   │   ├── EfetivoExternoDRSO.jsx
+│   │   ├── GerenciamentoArquivo.jsx
+│   │   ├── Inventario.jsx
+│   │   ├── Login.jsx
+│   │   ├── MeuBancoHoras.jsx
+│   │   ├── MinhasCautelas.jsx
+│   │   ├── NovaCautela.jsx
+│   │   ├── NovaInsercaoBancoHoras.jsx
+│   │   ├── Oficios.jsx
+│   │   ├── Onboarding.jsx
+│   │   ├── PainelMaster.jsx
+│   │   ├── Policiais.jsx
+│   │   └── Viaturas.jsx
+│   ├── routes/AppRoutes.jsx
 │   ├── services/
-│   │   └── sessionService.js         # Chamadas de sessão com credenciais de cookie
-│   ├── lib/
-│   │   └── supabaseClient.js         # Cliente Supabase do frontend
-│   └── AppRoutes.jsx                 # Rotas da aplicação
-├── public/                           # Arquivos públicos do frontend (conteúdo a conferir)
-├── package.json                      # Dependências e scripts npm
-├── vercel.json                       # Configuração de rotas/deploy; preservar rewrite validado
-└── vercel.local.json                 # Configuração local citada; não incluir no Git sem decisão</pre
+│   │   ├── arquivoService.js
+│   │   ├── authService.js
+│   │   ├── bancoHorasService.js
+│   │   ├── cautelasService.js
+│   │   ├── dashboardService.js
+│   │   ├── drsoService.js
+│   │   ├── equipamentosService.js
+│   │   ├── masterService.js
+│   │   ├── oficiosService.js
+│   │   ├── policiaisService.js
+│   │   ├── sessionService.js
+│   │   ├── storageService.js
+│   │   └── viaturasService.js
+│   ├── utils/classificacaoAcervo.js
+│   ├── App.jsx
+│   ├── index.css
+│   └── main.jsx
+├── public/ (favicon.png, favicon.svg, icons.svg, logo.png, rodape.png)
+├── Contrato_Colaboracao_Tecnica_Log2CIA.md
+├── README.md
+├── index.html
+├── mapa_completo_projeto_log2cia.html
+├── package.json / package-lock.json
+├── vite.config.js
+├── vercel.json / vercel.local.json
+├── .github/workflows/keep-alive.yml
+├── .gitignore
+├── .oxlintrc.json
+├── .env.example
+├── AGENTS.md
+└── mapa do mdulo P1.html
+</pre
           >
           <p class="text-[10px] text-slate-400 leading-relaxed">
-            A árvore acima lista apenas os caminhos explicitamente
-            identificados. Não se deve concluir que os diretórios estejam
-            limitados aos itens exibidos.
+            A árvore resume os caminhos de aplicação/documentação observados; arquivos locais, ignorados ou gerados podem existir fora dela. Não é inventário do banco nem da publicação.
           </p>
         </div>
 
@@ -533,15 +585,15 @@ Log2CIA/
                 texto corrido.
               </li>
               <li>
-                <strong>Bloco 4 (Anexo & Ações):</strong> Campo de upload em
-                área tracejada para anexar o PDF assinado via Gov.br e botões de
-                rodapé "Cancelar" e "Salvar Livro Completo".
+                <strong>Bloco 4 (Anexo & Ações) — descrição planejada:</strong>
+                os documentos preveem área para anexar o PDF assinado via
+                Gov.br e botões de rodapé. O controle de upload não foi
+                encontrado no código inspecionado; confirmar a interface real.
               </li>
             </ul>
           </div>
         </div>
       </section>
-      <!-- Seção 7: Mapeamento de Telas dos Demais Módulos (P4, Cautelas, Master, Efetivo) -->
       <!-- Seção 7: Mapeamento de Telas dos Demais Módulos (P4, Cautelas, Master, Efetivo) -->
       <section class="space-y-4">
         <h2
@@ -703,7 +755,7 @@ Log2CIA/
         <h2
           class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
         >
-          8. Planejamento do P4 — Gestão de Viaturas (01/10/2026)
+          8. Planejamento original do P4 — Gestão de Viaturas (01/10/2026)
         </h2>
         <div
           class="bg-slate-950 p-5 rounded-xl border border-amber-700 space-y-4 text-xs"
@@ -1480,6 +1532,70 @@ Log2CIA/
               Não declarar build, teste ou deploy sem resultado efetivamente
               obtido.
             </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Fotografia atual e níveis de confirmação — 13/10/2026 -->
+      <section class="space-y-4">
+        <h2
+          class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3"
+        >
+          17. Fotografia Atual e Níveis de Confirmação (13/10/2026)
+        </h2>
+        <div
+          class="bg-slate-950 p-5 rounded-xl border border-amber-700 space-y-3 text-xs"
+        >
+          <p class="text-amber-300 font-bold">
+            Inspeção somente de leitura do repositório. Banco, build, lint,
+            testes e produção não foram consultados ou validados nesta revisão.
+          </p>
+          <ul class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed">
+            <li><strong>Presente no código:</strong> arquivos/trechos encontrados; não prova funcionamento.</li>
+            <li><strong>Validado funcionalmente:</strong> exige resultado registrado para o fluxo e escopo específicos.</li>
+            <li><strong>Confirmado pelo usuário:</strong> relato explícito, limitado ao contexto e à data informados.</li>
+            <li><strong>Confirmado em produção:</strong> exige confirmação explícita da implantação e do funcionamento no escopo indicado.</li>
+            <li><strong>Planejado ou pendente:</strong> requisito ou validação ainda não comprovado.</li>
+          </ul>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-slate-300 border-collapse">
+              <thead><tr class="border-b border-slate-700 text-blue-300"><th class="p-2">Módulo</th><th class="p-2">Presente no código</th><th class="p-2">Validação funcional / usuário</th><th class="p-2">Produção</th><th class="p-2">Pendente</th></tr></thead>
+              <tbody>
+                <tr class="border-b border-slate-800"><td class="p-2">Autenticação e sessão</td><td class="p-2">Frontend e endpoints próprios encontrados.</td><td class="p-2">Histórico registra confirmação do usuário de funcionamento local e troca de senha no escopo relatado.</td><td class="p-2">Validação abrangente não confirmada.</td><td class="p-2">Revisão de todas as APIs e permissões.</td></tr>
+                <tr class="border-b border-slate-800"><td class="p-2">P1 — Livro da Permanência</td><td class="p-2">Páginas, formulário, consultas e geração local de PDF.</td><td class="p-2">Histórico registra ajustes e confirmação de navegação.</td><td class="p-2">Não confirmado nesta inspeção.</td><td class="p-2">Integração Gov.br e upload/armazenamento do PDF assinado.</td></tr>
+                <tr class="border-b border-slate-800"><td class="p-2">Inventário e cautelas</td><td class="p-2">Telas, fluxos, QR e exportações.</td><td class="p-2">Há registros históricos de entregas pendentes e confirmações pontuais, sem validação integral aqui.</td><td class="p-2">Não confirmado nesta inspeção.</td><td class="p-2">Confirmar fluxos completos, schema e publicação.</td></tr>
+                <tr class="border-b border-slate-800"><td class="p-2">P4 — Viaturas</td><td class="p-2">Página, serviço e API; planejamento antigo superado quanto à presença de código.</td><td class="p-2">Validação funcional completa não confirmada.</td><td class="p-2">Não confirmado nesta inspeção.</td><td class="p-2">Requisitos completos e integração prevista com P1.</td></tr>
+                <tr class="border-b border-slate-800"><td class="p-2">Banco de Horas</td><td class="p-2">Páginas e API.</td><td class="p-2">Histórico relata migração inicial executada pelo usuário; validação integral pendente.</td><td class="p-2">Não confirmado nesta inspeção.</td><td class="p-2">Schema atual não consultado.</td></tr>
+                <tr><td class="p-2">DRSO, Ofícios, arquivos, policiais, Dashboard e Master</td><td class="p-2">Páginas e/ou endpoints encontrados.</td><td class="p-2">Sem confirmação além dos relatos históricos específicos.</td><td class="p-2">Não confirmado nesta inspeção.</td><td class="p-2">Completude e validação de cada fluxo.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-slate-400 leading-relaxed">
+            As seções anteriores e seus registros datados foram preservados como histórico. Quando uma descrição antiga diverge desta fotografia, consultar o código atual e manter como pendente tudo que dependa de banco, execução ou produção. Os nomes de tabelas da seção 4 são referências documentais, não schema confirmado.
+          </p>
+        </div>
+      </section>
+
+      <!-- Cadastro de áreas de operação — 13/10/2026 -->
+      <section class="space-y-4">
+        <h2 class="text-lg font-bold text-blue-400 border-l-4 border-blue-500 pl-3">
+          18. Macroáreas e Microáreas de Operação (13/10/2026)
+        </h2>
+        <div class="bg-slate-950 p-5 rounded-xl border border-amber-700 space-y-3 text-xs">
+          <p class="text-amber-300 font-bold">
+            Interface, API e migration presentes no código. A migration ainda não foi executada no Supabase; validação funcional e produção pendentes.
+          </p>
+          <ul class="list-disc list-inside text-slate-300 space-y-1.5 leading-relaxed">
+            <li>Macroáreas representam as áreas de operação das viaturas; microáreas representam os bairros vinculados a uma macroárea.</li>
+            <li>As microáreas podem guardar link HTTPS do Google Maps, coordenadas e comentário do pin; o nome de cada microárea aparece sobre seu pin. Gestores podem arrastar pins para atualizar coordenadas e abrir o pin para editar o comentário. O mapa pode ser arrastado para percorrer a região; depois de clicado, a roda do mouse e os botões controlam o zoom, e um clique fora libera a roda para rolar o restante da tela. Também permite alternar entre ruas (OpenStreetMap) e imagem de satélite (Esri), com atribuição visível da fonte ativa. O contorno convexo é aproximado e não representa os limites oficiais dos bairros; o mapa informa falhas de carregamento dos tiles. As migrations dessas colunas precisam ser aplicadas.</li>
+            <li>O vínculo da viatura com uma macroárea é opcional. Desativar uma macroárea desvincula as viaturas por trigger SQL.</li>
+            <li><code>master</code>, <code>oficial</code> e <code>p1_escalante_servico_ordinario</code> gerenciam macroáreas e microáreas. Os perfis autenticados podem consultar, exceto <code>policial</code> e <code>armeiro</code>.</li>
+            <li>O Livro da Permanência usa <code>/api/viaturas?recurso=livro-permanencia</code> para validar sessão e perfil no servidor. Master e P1 escalante recebem as ações privilegiadas somente nesse módulo; Oficial mantém consulta e Permanente da Guarda mantém a escrita já existente. A migration habilita RLS e revoga o acesso direto do cliente às tabelas P1; sua aplicação e a publicação do código permanecem pendentes.</li>
+            <li>Microáreas mantêm seu estado próprio ao desativar a macroárea, mas ficam indisponíveis enquanto ela estiver inativa; a ativação é validada na API e por trigger.</li>
+            <li>A API das áreas compartilha <code>/api/viaturas</code>, evitando adicionar outra função serverless ao limite Vercel registrado no histórico.</li>
+            <li>A migration limpa os valores atuais de texto em <code>viaturas.area_operacao</code>, mantém a coluna e cria as tabelas e a FK do novo relacionamento.</li>
+            <li>O schema enviado pelo usuário confirma <code>viaturas.area_operacao</code> como texto opcional e <code>policiais.role</code> como texto. A migration não foi aplicada.</li>
+            <li><code>npm run lint</code> concluiu sem erros, com avisos; <code>npm run build</code> concluiu com avisos de tamanho de chunk e importação de <code>jspdf</code>. Sem testes funcionais ou deploy confirmados.</li>
           </ul>
         </div>
       </section>

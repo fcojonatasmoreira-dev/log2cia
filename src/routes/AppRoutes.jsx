@@ -19,6 +19,7 @@ import NovaInsercaoBancoHoras from "../pages/NovaInsercaoBancoHoras";
 import Oficios from "../pages/Oficios";
 import GerenciamentoArquivo from "../pages/GerenciamentoArquivo";
 import Viaturas from "../pages/Viaturas";
+import AreasOperacao from "../pages/AreasOperacao";
 import DRSO from "../pages/DRSO";
 import EfetivoExternoDRSO from "../pages/EfetivoExternoDRSO";
 import { obterSessao, logout } from "../services/sessionService";
@@ -102,6 +103,9 @@ export default function AppRoutes() {
             {(usuario.is_master === true || ["master", "p4", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
               <Route path="viaturas" element={<Viaturas />} />
             )}
+            {["policial", "armeiro"].includes(String(usuario.role || "").trim().toLowerCase()) ? null : (
+              <Route path="areas-operacao" element={<AreasOperacao />} />
+            )}
             <Route path="policiais" element={<Policiais />} />
             {(usuario.is_master === true || ["master", "p4", "p1", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
               <Route path="oficios" element={<Oficios />} />
@@ -136,7 +140,7 @@ export default function AppRoutes() {
                 .toLowerCase()
                 .normalize("NFD")
                 .replace(/[\u0300-\u036f]/g, "") === "master" ||
-              ["p1", "permanente", "permanente da guarda", "armeiro", "oficial"].includes(
+              ["p1", "permanente", "permanente da guarda", "armeiro", "oficial", "p1_escalante_servico_ordinario"].includes(
                 String(usuario.role || "")
                   .trim()
                   .toLowerCase()

@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  atualizarLivroPermanencia,
+  carregarItensLivro,
+  clonarLivroPermanencia,
+  criarLivroPermanencia,
+} from "../../services/livroPermanenciaService";
 import html2canvas from "html2canvas-pro";
 import {
   BookOpen,
@@ -25,9 +31,7 @@ export default function ModalNovoLivro({
 }) {
   const [policiais, setPoliciais] = useState([]);
   const [loadingPoliciais, setLoadingPoliciais] = useState(false);
-
-  // Estado local de master que será validado com segurança no modal
-  const [isMaster, setIsMaster] = useState(isMasterGlobal || false);
+  const isMaster = isMasterGlobal === true;
 
   // Campos principais do cabeçalho
   const [dataServico, setDataServico] = useState(
@@ -89,7 +93,6 @@ export default function ModalNovoLivro({
   useEffect(() => {
     if (isOpen) {
       carregarPoliciais();
-      verificarMasterDireto();
 
       setStatusBotaoSalvo(false);
       setHorarioUltimoSalvar(null);
@@ -152,47 +155,6 @@ export default function ModalNovoLivro({
     }
   }, [isOpen, livroParaEditar, isMasterGlobal]);
 
-  async function verificarMasterDireto() {
-    if (isMasterGlobal) {
-      setIsMaster(true);
-      return;
-    }
-    try {
-      const usuarioSalvo = localStorage.getItem("log2cia_user");
-      if (!usuarioSalvo) return;
-
-      const dadosUser = JSON.parse(usuarioSalvo);
-      const matriculaLogada = dadosUser?.matricula;
-
-      if (!matriculaLogada) return;
-
-      const { data, error } = await supabase
-        .from("policiais")
-        .select("*")
-        .eq("matricula", matriculaLogada)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (data) {
-        const perfilBanco = String(
-          data.perfil || data.role || data.nivel || data.tipo || "",
-        ).toLowerCase();
-
-        if (
-          perfilBanco === "master" ||
-          perfilBanco === "administrador" ||
-          data.is_master === true ||
-          data.is_admin === true
-        ) {
-          setIsMaster(true);
-        }
-      }
-    } catch (err) {
-      console.error("Erro ao verificar perfil master:", err.message);
-    }
-  }
-
   useEffect(() => {
     if (!horarioUltimoSalvar) return;
 
@@ -227,10 +189,8 @@ export default function ModalNovoLivro({
 
   async function carregarDadosFilhos(livroId) {
     try {
-      const { data: vtrData } = await supabase
-        .from("livro_viaturas")
-        .select("*")
-        .eq("livro_id", livroId);
+      const { viaturas: vtrData, ocorrencias: ocoData } =
+        await carregarItensLivro(livroId);
 
       if (vtrData && vtrData.length > 0) {
         setViaturasLista(
@@ -249,12 +209,6 @@ export default function ModalNovoLivro({
           })),
         );
       }
-
-      const { data: ocoData } = await supabase
-        .from("livro_ocorrencias")
-        .select("*")
-        .eq("livro_id", livroId)
-        .order("ordem", { ascending: true });
 
       if (ocoData && ocoData.length > 0) {
         setOcorrencias(ocoData.map((o) => ({ descricao: o.descricao || "" })));
@@ -357,49 +311,31 @@ export default function ModalNovoLivro({
     setSalvando(true);
 
     try {
-      const { data: livroCriado, error: livroErr } = await supabase
-        .from("livros_permanencia")
-        .insert([
-          {
-            data_servico: dataServico,
-            turno: turno,
-            permanente_nome: permanenteSelecionado,
-            antecessor_nome: antecessorSelecionado,
-            substituto_nome: substitutoSelecionado,
-            status: "em_andamento",
-          },
-        ])
-        .select()
-        .single();
+      const viaturasPayload = viaturasLista.map((v) => ({
+        viatura: v.vtr,
+        km_inicial: v.km_inicial ? parseFloat(v.km_inicial) : null,
+        km_final: v.km_final ? parseFloat(v.km_final) : null,
+        km_abastecimento: v.km_abast ? parseFloat(v.km_abast) : null,
+        litros: v.litros ? parseFloat(v.litros) : null,
+        valor: v.valor ? parseFloat(v.valor) : null,
+        saldo: v.saldo ? parseFloat(v.saldo) : null,
+        status_viatura: v.status,
+        motorista: v.motorista,
+        destino: v.destino,
+      }));
+      const ocorrenciasPayload = ocorrencias.map((o) => ({ descricao: o.descricao }));
 
-      if (livroErr) throw livroErr;
-      const novoLivroId = livroCriado.id;
-
-      if (viaturasLista.length > 0) {
-        const viaturasPayload = viaturasLista.map((v) => ({
-          livro_id: novoLivroId,
-          viatura: v.vtr,
-          km_inicial: v.km_inicial ? parseFloat(v.km_inicial) : null,
-          km_final: v.km_final ? parseFloat(v.km_final) : null,
-          km_abastecimento: v.km_abast ? parseFloat(v.km_abast) : null,
-          litros: v.litros ? parseFloat(v.litros) : null,
-          valor: v.valor ? parseFloat(v.valor) : null,
-          saldo: v.saldo ? parseFloat(v.saldo) : null,
-          status_viatura: v.status,
-          motorista: v.motorista,
-          destino: v.destino,
-        }));
-        await supabase.from("livro_viaturas").insert(viaturasPayload);
-      }
-
-      if (ocorrencias.length > 0) {
-        const ocoPayload = ocorrencias.map((o, idx) => ({
-          livro_id: novoLivroId,
-          ordem: idx + 1,
-          descricao: o.descricao,
-        }));
-        await supabase.from("livro_ocorrencias").insert(ocoPayload);
-      }
+      await clonarLivroPermanencia(
+        {
+          data_servico: dataServico,
+          turno,
+          permanente_nome: permanenteSelecionado,
+          antecessor_nome: antecessorSelecionado,
+          substituto_nome: substitutoSelecionado,
+        },
+        viaturasPayload,
+        ocorrenciasPayload,
+      );
 
       alert("Novo rascunho gerado com sucesso a partir do histórico!");
       onSuccess();
@@ -417,80 +353,37 @@ export default function ModalNovoLivro({
 
     try {
       const statusAtual = fecharTurno ? "fechado" : "em_andamento";
-      let livroId = livroParaEditar?.id;
+      const livroDados = {
+        data_servico: dataServico,
+        turno,
+        permanente_nome: permanenteSelecionado,
+        antecessor_nome: antecessorSelecionado,
+        substituto_nome: substitutoSelecionado,
+        status: statusAtual,
+      };
+      const viaturasPayload = viaturasLista.map((v) => ({
+        viatura: v.vtr,
+        km_inicial: v.km_inicial ? parseFloat(v.km_inicial) : null,
+        km_final: v.km_final ? parseFloat(v.km_final) : null,
+        km_abastecimento: v.km_abast ? parseFloat(v.km_abast) : null,
+        litros: v.litros ? parseFloat(v.litros) : null,
+        valor: v.valor ? parseFloat(v.valor) : null,
+        saldo: v.saldo ? parseFloat(v.saldo) : null,
+        status_viatura: v.status,
+        motorista: v.motorista,
+        destino: v.destino,
+      }));
+      const ocorrenciasPayload = ocorrencias.map((o) => ({ descricao: o.descricao }));
 
-      if (livroId && !modoVisualizacao) {
-        const { error: updErr } = await supabase
-          .from("livros_permanencia")
-          .update({
-            data_servico: dataServico,
-            turno: turno,
-            permanente_nome: permanenteSelecionado,
-            antecessor_nome: antecessorSelecionado,
-            substituto_nome: substitutoSelecionado,
-            status: statusAtual,
-          })
-          .eq("id", livroId);
-
-        if (updErr) throw updErr;
-
-        await supabase.from("livro_viaturas").delete().eq("livro_id", livroId);
-        await supabase
-          .from("livro_ocorrencias")
-          .delete()
-          .eq("livro_id", livroId);
+      if (livroParaEditar?.id && !modoVisualizacao) {
+        await atualizarLivroPermanencia(
+          livroParaEditar.id,
+          livroDados,
+          viaturasPayload,
+          ocorrenciasPayload,
+        );
       } else {
-        const { data: livroCriado, error: livroErr } = await supabase
-          .from("livros_permanencia")
-          .insert([
-            {
-              data_servico: dataServico,
-              turno: turno,
-              permanente_nome: permanenteSelecionado,
-              antecessor_nome: antecessorSelecionado,
-              substituto_nome: substitutoSelecionado,
-              status: statusAtual,
-            },
-          ])
-          .select()
-          .single();
-
-        if (livroErr) throw livroErr;
-        livroId = livroCriado.id;
-      }
-
-      if (viaturasLista.length > 0) {
-        const viaturasPayload = viaturasLista.map((v) => ({
-          livro_id: livroId,
-          viatura: v.vtr,
-          km_inicial: v.km_inicial ? parseFloat(v.km_inicial) : null,
-          km_final: v.km_final ? parseFloat(v.km_final) : null,
-          km_abastecimento: v.km_abast ? parseFloat(v.km_abast) : null,
-          litros: v.litros ? parseFloat(v.litros) : null,
-          valor: v.valor ? parseFloat(v.valor) : null,
-          saldo: v.saldo ? parseFloat(v.saldo) : null,
-          status_viatura: v.status,
-          motorista: v.motorista,
-          destino: v.destino,
-        }));
-
-        const { error: vtrErr } = await supabase
-          .from("livro_viaturas")
-          .insert(viaturasPayload);
-        if (vtrErr) throw vtrErr;
-      }
-
-      if (ocorrencias.length > 0) {
-        const ocoPayload = ocorrencias.map((o, idx) => ({
-          livro_id: livroId,
-          ordem: idx + 1,
-          descricao: o.descricao,
-        }));
-
-        const { error: ocoErr } = await supabase
-          .from("livro_ocorrencias")
-          .insert(ocoPayload);
-        if (ocoErr) throw ocoErr;
+        await criarLivroPermanencia(livroDados, viaturasPayload, ocorrenciasPayload);
       }
 
       if (fecharTurno) {

@@ -20,6 +20,7 @@ import {
   atualizarViatura,
   excluirViatura,
 } from "../services/viaturasService";
+import { listarAreasOperacao } from "../services/areasOperacaoService";
 
 const SITUACOES = [
   { value: "operando", label: "Operando" },
@@ -106,6 +107,10 @@ function localizacaoTexto(viatura) {
   return viatura.localizacao_atual || (viatura.situacao === "manutencao" ? "Pátio da oficina" : "Pátio da CIA");
 }
 
+function nomeMacroarea(viatura) {
+  return viatura.macroareas_operacao?.nome || viatura.macroarea?.nome || "";
+}
+
 function motivoTexto(viatura) {
   if (viatura.situacao === "manutencao") return viatura.motivo_manutencao || "—";
   if (viatura.situacao === "baixada") return viatura.motivo_baixa || "—";
@@ -127,7 +132,7 @@ const formularioInicial = {
   motivo_manutencao: "",
   oficina: "",
   localizacao_atual: "Pátio da CIA",
-  area_operacao: "",
+  macroarea_id: "",
   quilometragem_atual: "",
   km_ultima_troca_oleo: "",
   data_ultima_troca_oleo: "",
@@ -148,9 +153,9 @@ function montarLinhasRelatorio(viaturas) {
     tipo: tipoLabel(v.tipo),
     situacao: situacaoLabel(v.situacao),
     data: v.situacao === "baixada" ? dataBR(v.data_baixa) : v.situacao === "manutencao" ? dataBR(v.data_manutencao) : "—",
-    localizacao: localizacaoTexto(v),
+    localizacao: [localizacaoTexto(v), nomeMacroarea(v)].filter(Boolean).join(" / "),
     localizacaoAtual: v.localizacao_atual || "Pátio da CIA",
-    areaOperacao: v.area_operacao || "—",
+    areaOperacao: nomeMacroarea(v) || "—",
     motivo: motivoTexto(v),
     oficina: v.oficina || "—",
     quilometragem: v.quilometragem_atual != null ? `${v.quilometragem_atual} km` : "—",
@@ -181,6 +186,9 @@ export default function Viaturas() {
   const [sucessoPdf, setSucessoPdf] = useState(false);
   const [excluindo, setExcluindo] = useState("");
   const [podeGerenciar, setPodeGerenciar] = useState(false);
+  const [macroareas, setMacroareas] = useState([]);
+  const [carregandoMacroareas, setCarregandoMacroareas] = useState(true);
+  const [erroMacroareas, setErroMacroareas] = useState("");
 
   useEffect(() => {
     try {
@@ -211,6 +219,21 @@ export default function Viaturas() {
     carregar();
   }, [carregar]);
 
+  useEffect(() => {
+    let ativo = true;
+    listarAreasOperacao()
+      .then((resultado) => {
+        if (ativo) setMacroareas(resultado.macroareas || []);
+      })
+      .catch((e) => {
+        if (ativo) setErroMacroareas(e.message || "Não foi possível carregar as macroáreas.");
+      })
+      .finally(() => {
+        if (ativo) setCarregandoMacroareas(false);
+      });
+    return () => { ativo = false; };
+  }, []);
+
   const listaFiltrada = useMemo(() => {
     const termo = busca.trim().toLocaleLowerCase("pt-BR");
     let base = termo
@@ -227,7 +250,7 @@ export default function Viaturas() {
             v.motivo_baixa,
             v.motivo_manutencao,
             v.localizacao_atual,
-            v.area_operacao,
+            nomeMacroarea(v),
           ]
             .filter(Boolean)
             .join(" ")
@@ -283,7 +306,7 @@ export default function Viaturas() {
       motivo_manutencao: viatura.motivo_manutencao || "",
       oficina: viatura.oficina || "",
       localizacao_atual: viatura.localizacao_atual || "Pátio da CIA",
-      area_operacao: viatura.area_operacao || "",
+      macroarea_id: viatura.macroarea_id || "",
       quilometragem_atual: viatura.quilometragem_atual ?? "",
       km_ultima_troca_oleo: viatura.km_ultima_troca_oleo ?? "",
       data_ultima_troca_oleo: viatura.data_ultima_troca_oleo || "",
@@ -314,7 +337,7 @@ export default function Viaturas() {
         situacao === "manutencao"
           ? "Pátio da oficina"
           : "Pátio da CIA",
-      area_operacao: situacao === "operando" ? atual.area_operacao : "",
+      macroarea_id: situacao === "operando" ? atual.macroarea_id : "",
     }));
   };
 
@@ -342,6 +365,7 @@ export default function Viaturas() {
         "km_ultima_manutencao",
       ];
       const dados = { ...formulario };
+      dados.macroarea_id = dados.macroarea_id || null;
       for (const campo of camposNumericos) {
         dados[campo] = formulario[campo] === "" ? null : Number(formulario[campo]);
       }
@@ -915,7 +939,7 @@ export default function Viaturas() {
                     <td className="p-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${classeSituacao(viatura.situacao)}`}>{situacaoLabel(viatura.situacao)}</span></td>
                     <td className="p-3 text-slate-700">
                       <div className="font-medium">{localizacaoTexto(viatura)}</div>
-                      {viatura.situacao === "operando" && viatura.localizacao_atual && <div className="text-xs text-slate-400">{viatura.localizacao_atual}</div>}
+                  {viatura.situacao === "operando" && <div className="text-xs text-slate-400">{nomeMacroarea(viatura) || "Sem área definida"}</div>}
                     </td>
                     <td className="p-3 text-slate-600">
                       <div className="font-medium">{motivoTexto(viatura)}</div>
@@ -964,7 +988,7 @@ export default function Viaturas() {
                   ["Ano", viaturaSelecionada.ano || "—"],
                   ["Quilometragem atual", viaturaSelecionada.quilometragem_atual != null ? `${viaturaSelecionada.quilometragem_atual} km` : "—"],
                   ["Localização", localizacaoTexto(viaturaSelecionada)],
-                  ["Área operacional", viaturaSelecionada.area_operacao || "—"],
+                  ["Macroárea", nomeMacroarea(viaturaSelecionada) || "Sem área definida"],
                   ["Oficina", viaturaSelecionada.oficina || "—"],
                   ["Data baixa/manutenção", viaturaSelecionada.situacao === "baixada" ? dataBR(viaturaSelecionada.data_baixa) : viaturaSelecionada.situacao === "manutencao" ? dataBR(viaturaSelecionada.data_manutencao) : "—"],
                   ["Motivo", motivoTexto(viaturaSelecionada)],
@@ -1073,8 +1097,14 @@ export default function Viaturas() {
                   </div>
                   {formulario.situacao === "operando" && (
                     <label className="space-y-1 block">
-                      <span className="text-xs font-semibold text-slate-600">Área / destino operacional</span>
-                      <input value={formulario.area_operacao} onChange={(e) => alterar("area_operacao", e.target.value)} placeholder="Cascavel, P2, Patrulhamento Rural" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm uppercase outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                      <span className="text-xs font-semibold text-slate-600">Macroárea de operação</span>
+                      <select value={formulario.macroarea_id} onChange={(e) => alterar("macroarea_id", e.target.value)} disabled={carregandoMacroareas || Boolean(erroMacroareas)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100">
+                        <option value="">Sem área definida</option>
+                        {macroareas.filter((area) => area.ativa).map((area) => <option key={area.id} value={area.id}>{area.nome}</option>)}
+                      </select>
+                      {carregandoMacroareas && <span className="block text-xs text-slate-500">Carregando macroáreas...</span>}
+                      {erroMacroareas && <span className="block text-xs text-rose-600">{erroMacroareas}</span>}
+                      {!carregandoMacroareas && !erroMacroareas && macroareas.every((area) => !area.ativa) && <span className="block text-xs text-slate-500">Nenhuma macroárea ativa cadastrada.</span>}
                     </label>
                   )}
                 </div>

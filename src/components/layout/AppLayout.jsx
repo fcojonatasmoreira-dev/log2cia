@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car, CalendarDays } from "lucide-react";
+import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car, CalendarDays, MapPinned } from "lucide-react";
 
 export default function AppLayout({ onLogout }) {
   const navigate = useNavigate();
@@ -62,10 +62,11 @@ export default function AppLayout({ onLogout }) {
   const isOficial = userRole === "oficial";
   const isBancoHorasGestor = isMaster || userRole === "p1" || isOficial;
 
-  // Livro da Permanência: mantém os perfis já autorizados e inclui Permanente da Guarda.
+  // Livro da Permanência: o escalante do serviço ordinário recebe as ações Master só neste módulo.
   const isP1OrAuthorized =
     isMaster ||
-    ["p1", "permanente", "permanente da guarda", "armeiro", "oficial"].includes(userRole);
+    ["p1", "permanente", "permanente da guarda", "armeiro", "oficial", "p1_escalante_servico_ordinario"].includes(userRole);
+  const podeConsultarAreas = !["policial", "armeiro"].includes(userRole);
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-100">
@@ -131,6 +132,15 @@ export default function AppLayout({ onLogout }) {
                 className={`w-full ${getLinkClass("/livro-permanencia")}`}
               >
                 <BookOpen className="w-4 h-4 text-blue-400" /> Livro Digital
+              </button>
+            )}
+
+            {podeConsultarAreas && (
+              <button
+                onClick={() => navegarPara("/areas-operacao")}
+                className={`w-full ${getLinkClass("/areas-operacao")}`}
+              >
+                <MapPinned className="w-4 h-4 text-cyan-400" /> Áreas de Operação
               </button>
             )}
 

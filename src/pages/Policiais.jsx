@@ -990,6 +990,7 @@ export default function Policiais() {
                       </option>
                       <option value="armeiro">Armeiro</option>
                       <option value="p1">P1</option>
+                      <option value="p1_escalante_servico_ordinario">P1 Escalante — Serviço Ordinário</option>
                       <option value="p4">P4</option>
                       <option value="oficial">Oficial</option>
                       <option value="master">Master</option>
