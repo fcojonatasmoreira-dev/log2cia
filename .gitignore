@@ -32,3 +32,11 @@ dist-ssr
 *.sw?
 .vercel
 .env*
+
+# Materiais internos mantidos somente no ambiente local
+/AGENTS.md
+/.codex/
+/Contrato_Colaboracao_Tecnica_Log2CIA.md
+/mapa do mdulo P1.html
+/mapa_completo_projeto_log2cia.html
+/supabase/migrations/
