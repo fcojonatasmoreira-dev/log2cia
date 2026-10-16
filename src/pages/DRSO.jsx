@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Plus, RefreshCw, Users, CheckCircle2, UserPlus, Trash2, X, LoaderCircle, Pencil } from "lucide-react";
+import { CalendarDays, Plus, RefreshCw, Users, CheckCircle2, UserPlus, Trash2, X, LoaderCircle, Pencil, FileSpreadsheet } from "lucide-react";
+import * as XLSX from "xlsx-js-style";
 import { listarDrso, acaoDrso } from "../services/drsoService";
 import { Link } from "react-router-dom";
 import { listarViaturas } from "../services/viaturasService";
@@ -51,6 +52,8 @@ export default function DRSO() {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
+  const [baixandoExcel, setBaixandoExcel] = useState(false);
+  const [sucessoExcel, setSucessoExcel] = useState(false);
   const [formAberto, setFormAberto] = useState(false);
   const [escalaEditandoId, setEscalaEditandoId] = useState(null);
   const [externoFormAberto, setExternoFormAberto] = useState(false);
@@ -220,8 +223,143 @@ export default function DRSO() {
   const criarExterno = async (e) => { e.preventDefault(); const resultado = await executar({acao:"criar_policial_externo",...externoForm}, "Policial externo cadastrado."); if (!resultado) return; if (resultado?.senha_inicial) window.alert(`Senha inicial de ${resultado.policial_externo?.nome_guerra || "policial"}: ${resultado.senha_inicial}\nO policial deverá alterá-la no primeiro acesso.`); setExternoForm({nome_completo:"",nome_guerra:"",matricula:"",numeral:"",posto_graduacao:"Soldado",unidade_origem:"",tipo:"policial"}); setExternoFormAberto(false); };
   const usuarioLogado = (()=>{try{return JSON.parse(localStorage.getItem("log2cia_user")||"{}")}catch{return {}}})();
   const externo = usuarioLogado.tipo_acesso === "drso_externo" || dados.permissoes.externo;
+  const exportarEscalasFechadas = async () => {
+    if (baixandoExcel || externo) return;
+    setBaixandoExcel(true);
+    setSucessoExcel(false);
+    setErro("");
+    setSucesso("");
+    try {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const escalasFechadas = escalasVisiveis
+        .filter(escala => escala.status === "fechada")
+        .slice()
+        .sort((a, b) => `${a.data_servico}|${a.horario_inicio}|${a.local || ""}|${a.id}`.localeCompare(`${b.data_servico}|${b.horario_inicio}|${b.local || ""}|${b.id}`));
+      if (!escalasFechadas.length) throw new Error("Não há escalas fechadas no período exibido para exportar.");
+
+      const paletaEscalas = ["E2F0D9", "DDEBF7", "FFF2CC", "E4DFEC", "FCE4D6", "D9EAD3", "CFE2F3", "F4CCCC"];
+      const coresPorEscala = new Map(escalasFechadas.map((escala, indice) => [escala.id, paletaEscalas[indice % paletaEscalas.length]]));
+      const linhas = [];
+      for (const escala of escalasFechadas) {
+        const equipe = voluntariosPorEscala(escala.id)
+          .filter(vinculo => vinculo.status === "selecionado")
+          .slice()
+          .sort((a, b) => {
+            const policialA = policiaisPorChave.get(chaveVinculoDRSO(a));
+            const policialB = policiaisPorChave.get(chaveVinculoDRSO(b));
+            return compararAntiguidade(policialA, policialB);
+          });
+        for (const vinculo of equipe) {
+          const policial = policiaisPorChave.get(chaveVinculoDRSO(vinculo)) || {};
+          linhas.push({ escala, vinculo, policial });
+        }
+      }
+      if (!linhas.length) throw new Error("As escalas fechadas do período não têm participantes selecionados para exportar.");
+
+      const agora = new Date();
+      const perfilEmissor = dados.policiais.find(policial => policial.id === dados.usuario_id) || usuarioLogado;
+      const emissor = [
+        perfilEmissor?.posto_graduacao || perfilEmissor?.posto || perfilEmissor?.graduacao,
+        perfilEmissor?.numeral || perfilEmissor?.numero || perfilEmissor?.numero_operacional,
+        perfilEmissor?.nome_guerra || perfilEmissor?.nome_de_guerra || perfilEmissor?.nome_completo,
+        perfilEmissor?.matricula,
+      ].filter(Boolean).join(" - ") || "Usuário autenticado não identificado";
+      const cabecalhos = ["ORD.", "POSTO/GRAD.", "MATRÍCULA", "NUMERAL", "NOME", "FUNÇÃO"];
+      const planilha = [
+        ["LOG2CIA — RELATÓRIO DE ESCALAS DRSO FECHADAS"],
+        [`Emitido em: ${agora.toLocaleDateString("pt-BR", { timeZone: "America/Fortaleza" })} às ${agora.toLocaleTimeString("pt-BR", { timeZone: "America/Fortaleza" })}`],
+        [`Emitido por: ${emissor}`],
+        [`Período exibido: ${diaSelecionado ? dataBR(diaSelecionado) : mes}`],
+      ];
+      const linhasDeEquipe = [];
+      const ordemPorEscala = new Map();
+      let escalaAtualId = null;
+      for (const registro of linhas) {
+        const { escala, vinculo, policial } = registro;
+        if (escala.id !== escalaAtualId) {
+          escalaAtualId = escala.id;
+          const identificacaoEquipe = [
+            escala.viatura,
+            escala.local,
+            dataBR(escala.data_servico),
+            `${horaBR(escala.horario_inicio)} às ${horaBR(escala.horario_fim)}`,
+          ].filter(Boolean).join(" – ");
+          linhasDeEquipe.push({ tipo: "titulo", escala, valores: [identificacaoEquipe] });
+          linhasDeEquipe.push({ tipo: "cabecalho", escala, valores: cabecalhos });
+        }
+        const ordem = (ordemPorEscala.get(escala.id) || 0) + 1;
+        ordemPorEscala.set(escala.id, ordem);
+        linhasDeEquipe.push({
+          tipo: "policial",
+          escala,
+          valores: [
+            ordem,
+            policial.posto_graduacao || "—",
+            policial.matricula || "—",
+            policial.numeral || "—",
+            policial.nome_guerra || policial.nome_completo || vinculo.nome_exibicao || "Policial",
+            vinculo.funcao || "—",
+          ],
+        });
+      }
+      const linhaDadosInicial = planilha.length;
+      planilha.push(...linhasDeEquipe.map(item => item.valores));
+      const ws = XLSX.utils.aoa_to_sheet(planilha);
+      const ultimaColuna = cabecalhos.length - 1;
+      ws["!merges"] = [0, 1, 2, 3, ...linhasDeEquipe.flatMap((item, indice) => item.tipo === "titulo" ? [linhaDadosInicial + indice] : [])]
+        .map(r => ({ s: { r, c: 0 }, e: { r, c: ultimaColuna } }));
+      ws["!cols"] = [8, 20, 18, 14, 28, 18].map(wch => ({ wch }));
+      ws["A1"].s = { font: { bold: true, sz: 14, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "1F4E78" } }, alignment: { horizontal: "center", vertical: "center" } };
+      for (let linha = 1; linha <= 3; linha += 1) ws[`A${linha + 1}`].s = { font: { bold: linha === 2, color: { rgb: "334155" } }, alignment: { vertical: "center" } };
+      linhasDeEquipe.forEach((item, indice) => {
+        const linhaPlanilha = linhaDadosInicial + indice;
+        const cor = coresPorEscala.get(item.escala.id);
+        if (item.tipo === "cabecalho") {
+          for (let coluna = 0; coluna <= ultimaColuna; coluna += 1) {
+            ws[XLSX.utils.encode_cell({ r: linhaPlanilha, c: coluna })].s = {
+              font: { bold: true, color: { rgb: "FFFFFF" } },
+              fill: { fgColor: { rgb: "475569" } },
+              alignment: { horizontal: "center", vertical: "center", wrapText: true },
+              border: { bottom: { style: "thin", color: { rgb: "FFFFFF" } } },
+            };
+          }
+          return;
+        }
+        if (item.tipo === "titulo") {
+          ws[XLSX.utils.encode_cell({ r: linhaPlanilha, c: 0 })].s = {
+            font: { bold: true, color: { rgb: "0F172A" } },
+            fill: { fgColor: { rgb: cor } },
+            alignment: { horizontal: "center", vertical: "center", wrapText: true },
+            border: { top: { style: "thin", color: { rgb: "64748B" } }, bottom: { style: "thin", color: { rgb: "64748B" } } },
+          };
+          return;
+        }
+        for (let coluna = 0; coluna <= ultimaColuna; coluna += 1) {
+          const celula = XLSX.utils.encode_cell({ r: linhaPlanilha, c: coluna });
+          ws[celula].s = {
+            font: coluna === 5 ? { bold: true, color: { rgb: "1E3A8A" } } : undefined,
+            fill: { fgColor: { rgb: cor } },
+            alignment: { horizontal: "center", vertical: "center", wrapText: true },
+            border: { bottom: { style: "thin", color: { rgb: "FFFFFF" } } },
+          };
+        }
+      });
+      ws["!rows"] = [{ hpt: 24 }, { hpt: 20 }, { hpt: 20 }, { hpt: 20 }, { hpt: 8 }, ...linhasDeEquipe.map(item => ({ hpt: item.tipo === "cabecalho" ? 24 : item.tipo === "titulo" ? 22 : 20 }))];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Escalas DRSO");
+      const dataArquivo = agora.toLocaleDateString("en-CA", { timeZone: "America/Fortaleza" });
+      XLSX.writeFile(wb, `relatorio_escalas_drso_fechadas_${dataArquivo}.xlsx`);
+      setSucesso("Relatório Excel das escalas fechadas baixado.");
+      setSucessoExcel(true);
+      setTimeout(() => setSucessoExcel(false), 3000);
+    } catch (e) {
+      setErro(e.message || "Não foi possível gerar ou baixar o relatório Excel.");
+    } finally {
+      setBaixandoExcel(false);
+    }
+  };
   return <div className="space-y-5">
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><h1 className="text-2xl font-bold text-slate-800">Escalas DRSO</h1><p className="text-sm text-slate-500">Voluntariado, pré-escala e VAR mensal.</p></div><div className="flex gap-2"><button onClick={carregar} disabled={carregando} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold"><RefreshCw className="w-4 h-4"/>Atualizar</button>{dados.permissoes.gerenciar && <><button onClick={()=>setExternoFormAberto(v=>!v)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Cadastrar policial externo</button><Link to="/drso/efetivo-externo" className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">Gerenciar efetivo externo</Link></>}</div></div>
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><h1 className="text-2xl font-bold text-slate-800">Escalas DRSO</h1><p className="text-sm text-slate-500">Voluntariado, pré-escala e VAR mensal.</p></div><div className="flex flex-wrap gap-2"><button onClick={carregar} disabled={carregando || baixandoExcel} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold"><RefreshCw className="w-4 h-4"/>Atualizar</button>{!externo && <button onClick={exportarEscalasFechadas} disabled={carregando || baixandoExcel} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60">{baixandoExcel?<RefreshCw className="h-4 w-4 animate-spin"/>:sucessoExcel?<CheckCircle2 className="h-4 w-4"/>:<FileSpreadsheet className="h-4 w-4"/>}{baixandoExcel?"Gerando...":sucessoExcel?"Relatório baixado":"Exportar escalas fechadas"}</button>}{dados.permissoes.gerenciar && <><button onClick={()=>setExternoFormAberto(v=>!v)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Cadastrar policial externo</button><Link to="/drso/efetivo-externo" className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">Gerenciar efetivo externo</Link></>}</div></div>
     {erro && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{erro}</div>}{sucesso && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{sucesso}</div>}
     {externoFormAberto && dados.permissoes.gerenciar && <form onSubmit={criarExterno} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3"><div className="flex items-center justify-between"><h2 className="font-bold">Cadastrar policial externo para DRSO</h2><button type="button" onClick={()=>setExternoFormAberto(false)}><X className="h-4 w-4"/></button></div><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"><label className="text-sm">Nome completo<input required value={externoForm.nome_completo} onChange={e=>setExternoForm({...externoForm,nome_completo:e.target.value})} className="mt-1 w-full rounded-lg border p-2"/></label><label className="text-sm">Nome de guerra<input required value={externoForm.nome_guerra} onChange={e=>setExternoForm({...externoForm,nome_guerra:e.target.value})} className="mt-1 w-full rounded-lg border p-2"/></label><label className="text-sm">Matrícula (login)<input required value={externoForm.matricula} onChange={e=>setExternoForm({...externoForm,matricula:e.target.value})} className="mt-1 w-full rounded-lg border p-2"/></label><label className="text-sm">Numeral<input value={externoForm.numeral} onChange={e=>setExternoForm({...externoForm,numeral:e.target.value})} className="mt-1 w-full rounded-lg border p-2"/></label><label className="text-sm">Posto/graduação<select required value={externoForm.posto_graduacao} onChange={e=>setExternoForm({...externoForm,posto_graduacao:e.target.value})} className="mt-1 w-full rounded-lg border p-2">{["Soldado","Cabo","3º Sargento","2º Sargento","1º Sargento","Subtenente","Aspirante a Oficial","2º Tenente","1º Tenente","Capitão","Major","Tenente-Coronel","Coronel"].map(x=><option key={x}>{x}</option>)}</select></label><label className="text-sm">Unidade de origem<input required value={externoForm.unidade_origem} onChange={e=>setExternoForm({...externoForm,unidade_origem:e.target.value})} className="mt-1 w-full rounded-lg border p-2"/></label><label className="text-sm">Categoria<select value={externoForm.tipo} onChange={e=>setExternoForm({...externoForm,tipo:e.target.value})} className="mt-1 w-full rounded-lg border p-2"><option value="policial">Policial externo</option><option value="oficial">Oficial externo</option></select></label></div><p className="text-xs text-slate-500">A senha inicial seguirá o padrão do efetivo local: numeral, quando cadastrado; caso contrário, os últimos quatro dígitos da matrícula. O primeiro acesso exigirá a troca por uma senha forte. Entregue a senha inicial por canal seguro.</p><div className="flex justify-end"><button disabled={enviando} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Cadastrar conta externa</button></div></form>}
     <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
