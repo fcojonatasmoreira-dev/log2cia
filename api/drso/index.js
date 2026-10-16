@@ -141,11 +141,27 @@ export default async function handler(req, res) {
       if (error) throw error;
       return res.status(200).json({ sucesso: true });
     }
-    if (acao === "criar_policial_externo" || acao === "listar_policiais_externos" || acao === "alternar_policial_externo") {
+    if (["criar_policial_externo", "listar_policiais_externos", "alternar_policial_externo", "editar_policial_externo", "excluir_policial_externo"].includes(acao)) {
       if (!gestor) return respostaErro(res,403,"Apenas o escalante DRSO autorizado pode administrar policiais externos.");
       if (acao === "listar_policiais_externos") {
         const {data,error}=await db.from("drso_policiais_externos").select("id,nome_completo,nome_guerra,matricula,numeral,posto_graduacao,unidade_origem,tipo,ativo,created_at").order("nome_guerra");
         if(error)throw error; return res.status(200).json({policiais_externos:data||[]});
+      }
+      if (acao === "editar_policial_externo") {
+        const id=txt(body.policial_id);
+        const nome_completo=txt(body.nome_completo),nome_guerra=txt(body.nome_guerra),matricula=txt(body.matricula),posto_graduacao=txt(body.posto_graduacao),unidade_origem=txt(body.unidade_origem),tipo=body.tipo==="oficial"?"oficial":"policial",numeral=txt(body.numeral);
+        if(!id||!nome_completo||!nome_guerra||!matricula||!posto_graduacao||!unidade_origem)return respostaErro(res,400,"Informe nome completo, nome de guerra, matrícula, posto/graduação e unidade de origem.");
+        const {data:atual,error:e1}=await db.from("drso_policiais_externos").select("id").eq("id",id).maybeSingle();if(e1)throw e1;if(!atual)return respostaErro(res,404,"Policial externo não encontrado.");
+        const {data:matriculaLocal,error:e2}=await db.from("policiais").select("id").eq("matricula",matricula).maybeSingle();if(e2)throw e2;if(matriculaLocal)return respostaErro(res,409,"Essa matrícula já pertence ao efetivo oficial do sistema.");
+        const {data:matriculaExterna,error:e3}=await db.from("drso_policiais_externos").select("id").eq("matricula",matricula).neq("id",id).maybeSingle();if(e3)throw e3;if(matriculaExterna)return respostaErro(res,409,"Já existe um policial externo com essa matrícula.");
+        const {data,error}=await db.from("drso_policiais_externos").update({nome_completo,nome_guerra,matricula,numeral:numeral||null,posto_graduacao,unidade_origem,tipo,updated_at:new Date().toISOString()}).eq("id",id).select("id,nome_completo,nome_guerra,matricula,numeral,posto_graduacao,unidade_origem,tipo,ativo,created_at").single();
+        if(error){if(error.code==="23505")return respostaErro(res,409,"Já existe um policial externo com essa matrícula.");throw error;}return res.status(200).json({policial_externo:data});
+      }
+      if (acao === "excluir_policial_externo") {
+        const id=txt(body.policial_id);if(!id)return respostaErro(res,400,"Policial externo inválido.");
+        const {data:atual,error:e1}=await db.from("drso_policiais_externos").select("id").eq("id",id).maybeSingle();if(e1)throw e1;if(!atual)return respostaErro(res,404,"Policial externo não encontrado.");
+        const {data:vinculo,error:e2}=await db.from("drso_voluntarios").select("id").eq("policial_externo_id",id).limit(1).maybeSingle();if(e2)throw e2;if(vinculo)return respostaErro(res,409,"Não é possível excluir cadastro com histórico de DRSO. Desative o acesso para preservar o histórico.");
+        const {error}=await db.from("drso_policiais_externos").delete().eq("id",id);if(error)throw error;return res.status(200).json({sucesso:true});
       }
       if (acao === "alternar_policial_externo") {
         const id=txt(body.policial_id); if(!id)return respostaErro(res,400,"Policial externo inválido.");
