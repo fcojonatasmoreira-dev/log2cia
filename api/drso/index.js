@@ -27,6 +27,15 @@ const valorNumeral = (valor) => {
   return n == null ? Number.POSITIVE_INFINITY : Number(n);
 };
 const compararAntiguidade = (a, b) => pesoHierarquia(a?.posto_graduacao) - pesoHierarquia(b?.posto_graduacao) || valorNumeral(a?.numeral) - valorNumeral(b?.numeral) || String(a?.nome_guerra || a?.nome_completo || "").localeCompare(String(b?.nome_guerra || b?.nome_completo || ""), "pt-BR");
+async function listarPaginado(criarConsulta, tamanho = 1000) {
+  const itens = [];
+  for (let inicio = 0; ; inicio += tamanho) {
+    const { data, error } = await criarConsulta().range(inicio, inicio + tamanho - 1);
+    if (error) throw error;
+    itens.push(...(data || []));
+    if (!data || data.length < tamanho) return itens;
+  }
+}
 async function verificarConflitoNoDia(db, dataServico, policialId, escalaAtualId) {
   const { data: escalasDia, error: e1 } = await db.from("drso_escalas").select("id,local,horario_inicio,horario_fim").eq("data_servico", dataServico).neq("id", escalaAtualId);
   if (e1) throw e1;
@@ -64,25 +73,45 @@ export default async function handler(req, res) {
       const mes = txt(req.query?.mes) || new Date().toISOString().slice(0, 7);
       const inicio = `${mes}-01`; const fim = new Date(Number(mes.slice(0,4)), Number(mes.slice(5,7)), 1).toISOString().slice(0,10);
       const consultas = await Promise.all([
-        db.from("drso_escalas").select("*").gte("data_servico", inicio).lt("data_servico", fim).order("data_servico").order("horario_inicio"),
-        db.from("drso_voluntarios").select("*"),
+        listarPaginado(() => db.from("drso_escalas").select("*").gte("data_servico", inicio).lt("data_servico", fim).order("data_servico").order("horario_inicio").order("id")),
         db.from("policiais").select("id, nome_guerra, nome_completo, numeral, matricula, posto_graduacao, role, status, drso_escalante, unidade"),
         db.from("viaturas").select("id, identificacao, placa, situacao, ativo").eq("situacao", "operando").eq("ativo", true).order("identificacao"),
         db.from("drso_policiais_externos").select("id,nome_guerra,nome_completo,numeral,matricula,posto_graduacao,unidade_origem,tipo,ativo"),
       ]);
-      const [e1,e2,e3,e4,e5] = consultas.map(x=>x.error);
-      if (e1) throw e1; if (e2) throw e2; if (e3) throw e3; if (e4) throw e4; if (e5) throw e5;
-      const [escalasBrutas,voluntariosR,policiaisR,viaturasR,externosR] = consultas.map(x=>x.data||[]);
+      const [escalasBrutas,policiaisResult,viaturasResult,externosResult] = consultas;
+      const [policiaisR,viaturasR,externosR] = [policiaisResult.data,viaturasResult.data,externosResult.data];
+      if (policiaisResult.error) throw policiaisResult.error;
+      if (viaturasResult.error) throw viaturasResult.error;
+      if (externosResult.error) throw externosResult.error;
       const escalasR = externo ? escalasBrutas.filter(e=>e.status==="aberta") : escalasBrutas;
       const ids = new Set(escalasR.map(x => x.id));
+      const idsEscalas = [...ids];
+      const voluntariosR = idsEscalas.length ? await listarPaginado(() => db.from("drso_voluntarios").select("*").in("escala_id", idsEscalas).order("escala_id").order("id")) : [];
       const efetivo = policiaisR.filter(p => !p.status || ["ativo", "operando", "em atividade", "em_atividade"].includes(String(p.status).toLowerCase().trim())).map(p => ({...p, origem_efetivo:"local", nome_exibicao:[p.posto_graduacao,p.numeral,p.nome_guerra||p.nome_completo].filter(Boolean).join(" ")}));
       const externosAtivos = externosR.filter(p=>p.ativo).map(p=>({...p, unidade:p.unidade_origem, role:"drso_externo", origem_efetivo:"externo", is_oficial_externo:p.tipo==="oficial", nome_exibicao:[p.posto_graduacao,p.numeral,p.nome_guerra||p.nome_completo].filter(Boolean).join(" ")}));
       const todosPoliciais = [...efetivo,...externosAtivos];
-      const nomesPorId = new Map(todosPoliciais.map(p=>[p.id,p.nome_exibicao]));
-      const vinculos = voluntariosR.filter(v => ids.has(v.escala_id)).map(v=>{const policialId=v.policial_externo_id||v.policial_id;return {...v,policial_id:policialId,is_externo:Boolean(v.policial_externo_id),nome_exibicao:nomesPorId.get(policialId)||"Policial"};});
-      const policiaisVisiveis = externo ? todosPoliciais.filter(p => p.id === usuario.id || vinculos.some(v => v.policial_id === p.id)) : todosPoliciais;
+      const chavePolicial = (id, externoPessoa) => `${externoPessoa ? "externo" : "local"}:${id}`;
+      const nomesPorId = new Map([
+        ...efetivo.map(p=>[chavePolicial(p.id,false),p.nome_exibicao]),
+        ...externosR.map(p=>[chavePolicial(p.id,true),[p.posto_graduacao,p.numeral,p.nome_guerra||p.nome_completo].filter(Boolean).join(" ")]),
+      ]);
+      const vinculos = voluntariosR.map(v=>{
+        const isExterno=Boolean(v.policial_externo_id);
+        const idPessoa=v.policial_externo_id||v.policial_id;
+        return {...v,chave_policial:chavePolicial(idPessoa,isExterno),is_externo:isExterno,nome_exibicao:nomesPorId.get(chavePolicial(idPessoa,isExterno))||"Policial"};
+      });
+      const chaveUsuario = chavePolicial(usuario.id, externo);
+      const policiaisVisiveis = externo ? todosPoliciais.filter(p => chavePolicial(p.id,p.origem_efetivo==="externo") === chaveUsuario || vinculos.some(v => v.chave_policial === chavePolicial(p.id,p.origem_efetivo==="externo"))) : todosPoliciais;
       const resposta = { escalas: escalasR, voluntarios: vinculos, policiais: policiaisVisiveis, viaturas: externo ? [] : viaturasR, usuario_id: usuario.id, conta_externa: externo, permissoes: { gerenciar: gestor, externo: externo, consultar_var: !externo, cadastrar_externos: gestor, escalante_drso: !externo && (ehEscalante(usuario) || normalizarRole(usuario) === "master" || usuario.is_master === true) } };
-      if (gestor) resposta.policiais_externos = externosAtivos;
+      if (gestor) {
+        const { data: areasOperacao, error: erroAreas } = await db.from("macroareas_operacao")
+          .select("id,nome,ativa,microareas_operacao(id,macroarea_id,nome,ativa)")
+          .eq("ativa", true)
+          .order("nome");
+        if (erroAreas) throw erroAreas;
+        resposta.policiais_externos = externosAtivos;
+        resposta.areas_operacao = areasOperacao || [];
+      }
       return res.status(200).json(resposta);
     }
     if (req.method !== "POST") { res.setHeader("Allow", "GET, POST"); return respostaErro(res,405,"Método não permitido."); }
@@ -130,6 +159,57 @@ export default async function handler(req, res) {
       if(error){if(error.code==="23505")return respostaErro(res,409,"Já existe um policial externo com essa matrícula.");throw error;}return res.status(201).json({policial_externo:data});
     }
     if(!gestor)return respostaErro(res,403,"Apenas o escalante DRSO autorizado pode gerenciar escalas.");
+    if (acao === "atualizar_escala") {
+      const escalaId = txt(body.escala_id);
+      const dataServico = txt(body.data_servico);
+      const horarioInicio = txt(body.horario_inicio);
+      const horarioFim = txt(body.horario_fim);
+      const local = txt(body.local);
+      const viatura = txt(body.viatura);
+      const vagas = Number(body.vagas);
+      const formatoDataValido = /^\d{4}-\d{2}-\d{2}$/.test(dataServico) && !Number.isNaN(Date.parse(`${dataServico}T00:00:00Z`)) && new Date(`${dataServico}T00:00:00Z`).toISOString().slice(0, 10) === dataServico;
+      const formatoHoraValido = (hora) => /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(hora);
+      const regrasValidas = body.regras && typeof body.regras === "object" && !Array.isArray(body.regras) && ["composicao_hierarquica", "excecao_equipe_soldados", "escolha_equipe_oficial", "compulsoria"].every(chave => typeof body.regras[chave] === "boolean");
+      if (!escalaId || !formatoDataValido || !formatoHoraValido(horarioInicio) || !formatoHoraValido(horarioFim) || !local || !viatura || !Number.isInteger(vagas) || vagas < 1 || vagas > 100 || !regrasValidas) {
+        return respostaErro(res, 400, "Informe data, horários, área/local, viatura, vagas e regras válidas para a escala.");
+      }
+      const { data: escalaAtual, error: erroEscala } = await db.from("drso_escalas").select("id,data_servico,status").eq("id", escalaId).maybeSingle();
+      if (erroEscala) throw erroEscala;
+      if (!escalaAtual) return respostaErro(res, 404, "Escala não encontrada.");
+      if (escalaAtual.status !== "aberta") return respostaErro(res, 409, "Só é possível editar escalas abertas.");
+      const { data: participantes, error: erroParticipantes } = await db.from("drso_voluntarios").select("policial_id,policial_externo_id").eq("escala_id", escalaId).eq("status", "selecionado");
+      if (erroParticipantes) throw erroParticipantes;
+      if (vagas < (participantes || []).length) return respostaErro(res, 409, "A quantidade de vagas não pode ser menor que a equipe já selecionada.");
+      if (dataServico !== escalaAtual.data_servico) {
+        for (const participante of participantes || []) {
+          const policialId = participante.policial_externo_id || participante.policial_id;
+          if (!policialId) continue;
+          const conflito = await verificarConflitoNoDia(db, dataServico, policialId, escalaId);
+          if (conflito) return respostaErro(res, 409, conflito);
+        }
+      }
+      const { data, error } = await db.from("drso_escalas").update({
+        data_servico: dataServico,
+        horario_inicio: horarioInicio,
+        horario_fim: horarioFim,
+        local,
+        viatura,
+        vagas,
+        observacoes: txt(body.observacoes) || null,
+        regras: body.regras,
+      }).eq("id", escalaId).select("*").single();
+      if (error) throw error;
+      return res.status(200).json({ escala: data });
+    }
+    if (acao === "excluir_escala") {
+      const escalaId = txt(body.escala_id);
+      if (!escalaId) return respostaErro(res, 400, "Selecione uma escala para excluir.");
+      const { data, error } = await db.from("drso_escalas").delete().eq("id", escalaId).select("id").maybeSingle();
+      if (error?.code === "23503") return respostaErro(res, 409, "Não foi possível excluir a escala porque há registros vinculados. Nenhum participante foi removido.");
+      if (error) throw error;
+      if (!data) return respostaErro(res, 404, "Escala não encontrada.");
+      return res.status(200).json({ sucesso: true, escala_id: data.id });
+    }
     if (acao === "escalar_diretamente") {
       const escalaId = txt(body.escala_id), policialId = txt(body.policial_id), funcao = txt(body.funcao);
       if (!escalaId || !policialId || !["Comandante", "Patrulheiro", "Motorista"].includes(funcao)) return respostaErro(res, 400, "Selecione a escala, o policial e uma função válida.");
@@ -165,23 +245,54 @@ export default async function handler(req, res) {
       if (error) throw error;
       return res.status(200).json({ sucesso: true });
     }
+    if (acao === "definir_funcao") {
+      const escalaId = txt(body.escala_id), policialId = txt(body.policial_id), funcao = txt(body.funcao);
+      if (!escalaId || !policialId || !["Comandante", "Patrulheiro", "Motorista"].includes(funcao)) return respostaErro(res, 400, "Selecione uma escala, um policial e uma função válida.");
+      const { data: escala, error: e1 } = await db.from("drso_escalas").select("id,status").eq("id", escalaId).maybeSingle();
+      if (e1) throw e1;
+      if (!escala || escala.status !== "aberta") return respostaErro(res, 409, "As funções só podem ser ajustadas enquanto a escala estiver aberta.");
+      const { data: vinculo, error: e2 } = await db.from("drso_voluntarios").select("id").eq("escala_id", escalaId).or(`policial_id.eq.${policialId},policial_externo_id.eq.${policialId}`).eq("status", "selecionado").maybeSingle();
+      if (e2) throw e2;
+      if (!vinculo) return respostaErro(res, 404, "O policial não está selecionado nesta pré-escala.");
+      if (funcao === "Comandante") {
+        const { data: equipe, error: e3 } = await db.from("drso_voluntarios").select("policial_id,policial_externo_id").eq("escala_id", escalaId).eq("status", "selecionado");
+        if (e3) throw e3;
+        const idsEquipe = [...new Set((equipe || []).map(v => v.policial_externo_id || v.policial_id).filter(Boolean))];
+        const [{ data: locais, error: e4 }, { data: externosEquipe, error: e5 }] = await Promise.all([
+          idsEquipe.length ? db.from("policiais").select("id,nome_guerra,nome_completo,numeral,posto_graduacao").in("id", idsEquipe) : Promise.resolve({ data: [], error: null }),
+          idsEquipe.length ? db.from("drso_policiais_externos").select("id,nome_guerra,nome_completo,numeral,posto_graduacao").in("id", idsEquipe) : Promise.resolve({ data: [], error: null }),
+        ]);
+        if (e4) throw e4;
+        if (e5) throw e5;
+        const antiguidade = [...(locais || []), ...(externosEquipe || [])].sort(compararAntiguidade);
+        if (antiguidade[0]?.id !== policialId) return respostaErro(res, 409, "O comandante deve ser o policial mais antigo da equipe.");
+      }
+      const { error } = await db.from("drso_voluntarios").update({ funcao, atualizado_em: new Date().toISOString() }).eq("id", vinculo.id);
+      if (error) throw error;
+      return res.status(200).json({ sucesso: true });
+    }
     if (acao === "retirar_da_escala") {
       const escalaId = txt(body.escala_id), policialId = txt(body.policial_id);
       const { data: escala, error: e1 } = await db.from("drso_escalas").select("id,status").eq("id", escalaId).maybeSingle();
       if (e1) throw e1;
       if (!escala || escala.status !== "aberta") return respostaErro(res, 409, "Só é possível retirar da pré-escala enquanto ela estiver aberta.");
-      const { data: vinculo, error: e2 } = await db.from("drso_voluntarios").select("id,status").eq("escala_id", escalaId).or(`policial_id.eq.${policialId},policial_externo_id.eq.${policialId}`).eq("status", "selecionado").maybeSingle();
+      const { data: vinculo, error: e2 } = await db.from("drso_voluntarios").select("id,status,origem").eq("escala_id", escalaId).or(`policial_id.eq.${policialId},policial_externo_id.eq.${policialId}`).eq("status", "selecionado").maybeSingle();
       if (e2) throw e2;
       if (!vinculo) {
         const { data: jaRetirado, error: e3 } = await db.from("drso_voluntarios")
-          .select("id").eq("escala_id", escalaId)
+          .select("id,origem").eq("escala_id", escalaId)
           .or(`policial_id.eq.${policialId},policial_externo_id.eq.${policialId}`)
           .eq("status", "retirado").maybeSingle();
         if (e3) throw e3;
+        if (jaRetirado?.origem !== "direto" && jaRetirado) {
+          const { error } = await db.from("drso_voluntarios").update({ status: "voluntario", atualizado_em: new Date().toISOString() }).eq("id", jaRetirado.id);
+          if (error) throw error;
+          return res.status(200).json({ sucesso: true, inscricao_restaurada: true });
+        }
         if (jaRetirado) return res.status(200).json({ sucesso: true, ja_retirado: true });
         return respostaErro(res, 404, "O policial não está selecionado nesta pré-escala.");
       }
-      const { error } = await db.from("drso_voluntarios").update({ status: "retirado", atualizado_em: new Date().toISOString() }).eq("id", vinculo.id);
+      const { error } = await db.from("drso_voluntarios").update({ status: vinculo.origem === "direto" ? "retirado" : "voluntario", atualizado_em: new Date().toISOString() }).eq("id", vinculo.id);
       if (error) throw error;
       return res.status(200).json({ sucesso: true });
     }
@@ -234,17 +345,9 @@ export default async function handler(req, res) {
       if(escolhidos.length!==escala.vagas)return respostaErro(res,409,`Não há voluntários aptos suficientes para preencher as ${escala.vagas} vagas. Foram encontrados ${escolhidos.length}.`);
       const idsEscolhidos=new Set(escolhidos.map(v=>v.id));
       for(const v of normalizados){const novoStatus=idsEscolhidos.has(v.id)?"selecionado":"voluntario";if(v.status!==novoStatus){const {error}=await db.from("drso_voluntarios").update({status:novoStatus,atualizado_em:new Date().toISOString()}).eq("id",v.id);if(error)throw error;}}
-      const ordenados=[...escolhidos].sort((a,b)=>{
-        const pa=porId.get(a.policial_id),pb=porId.get(b.policial_id);
-        // A prioridade local/externo define quem ocupa as vagas, mas não pode
-        // colocar uma praça à frente de um oficial na função de comandante.
-        // A função é atribuída pela hierarquia real entre todos os selecionados.
-        const oficialA=pa?.tipo==="oficial",oficialB=pb?.tipo==="oficial";
-        if(oficialA!==oficialB)return oficialA?-1:1;
-        return compararAntiguidade(pa,pb);
-      });
+      const ordenados=[...escolhidos].sort((a,b)=>compararAntiguidade(porId.get(a.policial_id),porId.get(b.policial_id)));
       const atribuicoes=new Map();
-      if(ordenados.length){atribuicoes.set(ordenados[0].id,"Comandante");if(ordenados.length>=3){const modernos=ordenados.slice(-2);const atuais=modernos.map(v=>v.funcao);const inversaoManual=atuais.includes("Patrulheiro")&&atuais.includes("Motorista");atribuicoes.set(modernos[0].id,inversaoManual?modernos[0].funcao:"Patrulheiro");atribuicoes.set(modernos[1].id,inversaoManual?modernos[1].funcao:"Motorista");}else if(ordenados.length===2)atribuicoes.set(ordenados[1].id,ordenados[1].funcao==="Motorista"?"Motorista":"Patrulheiro");}
+      if(ordenados.length){atribuicoes.set(ordenados[0].id,"Comandante");if(ordenados.length>=3){const modernos=ordenados.slice(-2);const atuais=modernos.map(v=>v.funcao);const validas=atuais.map((funcao,i)=>["Patrulheiro","Motorista"].includes(funcao)&&!atuais.some((outra,j)=>j!==i&&outra===funcao)?funcao:null);const primeira=validas[0]||(validas[1]==="Patrulheiro"?"Motorista":"Patrulheiro");const segunda=validas[1]||(primeira==="Patrulheiro"?"Motorista":"Patrulheiro");atribuicoes.set(modernos[0].id,primeira);atribuicoes.set(modernos[1].id,segunda);}else if(ordenados.length===2)atribuicoes.set(ordenados[1].id,["Patrulheiro","Motorista"].includes(ordenados[1].funcao)?ordenados[1].funcao:"Patrulheiro");}
       for(const [vinculoId,funcao] of atribuicoes){const {error}=await db.from("drso_voluntarios").update({funcao,atualizado_em:new Date().toISOString()}).eq("id",vinculoId);if(error)throw error;}
       const {data,error}=await db.from("drso_escalas").update({status:"fechada",fechada_em:new Date().toISOString(),fechada_por:usuario.id}).eq("id",id).select("*").single();if(error)throw error;return res.status(200).json({escala:data,selecionados:escolhidos.length});
     }
