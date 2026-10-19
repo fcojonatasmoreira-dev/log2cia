@@ -21,6 +21,7 @@ import {
   excluirViatura,
 } from "../services/viaturasService";
 import { listarAreasOperacao } from "../services/areasOperacaoService";
+import HistoricoOperacionalViaturas from "./HistoricoOperacionalViaturas";
 
 const SITUACOES = [
   { value: "operando", label: "Operando" },
@@ -60,9 +61,10 @@ function classeTipo(valor) {
 }
 
 function classeLinha(viatura) {
-  if (viatura.situacao === "baixada") return "bg-rose-50/40";
-  if (viatura.situacao === "manutencao") return "bg-amber-50/40";
-  if (viatura.situacao === "inativa") return "bg-slate-50";
+  const situacao = viatura.situacao_exibida || viatura.situacao;
+  if (situacao === "baixada") return "bg-rose-50/40";
+  if (situacao === "manutencao") return "bg-amber-50/40";
+  if (situacao === "inativa") return "bg-slate-50";
   return "";
 }
 
@@ -151,7 +153,7 @@ function montarLinhasRelatorio(viaturas) {
     identificacao: v.identificacao || "—",
     marca: v.marca || "—",
     tipo: tipoLabel(v.tipo),
-    situacao: situacaoLabel(v.situacao),
+    situacao: situacaoLabel(v.situacao_exibida || v.situacao),
     data: v.situacao === "baixada" ? dataBR(v.data_baixa) : v.situacao === "manutencao" ? dataBR(v.data_manutencao) : "—",
     localizacao: [localizacaoTexto(v), nomeMacroarea(v)].filter(Boolean).join(" / "),
     localizacaoAtual: v.localizacao_atual || "Pátio da CIA",
@@ -186,6 +188,8 @@ export default function Viaturas() {
   const [sucessoPdf, setSucessoPdf] = useState(false);
   const [excluindo, setExcluindo] = useState("");
   const [podeGerenciar, setPodeGerenciar] = useState(false);
+  const [usuarioAtual, setUsuarioAtual] = useState(null);
+  const [historicoAberto, setHistoricoAberto] = useState(false);
   const [macroareas, setMacroareas] = useState([]);
   const [carregandoMacroareas, setCarregandoMacroareas] = useState(true);
   const [erroMacroareas, setErroMacroareas] = useState("");
@@ -194,10 +198,10 @@ export default function Viaturas() {
     try {
       const usuario = JSON.parse(localStorage.getItem("log2cia_user") || "null");
       const role = String(usuario?.role || "").trim().toLowerCase();
-      setPodeGerenciar(
-        usuario?.is_master === true || ["master", "p4"].includes(role),
-      );
+      setUsuarioAtual(usuario);
+      setPodeGerenciar(usuario?.is_master === true || ["master", "p4"].includes(role));
     } catch {
+      setUsuarioAtual(null);
       setPodeGerenciar(false);
     }
   }, []);
@@ -816,6 +820,8 @@ export default function Viaturas() {
     }
   };
 
+  if (historicoAberto && podeGerenciar) return <HistoricoOperacionalViaturas user={usuarioAtual} onVoltar={() => setHistoricoAberto(false)}/>;
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
@@ -830,6 +836,7 @@ export default function Viaturas() {
             </div>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
+            {podeGerenciar && <button type="button" onClick={() => setHistoricoAberto(true)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-800 hover:bg-blue-100">Histórico operacional</button>}
             <button type="button" onClick={exportarExcel} disabled={baixandoExcel || baixandoPdf || carregando} className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60 ${sucessoExcel ? "bg-emerald-800" : "bg-emerald-600 hover:bg-emerald-700"}`} title="Baixar relatório em Excel">
               {baixandoExcel ? <><RefreshCw className="w-4 h-4 animate-spin" /> Gerando...</> : sucessoExcel ? "✓ Relatório Baixado" : <><FileSpreadsheet className="w-4 h-4" /> Excel</>}
             </button>
@@ -936,7 +943,7 @@ export default function Viaturas() {
                       <div className="text-[11px] font-normal text-slate-400">{viatura.unidade}</div>
                     </td>
                     <td className="p-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${classeTipo(viatura.tipo)}`}>{tipoLabel(viatura.tipo)}</span></td>
-                    <td className="p-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${classeSituacao(viatura.situacao)}`}>{situacaoLabel(viatura.situacao)}</span></td>
+                    <td className="p-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${classeSituacao(viatura.situacao_exibida || viatura.situacao)}`}>{situacaoLabel(viatura.situacao_exibida || viatura.situacao)}</span></td>
                     <td className="p-3 text-slate-700">
                       <div className="font-medium">{localizacaoTexto(viatura)}</div>
                   {viatura.situacao === "operando" && <div className="text-xs text-slate-400">{nomeMacroarea(viatura) || "Sem área definida"}</div>}
@@ -977,7 +984,7 @@ export default function Viaturas() {
             <div className="p-5 space-y-5">
               <div className="flex flex-wrap items-center gap-2">
                 <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${classeTipo(viaturaSelecionada.tipo)}`}>{tipoLabel(viaturaSelecionada.tipo)}</span>
-                <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${classeSituacao(viaturaSelecionada.situacao)}`}>{situacaoLabel(viaturaSelecionada.situacao)}</span>
+                <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${classeSituacao(viaturaSelecionada.situacao_exibida || viaturaSelecionada.situacao)}`}>{situacaoLabel(viaturaSelecionada.situacao_exibida || viaturaSelecionada.situacao)}</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {[

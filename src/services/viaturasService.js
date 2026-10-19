@@ -21,6 +21,40 @@ export async function listarViaturas() {
   return request(API);
 }
 
+export async function listarHistoricoOperacionalViaturas(filtros = {}) {
+  const parametros = new URLSearchParams({ recurso: "historico-operacional-viaturas" });
+  Object.entries(filtros).forEach(([chave, valor]) => {
+    if (valor !== null && valor !== undefined && valor !== "") parametros.set(chave, String(valor));
+  });
+  return request(`${API}?${parametros.toString()}`);
+}
+
+export async function criarLinkChecklistViatura(checkinId, etapa) {
+  const parametros = new URLSearchParams({ recurso: "checklist-link" });
+  return request(`${API}?${parametros.toString()}`, {
+    method: "POST",
+    body: JSON.stringify({ checkin_id: checkinId, etapa }),
+  });
+}
+
+export async function excluirRegistroHistoricoViaturas(tipo, id) {
+  const parametros = new URLSearchParams({ recurso: "historico-operacional-viaturas" });
+  return request(`${API}?${parametros.toString()}`, {
+    method: "DELETE",
+    body: JSON.stringify({ tipo, id }),
+  });
+}
+
+export async function listarAcompanhamentosOcorrencia(ocorrenciaId) {
+  const parametros = new URLSearchParams({ recurso: "ocorrencia-acompanhamentos", ocorrencia_id: ocorrenciaId });
+  return request(`${API}?${parametros.toString()}`);
+}
+
+export async function registrarAcompanhamentoOcorrencia(ocorrenciaId, dados) {
+  const parametros = new URLSearchParams({ recurso: "ocorrencia-acompanhamentos", ocorrencia_id: ocorrenciaId });
+  return request(`${API}?${parametros.toString()}`, { method: "POST", body: JSON.stringify(dados) });
+}
+
 export async function criarViatura(dados) {
   return request(API, {
     method: "POST",

@@ -20,6 +20,7 @@ import Oficios from "../pages/Oficios";
 import GerenciamentoArquivo from "../pages/GerenciamentoArquivo";
 import Viaturas from "../pages/Viaturas";
 import CheckinsViaturas from "../pages/CheckinsViaturas";
+import ChecklistPublico from "../pages/ChecklistPublico";
 import AreasOperacao from "../pages/AreasOperacao";
 import DRSO from "../pages/DRSO";
 import EfetivoExternoDRSO from "../pages/EfetivoExternoDRSO";
@@ -77,6 +78,7 @@ export default function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/checklist-publico/:token" element={<ChecklistPublico />} />
         {!usuario ? (
           <Route path="*" element={<Login />} />
         ) : usuario.tipo_acesso === "drso_externo" ? (
