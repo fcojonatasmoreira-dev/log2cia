@@ -15,7 +15,6 @@ const ROTULOS = {
   arrefecimento: "Nível do líquido de arrefecimento",
   arrefecimento_outro: "Detalhe do arrefecimento",
   freios: "Situação dos freios",
-  km_proxima_troca_oleo: "Quilometragem para próxima troca de óleo",
   observacoes_gerais: "Observações gerais",
   motorista_antecessor: "Motorista antecessor",
 };
@@ -44,7 +43,7 @@ const VALORES = {
 const CATEGORIAS = [
   { titulo: "Conservação e combustível", campos: ["limpeza", "limpeza_motivo_antecessor", "combustivel"] },
   { titulo: "Equipamentos e ferramentas", campos: ["ar_condicionado", "ar_condicionado_outro", "kit_ferramentas", "ferramentas_outro", "alteracoes_equipamentos", "alteracoes_equipamentos_outro"] },
-  { titulo: "Condições mecânicas", campos: ["nivel_oleo", "nivel_oleo_outro", "pneus", "pneus_detalhe", "arrefecimento", "arrefecimento_outro", "freios", "km_proxima_troca_oleo"] },
+  { titulo: "Condições mecânicas", campos: ["nivel_oleo", "nivel_oleo_outro", "pneus", "pneus_detalhe", "arrefecimento", "arrefecimento_outro", "freios"] },
   { titulo: "Observações", campos: ["observacoes_gerais", "motorista_antecessor"] },
 ];
 
@@ -78,7 +77,7 @@ export default function ResumoChecklistViatura({ titulo, checklist }) {
     respostas: categoria.campos.filter((chave) => temResposta(dados[chave])).map((chave) => [chave, dados[chave]]),
   })).filter((categoria) => categoria.respostas.length);
   const conhecidas = new Set(CATEGORIAS.flatMap((categoria) => categoria.campos));
-  const antigas = Object.entries(dados).filter(([chave, valor]) => !conhecidas.has(chave) && temResposta(valor));
+  const antigas = Object.entries(dados).filter(([chave, valor]) => chave !== "km_proxima_troca_oleo" && !conhecidas.has(chave) && temResposta(valor));
 
   if (!grupos.length && !antigas.length) return <p className="text-sm text-slate-500">{titulo ? `${titulo}: ` : ""}Checklist não registrado.</p>;
 

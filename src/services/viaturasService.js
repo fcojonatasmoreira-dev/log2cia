@@ -37,11 +37,11 @@ export async function criarLinkChecklistViatura(checkinId, etapa) {
   });
 }
 
-export async function excluirRegistroHistoricoViaturas(tipo, id) {
+export async function excluirRegistroHistoricoViaturas(tipo, id, etapa = null) {
   const parametros = new URLSearchParams({ recurso: "historico-operacional-viaturas" });
   return request(`${API}?${parametros.toString()}`, {
     method: "DELETE",
-    body: JSON.stringify({ tipo, id }),
+    body: JSON.stringify({ tipo, id, ...(etapa ? { etapa } : {}) }),
   });
 }
 

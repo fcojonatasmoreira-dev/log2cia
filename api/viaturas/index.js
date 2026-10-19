@@ -14,8 +14,8 @@ const SITUACOES_VALIDAS = ["operando", "baixada", "manutencao", "inativa"];
 const TIPOS_VALIDOS = ["organica", "locada", "locada_req"];
 const UUID_VALIDO = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PERFIS_CHECKIN = ["master", "p4", "oficial", "policial"];
-const TIPOS_ENTRADA = ["inicio_servico", "retirada_oficina", "recebimento_opm", "viatura_nova"];
-const TIPOS_SAIDA = ["fim_servico", "encaminhamento_oficina", "devolucao_opm", "baixa_definitiva"];
+const TIPOS_ENTRADA = ["inicio_servico", "retirada_oficina", "recebimento_opm", "viatura_nova", "outras_situacoes"];
+const TIPOS_SAIDA = ["fim_servico", "encaminhamento_oficina", "devolucao_opm", "baixa_definitiva", "outras_situacoes"];
 const TIPOS_OCORRENCIA = ["avaria", "acidente", "pane", "abastecimento", "outro"];
 
 function tokenChecklist(id, etapa) {
@@ -41,7 +41,8 @@ function normalizarJsonObjeto(valor) {
 }
 
 function validarChecklistViatura(valor) {
-  const checklist = normalizarJsonObjeto(valor);
+  const checklist = { ...normalizarJsonObjeto(valor) };
+  delete checklist.km_proxima_troca_oleo;
   const escolhas = {
     limpeza: ["sim", "nao"],
     combustivel: ["tanque_cheio", "meio_tanque", "um_quarto", "reserva"],
@@ -67,9 +68,6 @@ function validarChecklistViatura(valor) {
   if (checklist.arrefecimento === "outro" && !texto(checklist.arrefecimento_outro)) return null;
   if (!texto(checklist.pneus_detalhe) || checklist.pneus_detalhe.length > 500) return null;
   if (typeof checklist.observacoes_gerais !== "string" || checklist.observacoes_gerais.length > 3000) return null;
-  if (checklist.km_proxima_troca_oleo === null || checklist.km_proxima_troca_oleo === "") return null;
-  const kmOleo = Number(checklist.km_proxima_troca_oleo);
-  if (!Number.isFinite(kmOleo) || kmOleo < 0) return null;
   return checklist;
 }
 
@@ -188,20 +186,25 @@ async function processarChecklistPublico(req, res, db) {
   const autorizado = lerTokenChecklist(texto(req.query?.token));
   if (!autorizado) return respostaErro(res, 404, "Checklist não encontrado.");
   const { data: checkin, error } = await db.from("viatura_checkins")
-    .select("id, viatura_id, data_hora_inicio, data_hora_fim, km_inicial, km_final, checklist_entrada, checklist_saida, fotos_entrada, fotos_saida")
+    .select("id, viatura_id, responsavel_id, responsavel_saida_id, data_hora_inicio, data_hora_fim, km_inicial, km_final, checklist_entrada, checklist_saida, fotos_entrada, fotos_saida")
     .eq("id", autorizado.id).maybeSingle();
   if (error) throw error;
   const dataHora = autorizado.etapa === "entrada" ? checkin?.data_hora_inicio : checkin?.data_hora_fim;
   const quilometragem = autorizado.etapa === "entrada" ? checkin?.km_inicial : checkin?.km_final;
   const checklist = autorizado.etapa === "entrada" ? checkin?.checklist_entrada : checkin?.checklist_saida;
   if (!checkin || !dataHora || quilometragem == null || !checklist) return respostaErro(res, 404, "Checklist não encontrado.");
-  const { data: viatura, error: erroViatura } = await db.from("viaturas").select("identificacao, placa").eq("id", checkin.viatura_id).maybeSingle();
+  const responsavelId = autorizado.etapa === "entrada" ? checkin.responsavel_id : checkin.responsavel_saida_id;
+  const [{ data: viatura, error: erroViatura }, { data: responsavel, error: erroResponsavel }] = await Promise.all([
+    db.from("viaturas").select("identificacao, placa").eq("id", checkin.viatura_id).maybeSingle(),
+    responsavelId ? db.from("policiais").select("posto_graduacao, nome_guerra, matricula").eq("id", responsavelId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+  ]);
   if (erroViatura) throw erroViatura;
+  if (erroResponsavel) throw erroResponsavel;
   if (!viatura) return respostaErro(res, 404, "Checklist não encontrado.");
   const caminhosFotos = autorizado.etapa === "entrada" ? checkin.fotos_entrada || [] : checkin.fotos_saida || [];
   const urlsFotos = await assinarFotos(db, caminhosFotos);
   res.setHeader("Cache-Control", "private, no-store");
-  return res.status(200).json({ etapa: autorizado.etapa, viatura, data_hora: dataHora, quilometragem, checklist, fotos: caminhosFotos.map((path) => urlsFotos.get(path)).filter(Boolean) });
+  return res.status(200).json({ etapa: autorizado.etapa, viatura, responsavel, turno: turnoDoEvento(dataHora), data_hora: dataHora, quilometragem, checklist, fotos: caminhosFotos.map((path) => urlsFotos.get(path)).filter(Boolean) });
 }
 
 async function processarLinkChecklist(req, res, db, role) {
@@ -224,7 +227,17 @@ async function processarExclusaoHistorico(req, res, db, role) {
   if (role !== "master") return respostaErro(res, 403, "Somente o perfil Master pode excluir registros históricos.");
   const tipo = texto(req.body?.tipo);
   const id = texto(req.body?.id);
-  if (!["ocorrencia", "movimentacao"].includes(tipo) || !UUID_VALIDO.test(id)) return respostaErro(res, 400, "Registro histórico inválido.");
+  if (!["ocorrencia", "movimentacao", "checklist"].includes(tipo) || !UUID_VALIDO.test(id)) return respostaErro(res, 400, "Registro histórico inválido.");
+
+  if (tipo === "checklist") {
+    const etapa = texto(req.body?.etapa);
+    if (!["entrada", "saida"].includes(etapa)) return respostaErro(res, 400, "Etapa do checklist inválida.");
+    const coluna = etapa === "entrada" ? "checklist_entrada" : "checklist_saida";
+    const { data, error } = await db.from("viatura_checkins").update({ [coluna]: etapa === "entrada" ? {} : null }).eq("id", id).select("id").maybeSingle();
+    if (error) throw error;
+    if (!data) return respostaErro(res, 404, "Checklist não encontrado.");
+    return res.status(200).json({ excluido: true, tipo, etapa });
+  }
 
   if (tipo === "ocorrencia") {
     const { data, error } = await db.rpc("viatura_ocorrencia_excluir", { p_ocorrencia_id: id });
@@ -255,13 +268,13 @@ async function processarHistoricoOcorrenciasViatura(req, res, db, usuario, role)
   if (!PERFIS_CHECKIN.includes(role)) return respostaErro(res, 403, "Sem permissão para consultar ocorrências de viaturas.");
   const viaturaId = texto(req.query?.historico_viatura_id);
   if (!UUID_VALIDO.test(viaturaId)) return respostaErro(res, 400, "Selecione uma viatura válida.");
-  if (role === "policial" && !(await policialPodeConsultarViatura(db, usuario.id, viaturaId, true))) return respostaErro(res, 403, "Consulte o histórico de uma viatura disponível selecionada para check-in.");
+  if (role === "policial" && !(await policialPodeConsultarViatura(db, usuario.id, viaturaId, false))) return respostaErro(res, 403, "Consulte apenas ocorrências de uma viatura disponível ou sob sua responsabilidade.");
   const pagina = Math.max(1, Math.min(100, Number.parseInt(req.query?.pagina, 10) || 1));
   const limite = 25;
   const inicio = (pagina - 1) * limite;
   const [{ data, error }, { data: ultimoCheckin, error: erroUltimoCheckin }] = await Promise.all([
     db.from("viatura_ocorrencias").select("id, checkin_id, viatura_id, registrada_por, tipo, descricao, data_hora, quilometragem, fotos, analisada, created_at").eq("viatura_id", viaturaId).order("data_hora", { ascending: false }).range(inicio, inicio + limite),
-    db.from("viatura_checkins").select("id, viatura_id, responsavel_id, responsavel_saida_id, data_hora_inicio, data_hora_fim, km_inicial, km_final, tipo_saida, checklist_saida, observacoes_saida, fotos_saida, ativo").eq("viatura_id", viaturaId).eq("ativo", false).order("data_hora_fim", { ascending: false }).limit(1).maybeSingle(),
+    db.from("viatura_checkins").select("id, viatura_id, responsavel_id, responsavel_saida_id, data_hora_inicio, data_hora_fim, km_inicial, km_final, tipo_saida, tipo_saida_detalhe, checklist_saida, observacoes_saida, fotos_saida, ativo").eq("viatura_id", viaturaId).eq("ativo", false).order("data_hora_fim", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (error) throw error;
   if (erroUltimoCheckin) throw erroUltimoCheckin;
@@ -270,7 +283,7 @@ async function processarHistoricoOcorrenciasViatura(req, res, db, usuario, role)
   const itens = ocorrencias.slice(0, limite);
   const idsPoliciais = [...new Set([...itens.map((item) => item.registrada_por), ultimoCheckin?.responsavel_saida_id || ultimoCheckin?.responsavel_id].filter(Boolean))];
   const [{ data: viatura, error: erroViatura }, { data: policiais, error: erroPoliciais }] = await Promise.all([
-    db.from("viaturas").select("id, identificacao, placa").eq("id", viaturaId).maybeSingle(),
+    db.from("viaturas").select("id, identificacao, placa, quilometragem_atual, km_proxima_troca_oleo").eq("id", viaturaId).maybeSingle(),
     idsPoliciais.length ? db.from("policiais").select("id, nome_guerra, nome_completo, posto_graduacao, numeral, matricula").in("id", idsPoliciais) : Promise.resolve({ data: [], error: null }),
   ]);
   if (erroViatura) throw erroViatura;
@@ -361,7 +374,7 @@ async function processarHistoricoOperacional(req, res, db, role) {
     return eventos;
   };
 
-  const movimentosColunas = "id, viatura_id, responsavel_id, responsavel_saida_id, iniciado_por, encerrado_por, data_hora_inicio, data_hora_fim, km_inicial, km_final, tipo_entrada, tipo_saida, checklist_entrada, checklist_saida, observacoes_entrada, observacoes_saida, fotos_entrada, fotos_saida, ativo";
+  const movimentosColunas = "id, viatura_id, responsavel_id, responsavel_saida_id, iniciado_por, encerrado_por, data_hora_inicio, data_hora_fim, km_inicial, km_final, tipo_entrada, tipo_entrada_detalhe, tipo_saida, tipo_saida_detalhe, checklist_entrada, checklist_saida, observacoes_entrada, observacoes_saida, fotos_entrada, fotos_saida, ativo";
   const tarefas = [];
   if (!situacao && ["todas", "checkin"].includes(acao)) tarefas.push(carregarEventos({ tabela: "viatura_checkins", colunas: movimentosColunas, data: "data_hora_inicio", policial: "responsavel_id", tipo: "checkin" }));
   if (!situacao && ["todas", "checkout"].includes(acao)) tarefas.push(carregarEventos({ tabela: "viatura_checkins", colunas: movimentosColunas, data: "data_hora_fim", policial: "responsavel_saida_id", tipo: "checkout", configurar: (query) => query.not("data_hora_fim", "is", null) }));
@@ -513,7 +526,7 @@ async function processarCheckins(req, res, db, usuario, role) {
       return { data: [...(ativos || []), ...(encerrados || [])], error: erroAtivos || erroEncerrados };
     };
     const [{ data: viaturasOriginais, error: erroViaturas }, { data: checkins, error: erroCheckins }] = await Promise.all([
-      db.from("viaturas").select("id, identificacao, placa, modelo, situacao, ativo, quilometragem_atual").order("identificacao"),
+      db.from("viaturas").select("id, identificacao, placa, modelo, situacao, ativo, quilometragem_atual, km_proxima_troca_oleo").order("identificacao"),
       carregarCheckinsVisiveis(),
     ]);
     if (erroViaturas) throw erroViaturas;
@@ -566,20 +579,26 @@ async function processarCheckins(req, res, db, usuario, role) {
   let resultado;
   if (acao === "checkin") {
     if (!TIPOS_ENTRADA.includes(body.tipo)) return respostaErro(res, 400, "Tipo de entrada inválido.");
+    const tipoDetalhe = texto(body.tipo_detalhe);
+    if (body.tipo === "outras_situacoes" && tipoDetalhe.length > 300) return respostaErro(res, 400, "A finalidade específica do check-in deve ter até 300 caracteres.");
     if (!UUID_VALIDO.test(body.viatura_id || "")) return respostaErro(res, 400, "Selecione uma viatura.");
     const checklist = validarChecklistViatura(body.checklist);
     if (!checklist) return respostaErro(res, 400, "Preencha as condições obrigatórias do checklist de entrada.");
+    if (body.tipo === "outras_situacoes") checklist.tipo_entrada_detalhe = tipoDetalhe;
     const pathFotos = await guardarFotos(db, fotos, usuario.id);
     const { data, error } = await db.rpc("viatura_checkin_criar", { p_viatura_id: body.viatura_id, p_responsavel_id: usuario.id, p_usuario_id: usuario.id, p_km: km, p_tipo: body.tipo, p_checklist: checklist, p_observacoes: texto(body.observacoes) || null, p_fotos: pathFotos });
     if (error) throw error;
     resultado = data;
   } else if (acao === "checkout") {
     if (!TIPOS_SAIDA.includes(body.tipo)) return respostaErro(res, 400, "Tipo de saída inválido.");
+    const tipoDetalhe = texto(body.tipo_detalhe);
+    if (body.tipo === "outras_situacoes" && tipoDetalhe.length > 300) return respostaErro(res, 400, "A finalidade específica do check-out deve ter até 300 caracteres.");
     if (body.tipo === "baixa_definitiva" && !["master", "p4"].includes(role)) return respostaErro(res, 403, "Somente Master e P4 podem registrar baixa definitiva.");
     if (!UUID_VALIDO.test(body.checkin_id || "")) return respostaErro(res, 400, "Check-in inválido.");
     if (role === "policial" && !(await policialResponsavelPeloCheckin(db, usuario.id, body.checkin_id))) return respostaErro(res, 403, "Você só pode encerrar um check-in sob sua responsabilidade.");
     const checklist = validarChecklistViatura(body.checklist);
     if (!checklist) return respostaErro(res, 400, "Preencha as condições obrigatórias do checklist de saída.");
+    if (body.tipo === "outras_situacoes") checklist.tipo_saida_detalhe = tipoDetalhe;
     const pathFotos = await guardarFotos(db, fotos, usuario.id);
     const { data, error } = await db.rpc("viatura_checkout_fechar", { p_checkin_id: body.checkin_id, p_responsavel_id: usuario.id, p_usuario_id: usuario.id, p_km: km, p_tipo: body.tipo, p_checklist: checklist, p_observacoes: texto(body.observacoes) || null, p_fotos: pathFotos });
     if (error) throw error;
@@ -803,7 +822,7 @@ export default async function handler(req, res) {
     if (!usuario) return;
 
     const db = supabaseAdmin();
-    const role = normalizarRole(usuario);
+    const role = usuario.is_master === true ? "master" : normalizarRole(usuario);
 
     if (req.query?.recurso === "checklist-link") {
       return await processarLinkChecklist(req, res, db, role);
