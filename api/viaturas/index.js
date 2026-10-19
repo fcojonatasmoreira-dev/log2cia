@@ -33,7 +33,7 @@ function lerTokenChecklist(valor) {
   try { fornecida = Buffer.from(assinatura, "base64url"); } catch { return null; }
   if (fornecida.length !== esperada.length || !timingSafeEqual(fornecida, esperada)) return null;
   const [id, etapa, mais] = Buffer.from(payload, "base64url").toString("utf8").split(":");
-  return UUID_VALIDO.test(id || "") && ["entrada", "saida"].includes(etapa) && !mais ? { id, etapa } : null;
+  return UUID_VALIDO.test(id || "") && ["entrada", "saida", "completo"].includes(etapa) && !mais ? { id, etapa } : null;
 }
 
 function normalizarJsonObjeto(valor) {
@@ -186,9 +186,48 @@ async function processarChecklistPublico(req, res, db) {
   const autorizado = lerTokenChecklist(texto(req.query?.token));
   if (!autorizado) return respostaErro(res, 404, "Checklist não encontrado.");
   const { data: checkin, error } = await db.from("viatura_checkins")
-    .select("id, viatura_id, responsavel_id, responsavel_saida_id, data_hora_inicio, data_hora_fim, km_inicial, km_final, checklist_entrada, checklist_saida, fotos_entrada, fotos_saida")
+    .select("id, viatura_id, responsavel_id, responsavel_saida_id, data_hora_inicio, data_hora_fim, km_inicial, km_final, tipo_entrada, tipo_entrada_detalhe, tipo_saida, tipo_saida_detalhe, observacoes_entrada, observacoes_saida, checklist_entrada, checklist_saida, fotos_entrada, fotos_saida")
     .eq("id", autorizado.id).maybeSingle();
   if (error) throw error;
+  if (autorizado.etapa === "completo") {
+    if (!checkin) return respostaErro(res, 404, "Checklist não encontrado.");
+    const idsResponsaveis = [...new Set([checkin.responsavel_id, checkin.responsavel_saida_id].filter(Boolean))];
+    const [{ data: viatura, error: erroViatura }, { data: policiais, error: erroPoliciais }] = await Promise.all([
+      db.from("viaturas").select("identificacao, placa").eq("id", checkin.viatura_id).maybeSingle(),
+      idsResponsaveis.length ? db.from("policiais").select("id, posto_graduacao, nome_guerra, matricula").in("id", idsResponsaveis) : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (erroViatura) throw erroViatura;
+    if (erroPoliciais) throw erroPoliciais;
+    if (!viatura) return respostaErro(res, 404, "Checklist não encontrado.");
+    const fotosEntrada = checkin.fotos_entrada || [];
+    const fotosSaida = checkin.fotos_saida || [];
+    const fotos = await assinarFotos(db, [...fotosEntrada, ...fotosSaida]);
+    const pessoas = new Map((policiais || []).map((p) => [p.id, p]));
+    const entrada = checkin.data_hora_inicio && checkin.km_inicial != null ? {
+      data_hora: checkin.data_hora_inicio,
+      quilometragem: checkin.km_inicial,
+      tipo: checkin.tipo_entrada,
+      tipo_detalhe: checkin.tipo_entrada_detalhe,
+      observacoes: checkin.observacoes_entrada,
+      responsavel: pessoas.get(checkin.responsavel_id) || null,
+      turno: turnoDoEvento(checkin.data_hora_inicio),
+      checklist: checkin.checklist_entrada,
+      fotos: fotosEntrada.map((path) => fotos.get(path)).filter(Boolean),
+    } : null;
+    const saida = checkin.data_hora_fim && checkin.km_final != null ? {
+      data_hora: checkin.data_hora_fim,
+      quilometragem: checkin.km_final,
+      tipo: checkin.tipo_saida,
+      tipo_detalhe: checkin.tipo_saida_detalhe,
+      observacoes: checkin.observacoes_saida,
+      responsavel: pessoas.get(checkin.responsavel_saida_id) || null,
+      turno: turnoDoEvento(checkin.data_hora_fim),
+      checklist: checkin.checklist_saida,
+      fotos: fotosSaida.map((path) => fotos.get(path)).filter(Boolean),
+    } : null;
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.status(200).json({ etapa: "completo", viatura, etapas: { entrada, saida } });
+  }
   const dataHora = autorizado.etapa === "entrada" ? checkin?.data_hora_inicio : checkin?.data_hora_fim;
   const quilometragem = autorizado.etapa === "entrada" ? checkin?.km_inicial : checkin?.km_final;
   const checklist = autorizado.etapa === "entrada" ? checkin?.checklist_entrada : checkin?.checklist_saida;
@@ -204,22 +243,27 @@ async function processarChecklistPublico(req, res, db) {
   const caminhosFotos = autorizado.etapa === "entrada" ? checkin.fotos_entrada || [] : checkin.fotos_saida || [];
   const urlsFotos = await assinarFotos(db, caminhosFotos);
   res.setHeader("Cache-Control", "private, no-store");
-  return res.status(200).json({ etapa: autorizado.etapa, viatura, responsavel, turno: turnoDoEvento(dataHora), data_hora: dataHora, quilometragem, checklist, fotos: caminhosFotos.map((path) => urlsFotos.get(path)).filter(Boolean) });
+  const tipo = autorizado.etapa === "entrada" ? checkin.tipo_entrada : checkin.tipo_saida;
+  const tipoDetalhe = autorizado.etapa === "entrada" ? checkin.tipo_entrada_detalhe : checkin.tipo_saida_detalhe;
+  const observacoes = autorizado.etapa === "entrada" ? checkin.observacoes_entrada : checkin.observacoes_saida;
+  return res.status(200).json({ etapa: autorizado.etapa, viatura, responsavel, turno: turnoDoEvento(dataHora), data_hora: dataHora, quilometragem, tipo, tipo_detalhe: tipoDetalhe, observacoes, checklist, fotos: caminhosFotos.map((path) => urlsFotos.get(path)).filter(Boolean) });
 }
 
-async function processarLinkChecklist(req, res, db, role) {
-  if (!PERFIS_GESTAO.includes(role)) return respostaErro(res, 403, "Sem permissão para compartilhar checklists.");
+async function processarLinkChecklist(req, res, db, usuario, role) {
   if (req.method !== "POST") return res.setHeader("Allow", "POST").status(405).json({ error: "Método não permitido." });
   const checkinId = texto(req.body?.checkin_id);
   const etapa = texto(req.body?.etapa);
-  if (!UUID_VALIDO.test(checkinId) || !["entrada", "saida"].includes(etapa)) return respostaErro(res, 400, "Informe o check-in e a etapa do checklist.");
+  if (!UUID_VALIDO.test(checkinId) || !["entrada", "saida", "completo"].includes(etapa)) return respostaErro(res, 400, "Informe uma movimentação válida para compartilhar o checklist.");
   const { data: checkin, error } = await db.from("viatura_checkins")
-    .select("id, data_hora_fim, checklist_entrada, checklist_saida")
+    .select("id, iniciado_por, data_hora_inicio, data_hora_fim, checklist_entrada, checklist_saida")
     .eq("id", checkinId).maybeSingle();
   if (error) throw error;
   if (!checkin) return respostaErro(res, 404, "Movimentação não encontrada.");
+  const podeCompartilhar = PERFIS_GESTAO.includes(role) || (role === "policial" && checkin.iniciado_por === usuario.id);
+  if (!podeCompartilhar) return respostaErro(res, 403, "Você só pode compartilhar a movimentação que iniciou.");
+  if (etapa === "completo" && (!checkin.data_hora_inicio || !checkin.checklist_entrada)) return respostaErro(res, 409, "O checklist de entrada ainda não está disponível.");
+  if (etapa === "entrada" && (!checkin.data_hora_inicio || !checkin.checklist_entrada)) return respostaErro(res, 409, "O checklist de entrada ainda não está disponível.");
   if (etapa === "saida" && (!checkin.data_hora_fim || !checkin.checklist_saida)) return respostaErro(res, 409, "O checklist de saída ainda não foi registrado.");
-  if (etapa === "entrada" && !checkin.checklist_entrada) return respostaErro(res, 409, "O checklist de entrada não está disponível.");
   return res.status(200).json({ token: tokenChecklist(checkin.id, etapa) });
 }
 
@@ -582,7 +626,8 @@ async function processarCheckins(req, res, db, usuario, role) {
     ];
     const fotosAssinadas = await assinarFotos(db, caminhosFotos);
     const pessoas = new Map((policiais || []).map((policial) => [policial.id, policial]));
-    const viaturasPorId = new Map((viaturas || []).map((viatura) => [viatura.id, viatura]));
+    const viaturasPorId = new Map((viaturasOriginais || []).map(({ id, identificacao, placa }) => [id, { id, identificacao, placa }]));
+    for (const viatura of viaturas || []) viaturasPorId.set(viatura.id, viatura);
     const acompanhamentos = await anexarAcompanhamentosOcorrencias(db, ocorrencias || []);
     return res.status(200).json({
       viaturas: viaturas || [],
@@ -849,7 +894,7 @@ export default async function handler(req, res) {
     const role = usuario.is_master === true ? "master" : normalizarRole(usuario);
 
     if (req.query?.recurso === "checklist-link") {
-      return await processarLinkChecklist(req, res, db, role);
+      return await processarLinkChecklist(req, res, db, usuario, role);
     }
 
     if (req.query?.recurso === "historico-operacional-viaturas") {

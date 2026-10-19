@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, LogIn, LogOut, RefreshCw, X } from "lucide-react";
 import { carregarControleViaturas, carregarHistoricoOcorrenciasViatura, registrarMovimentacao } from "../services/checkinsViaturasService";
 import ResumoChecklistViatura from "../components/viaturas/ResumoChecklistViatura";
+import BotaoCompartilharChecklist from "../components/viaturas/BotaoCompartilharChecklist";
 
 const ENTRADAS = [["inicio_servico", "Entrada de serviço"], ["retirada_oficina", "Retirada da oficina"], ["recebimento_opm", "Recebimento de outra OPM"], ["viatura_nova", "Recebimento de viatura nova"], ["outras_situacoes", "Outras situações"]];
 const SAIDAS = [["fim_servico", "Fim de serviço"], ["encaminhamento_oficina", "Encaminhamento à oficina"], ["devolucao_opm", "Devolução à OPM de origem"], ["baixa_definitiva", "Baixa definitiva"], ["outras_situacoes", "Outras situações"]];
@@ -83,6 +84,7 @@ export default function CheckinsViaturas({ user }) {
   const viaturasLivres = dados.viaturas.filter((item) => item.ativo && !idsAtivos.has(item.id) && !["baixada", "inativa"].includes(item.situacao));
   const ultimoCheckinDaViatura = historicoViatura.ultimo_checkin || dados.checkins.filter((item) => item.viatura_id === alvo && !item.ativo).sort((a, b) => new Date(b.data_hora_fim || b.data_hora_inicio) - new Date(a.data_hora_fim || a.data_hora_inicio))[0];
   const checkinSelecionado = ativos.find((item) => item.id === alvo);
+  const minhasMovimentacoes = ehPolicial ? dados.checkins.filter((item) => item.iniciado_por === usuarioId) : [];
   const motoristaAnterior = nomePolicial(ultimoCheckinDaViatura?.responsavel_saida || ultimoCheckinDaViatura?.responsavel);
   const identidadeMotorista = nomePolicial(dados.usuario || user);
   const dataHoraAgora = new Date().toLocaleString("pt-BR");
@@ -198,6 +200,7 @@ export default function CheckinsViaturas({ user }) {
     <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold text-slate-900">Check-in e Check-out de Viaturas</h1><p className="text-sm text-slate-600">Movimentações, disponibilidade e ocorrências da frota.</p></div><div className="flex gap-2">{!ehPolicial && <button onClick={() => { abrirAcao("checkin"); setAcoesAbertas(true); }} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Ações da viatura</button>}<button onClick={() => { setCarregando(true); setErro(""); carregar(); }} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><RefreshCw size={16}/> Atualizar</button></div></header>
     {erro && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{erro}</div>}{sucesso && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{sucesso}</div>}
     {ehPolicial && <section>{formulario}</section>}
+    {ehPolicial && minhasMovimentacoes.length > 0 && <details className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><summary className="cursor-pointer font-semibold text-slate-900">Minhas movimentações · compartilhar checklist completo</summary><div className="mt-3 space-y-2">{minhasMovimentacoes.map((movimento) => <div key={movimento.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3"><p className="text-sm text-slate-700">{movimento.viatura?.identificacao || "Viatura"} · {movimento.viatura?.placa || "—"} · {dataHora(movimento.data_hora_inicio)} · {movimento.ativo ? "Em serviço" : "Encerrada"}</p><BotaoCompartilharChecklist checkinId={movimento.id}/></div>)}</div></details>}
     {!ehPolicial && (
     <section className="rounded-xl border bg-white p-4 shadow-sm"><h2 className="mb-3 font-bold text-slate-900">Viaturas</h2>{carregando ? <p className="text-sm text-slate-500">Carregando…</p> : dados.viaturas.length === 0 ? <p className="text-sm text-slate-500">Nenhuma viatura disponível para consulta.</p> : <div className="divide-y">{dados.viaturas.map((viatura) => {
       const checkinsViatura = dados.checkins.filter((item) => item.viatura_id === viatura.id);

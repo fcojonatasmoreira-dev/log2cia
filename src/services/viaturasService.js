@@ -29,11 +29,11 @@ export async function listarHistoricoOperacionalViaturas(filtros = {}) {
   return request(`${API}?${parametros.toString()}`);
 }
 
-export async function criarLinkChecklistViatura(checkinId, etapa) {
+export async function criarLinkChecklistViatura(checkinId) {
   const parametros = new URLSearchParams({ recurso: "checklist-link" });
   return request(`${API}?${parametros.toString()}`, {
     method: "POST",
-    body: JSON.stringify({ checkin_id: checkinId, etapa }),
+    body: JSON.stringify({ checkin_id: checkinId, etapa: "completo" }),
   });
 }
 
