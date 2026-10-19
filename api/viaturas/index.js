@@ -596,11 +596,11 @@ async function processarCheckins(req, res, db, usuario, role) {
     if (body.tipo === "baixa_definitiva" && !["master", "p4"].includes(role)) return respostaErro(res, 403, "Somente Master e P4 podem registrar baixa definitiva.");
     if (!UUID_VALIDO.test(body.checkin_id || "")) return respostaErro(res, 400, "Check-in inválido.");
     if (role === "policial" && !(await policialResponsavelPeloCheckin(db, usuario.id, body.checkin_id))) return respostaErro(res, 403, "Você só pode encerrar um check-in sob sua responsabilidade.");
-    const checklist = validarChecklistViatura(body.checklist);
-    if (!checklist) return respostaErro(res, 400, "Preencha as condições obrigatórias do checklist de saída.");
-    if (body.tipo === "outras_situacoes") checklist.tipo_saida_detalhe = tipoDetalhe;
-    const pathFotos = await guardarFotos(db, fotos, usuario.id);
-    const { data, error } = await db.rpc("viatura_checkout_fechar", { p_checkin_id: body.checkin_id, p_responsavel_id: usuario.id, p_usuario_id: usuario.id, p_km: km, p_tipo: body.tipo, p_checklist: checklist, p_observacoes: texto(body.observacoes) || null, p_fotos: pathFotos });
+    const observacoes = texto(body.observacoes);
+    if (observacoes.length > 3000) return respostaErro(res, 400, "As observações do check-out devem ter até 3000 caracteres.");
+    const checklist = body.tipo === "outras_situacoes" ? { tipo_saida_detalhe: tipoDetalhe } : {};
+    const pathFotos = [];
+    const { data, error } = await db.rpc("viatura_checkout_fechar", { p_checkin_id: body.checkin_id, p_responsavel_id: usuario.id, p_usuario_id: usuario.id, p_km: km, p_tipo: body.tipo, p_checklist: checklist, p_observacoes: observacoes || null, p_fotos: pathFotos });
     if (error) throw error;
     resultado = data;
   } else if (acao === "ocorrencia") {
