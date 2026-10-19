@@ -39,4 +39,6 @@ dist-ssr
 /Contrato_Colaboracao_Tecnica_Log2CIA.md
 /mapa do mdulo P1.html
 /mapa_completo_projeto_log2cia.html
-/supabase/migrations/
+
+# Migrations SQL do Supabase: manter somente no ambiente local
+/supabase/migrations

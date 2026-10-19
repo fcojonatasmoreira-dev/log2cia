@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   supabaseAdmin,
   usuarioAutenticado,
@@ -12,6 +13,161 @@ const PERFIS_BLOQUEADOS_AREAS = ["policial", "armeiro"];
 const SITUACOES_VALIDAS = ["operando", "baixada", "manutencao", "inativa"];
 const TIPOS_VALIDOS = ["organica", "locada", "locada_req"];
 const UUID_VALIDO = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PERFIS_CHECKIN = ["master", "p4", "oficial", "policial"];
+const TIPOS_ENTRADA = ["inicio_servico", "retirada_oficina", "recebimento_opm", "viatura_nova"];
+const TIPOS_SAIDA = ["fim_servico", "encaminhamento_oficina", "devolucao_opm", "baixa_definitiva"];
+const TIPOS_OCORRENCIA = ["avaria", "acidente", "pane", "abastecimento", "outro"];
+
+function normalizarJsonObjeto(valor) {
+  return valor && typeof valor === "object" && !Array.isArray(valor) ? valor : {};
+}
+
+function validarChecklistViatura(valor) {
+  const checklist = normalizarJsonObjeto(valor);
+  const escolhas = {
+    limpeza: ["sim", "nao"],
+    combustivel: ["tanque_cheio", "meio_tanque", "um_quarto", "reserva"],
+    nivel_oleo: ["alto", "medio", "baixo", "outro"],
+    pneus: ["bom", "desgaste", "inadequado", "outro"],
+    arrefecimento: ["alto", "medio", "baixo", "outro"],
+    freios: ["otimo", "bom", "ruim"],
+  };
+  for (const [campo, opcoes] of Object.entries(escolhas)) {
+    if (!opcoes.includes(checklist[campo])) return null;
+  }
+  const opcoesFerramentas = ["Macaco", "Chave de rodas", "Triângulo de sinalização", "Pneu estepe", "Tapetes", "Sem alterações", "Outro"];
+  const opcoesArCondicionado = ["funcionando", "ventilador_sem_gas", "ventilador_nao_funciona", "sem_alteracoes", "outro"];
+  const opcoesEquipamentos = ["Rádio / HT", "Smartphone", "Intermitente", "Sinal sonoro", "Buzina", "Faróis", "Luz de direção (piscas)", "Luz de ré", "Sem alterações", "Outro"];
+  const listaValida = (itens, permitidos) => Array.isArray(itens) && itens.length > 0 && itens.every((item) => permitidos.includes(item)) && (!itens.includes("Sem alterações") || itens.length === 1);
+  if (!listaValida(checklist.ar_condicionado, opcoesArCondicionado) || (checklist.ar_condicionado.includes("sem_alteracoes") && checklist.ar_condicionado.length > 1)) return null;
+  if (!listaValida(checklist.kit_ferramentas, opcoesFerramentas) || !listaValida(checklist.alteracoes_equipamentos, opcoesEquipamentos)) return null;
+  if (checklist.limpeza === "nao" && !texto(checklist.limpeza_motivo_antecessor)) return null;
+  if (checklist.ar_condicionado.includes("outro") && !texto(checklist.ar_condicionado_outro)) return null;
+  if (checklist.kit_ferramentas.includes("Outro") && !texto(checklist.ferramentas_outro)) return null;
+  if (checklist.alteracoes_equipamentos.includes("Outro") && !texto(checklist.alteracoes_equipamentos_outro)) return null;
+  if (checklist.nivel_oleo === "outro" && !texto(checklist.nivel_oleo_outro)) return null;
+  if (checklist.arrefecimento === "outro" && !texto(checklist.arrefecimento_outro)) return null;
+  if (!texto(checklist.pneus_detalhe) || checklist.pneus_detalhe.length > 500) return null;
+  if (typeof checklist.observacoes_gerais !== "string" || checklist.observacoes_gerais.length > 3000) return null;
+  if (checklist.km_proxima_troca_oleo === null || checklist.km_proxima_troca_oleo === "") return null;
+  const kmOleo = Number(checklist.km_proxima_troca_oleo);
+  if (!Number.isFinite(kmOleo) || kmOleo < 0) return null;
+  return checklist;
+}
+
+function normalizarFotos(valor) {
+  return Array.isArray(valor) && valor.length <= 5 && valor.reduce((total, foto) => total + (typeof foto === "string" ? foto.length : 4_000_001), 0) <= 3_800_000 && valor.every((foto) =>
+    typeof foto === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(foto) && foto.length <= 2_800_000,
+  ) ? valor : null;
+}
+
+async function guardarFotos(db, fotos, prefixo) {
+  const paths = [];
+  for (const foto of fotos) {
+    const [, mime, base64] = foto.match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/) || [];
+    if (!base64) throw new Error("Arquivo de foto inválido.");
+    const extensao = mime.split("/")[1].replace("jpeg", "jpg");
+    const path = `viaturas/${prefixo}/${randomUUID()}.${extensao}`;
+    const { error } = await db.storage.from("documentos-seguranca").upload(path, Buffer.from(base64, "base64"), { contentType: mime, upsert: false });
+    if (error) {
+      if (/bucket not found/i.test(error.message || "")) throw Object.assign(new Error("O bucket de fotos documentos-seguranca não está disponível no Supabase."), { code: "STORAGE_BUCKET_MISSING" });
+      throw error;
+    }
+    paths.push(path);
+  }
+  return paths;
+}
+
+async function carregarTodos(queryFactory) {
+  const linhas = [];
+  const tamanhoPagina = 1000;
+  for (let inicio = 0; ; inicio += tamanhoPagina) {
+    const { data, error } = await queryFactory().range(inicio, inicio + tamanhoPagina - 1);
+    if (error) throw error;
+    linhas.push(...(data || []));
+    if (!data || data.length < tamanhoPagina) return linhas;
+  }
+}
+
+async function assinarFotos(db, caminhos) {
+  const unicos = [...new Set((caminhos || []).filter((path) => typeof path === "string" && path.startsWith("viaturas/")))];
+  if (!unicos.length) return new Map();
+  const { data, error } = await db.storage.from("documentos-seguranca").createSignedUrls(unicos, 3600);
+  if (error) {
+    if (/bucket not found/i.test(error.message || "")) throw Object.assign(new Error("O bucket de fotos documentos-seguranca não está disponível no Supabase."), { code: "STORAGE_BUCKET_MISSING" });
+    throw error;
+  }
+  return new Map((data || []).map((item) => [item.path, item.signedUrl]));
+}
+
+async function processarCheckins(req, res, db, usuario, role) {
+  if (!PERFIS_CHECKIN.includes(role)) return respostaErro(res, 403, "Sem permissão para acessar o controle de viaturas.");
+  if (req.method === "GET") {
+    const [{ data: viaturas, error: erroViaturas }, checkins, ocorrencias] = await Promise.all([
+      db.from("viaturas").select("id, identificacao, placa, modelo, situacao, ativo, quilometragem_atual").order("identificacao"),
+      carregarTodos(() => db.from("viatura_checkins").select("*").order("data_hora_inicio", { ascending: false })),
+      carregarTodos(() => db.from("viatura_ocorrencias").select("*").order("data_hora", { ascending: false })),
+    ]);
+    if (erroViaturas) throw erroViaturas;
+    const idsPoliciais = [...new Set([...(checkins || []).flatMap((item) => [item.responsavel_id, item.responsavel_saida_id]), ...(ocorrencias || []).map((item) => item.registrada_por)].filter(Boolean))];
+    const { data: policiais, error: erroPoliciais } = idsPoliciais.length
+      ? await db.from("policiais").select("id, nome_guerra, nome_completo, posto_graduacao, numeral, matricula, unidade, status").in("id", idsPoliciais)
+      : { data: [], error: null };
+    if (erroPoliciais) throw erroPoliciais;
+    const caminhosFotos = [
+      ...(checkins || []).flatMap((item) => [...(item.fotos_entrada || []), ...(item.fotos_saida || [])]),
+      ...(ocorrencias || []).flatMap((item) => item.fotos || []),
+    ];
+    const fotosAssinadas = await assinarFotos(db, caminhosFotos);
+    const pessoas = new Map((policiais || []).map((policial) => [policial.id, policial]));
+    const viaturasPorId = new Map((viaturas || []).map((viatura) => [viatura.id, viatura]));
+    return res.status(200).json({
+      viaturas: viaturas || [],
+      usuario: { id: usuario.id, nome_guerra: usuario.nome_guerra, nome_completo: usuario.nome_completo, posto_graduacao: usuario.posto_graduacao, numeral: usuario.numeral, matricula: usuario.matricula, unidade: usuario.unidade, role },
+      checkins: (checkins || []).map((item) => ({ ...item, viatura: viaturasPorId.get(item.viatura_id), responsavel: pessoas.get(item.responsavel_id), responsavel_saida: pessoas.get(item.responsavel_saida_id), fotos_entrada_urls: (item.fotos_entrada || []).map((path) => fotosAssinadas.get(path)).filter(Boolean), fotos_saida_urls: (item.fotos_saida || []).map((path) => fotosAssinadas.get(path)).filter(Boolean) })),
+      ocorrencias: (ocorrencias || []).map((item) => ({ ...item, viatura: viaturasPorId.get(item.viatura_id), policial: pessoas.get(item.registrada_por), fotos_urls: (item.fotos || []).map((path) => fotosAssinadas.get(path)).filter(Boolean) })),
+    });
+  }
+
+  if (req.method !== "POST") return res.setHeader("Allow", "GET, POST").status(405).json({ error: "Método não permitido." });
+  const body = req.body;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return respostaErro(res, 400, "Dados inválidos.");
+  const acao = texto(body.acao);
+  const fotos = normalizarFotos(body.fotos || []);
+  if (!fotos) return respostaErro(res, 400, "Envie até cinco fotos JPEG, PNG ou WebP, com até 2 MB por foto e 2,8 MB no total.");
+  const km = Number(body.quilometragem);
+  if (!Number.isFinite(km) || km < 0) return respostaErro(res, 400, "Informe uma quilometragem válida.");
+  let resultado;
+  if (acao === "checkin") {
+    if (!TIPOS_ENTRADA.includes(body.tipo)) return respostaErro(res, 400, "Tipo de entrada inválido.");
+    if (!UUID_VALIDO.test(body.viatura_id || "")) return respostaErro(res, 400, "Selecione uma viatura.");
+    const checklist = validarChecklistViatura(body.checklist);
+    if (!checklist) return respostaErro(res, 400, "Preencha as condições obrigatórias do checklist de entrada.");
+    const pathFotos = await guardarFotos(db, fotos, usuario.id);
+    const { data, error } = await db.rpc("viatura_checkin_criar", { p_viatura_id: body.viatura_id, p_responsavel_id: usuario.id, p_usuario_id: usuario.id, p_km: km, p_tipo: body.tipo, p_checklist: checklist, p_observacoes: texto(body.observacoes) || null, p_fotos: pathFotos });
+    if (error) throw error;
+    resultado = data;
+  } else if (acao === "checkout") {
+    if (!TIPOS_SAIDA.includes(body.tipo)) return respostaErro(res, 400, "Tipo de saída inválido.");
+    if (body.tipo === "baixa_definitiva" && !["master", "p4"].includes(role)) return respostaErro(res, 403, "Somente Master e P4 podem registrar baixa definitiva.");
+    if (!UUID_VALIDO.test(body.checkin_id || "")) return respostaErro(res, 400, "Check-in inválido.");
+    const checklist = validarChecklistViatura(body.checklist);
+    if (!checklist) return respostaErro(res, 400, "Preencha as condições obrigatórias do checklist de saída.");
+    const pathFotos = await guardarFotos(db, fotos, usuario.id);
+    const { data, error } = await db.rpc("viatura_checkout_fechar", { p_checkin_id: body.checkin_id, p_responsavel_id: usuario.id, p_usuario_id: usuario.id, p_km: km, p_tipo: body.tipo, p_checklist: checklist, p_observacoes: texto(body.observacoes) || null, p_fotos: pathFotos });
+    if (error) throw error;
+    resultado = data;
+  } else if (acao === "ocorrencia") {
+    if (!TIPOS_OCORRENCIA.includes(body.tipo) || !UUID_VALIDO.test(body.checkin_id || "")) return respostaErro(res, 400, "Tipo ou check-in inválido.");
+    const descricao = texto(body.descricao);
+    if (!descricao || descricao.length > 5000) return respostaErro(res, 400, "Informe uma descrição de até 5000 caracteres.");
+    const pathFotos = await guardarFotos(db, fotos, usuario.id);
+    const { data, error } = await db.rpc("viatura_ocorrencia_criar", { p_checkin_id: body.checkin_id, p_usuario_id: usuario.id, p_tipo: body.tipo, p_descricao: descricao, p_data_hora: body.data_hora || new Date().toISOString(), p_km: km, p_fotos: pathFotos });
+    if (error) throw error;
+    resultado = data;
+  } else return respostaErro(res, 400, "Ação inválida.");
+  return res.status(201).json({ registro: resultado });
+}
 
 function texto(valor) {
   return typeof valor === "string" ? valor.trim() : "";
@@ -216,6 +372,10 @@ export default async function handler(req, res) {
 
     const db = supabaseAdmin();
     const role = normalizarRole(usuario);
+
+    if (req.query?.recurso === "checkins") {
+      return await processarCheckins(req, res, db, usuario, role);
+    }
 
     if (req.query?.recurso === "areas-operacao") {
       return await processarAreasOperacao(req, res, db, role);
@@ -610,6 +770,18 @@ export default async function handler(req, res) {
       .json({ error: "Método não permitido." });
   } catch (error) {
     console.error("Erro na API de viaturas:", error.message);
+    if (error.code === "P0001") return res.status(409).json({ error: error.message });
+    if (error.code === "23505") return respostaErro(res, 409, "A viatura já possui check-in ativo.");
+    if (error.code === "STORAGE_BUCKET_MISSING") return res.status(503).json({ error: error.message });
+    if (error.code === "42601" && /subquery must return only one column/i.test(error.message || "")) {
+      return res.status(500).json({ error: `${error.message} A migration 20261019000100_checkin_checkout_viaturas.sql define retorno composto direto para a RPC de check-in; confira se essa definição já está aplicada no Supabase.` });
+    }
+    if (error.code === "21000") {
+      return res.status(500).json({ error: `${error.message} Confira a função ou consulta remota que originou a cardinalidade antes de aplicar qualquer correção.` });
+    }
+    if (["42P01", "42883", "PGRST202"].includes(error.code)) {
+      return res.status(503).json({ error: "A estrutura do módulo de check-in/check-out ainda não foi criada no Supabase. Revise e aplique a migration 20261019000100_checkin_checkout_viaturas.sql." });
+    }
     return res.status(500).json({
       error: "Não foi possível concluir a operação.",
     });

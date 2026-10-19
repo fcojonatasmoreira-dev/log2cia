@@ -177,6 +177,14 @@ export default function AppLayout({ onLogout }) {
                 <Car className="w-4 h-4 text-cyan-400" /> Viaturas
               </button>
             )}
+            {(isMaster || ["p4", "oficial", "policial"].includes(userRole)) && (
+              <button
+                onClick={() => navegarPara("/checkin-viaturas")}
+                className={`w-full ${getLinkClass("/checkin-viaturas")}`}
+              >
+                <Car className="w-4 h-4 text-emerald-400" /> Check-in Viaturas
+              </button>
+            )}
 
             {/* ABA POLICIAIS - consulta também disponível ao Oficial */}
             {(isArmeiroOrAdmin || isOficial) && (

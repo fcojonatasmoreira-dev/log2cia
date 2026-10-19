@@ -19,6 +19,7 @@ import NovaInsercaoBancoHoras from "../pages/NovaInsercaoBancoHoras";
 import Oficios from "../pages/Oficios";
 import GerenciamentoArquivo from "../pages/GerenciamentoArquivo";
 import Viaturas from "../pages/Viaturas";
+import CheckinsViaturas from "../pages/CheckinsViaturas";
 import AreasOperacao from "../pages/AreasOperacao";
 import DRSO from "../pages/DRSO";
 import EfetivoExternoDRSO from "../pages/EfetivoExternoDRSO";
@@ -102,6 +103,9 @@ export default function AppRoutes() {
             <Route path="inventario" element={<Inventario />} />
             {(usuario.is_master === true || ["master", "p4", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
               <Route path="viaturas" element={<Viaturas />} />
+            )}
+            {(usuario.is_master === true || ["master", "p4", "oficial", "policial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+              <Route path="checkin-viaturas" element={<CheckinsViaturas user={usuario} />} />
             )}
             {["policial", "armeiro"].includes(String(usuario.role || "").trim().toLowerCase()) ? null : (
               <Route path="areas-operacao" element={<AreasOperacao />} />
