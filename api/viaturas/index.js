@@ -253,13 +253,37 @@ async function processarExclusaoHistorico(req, res, db, role) {
   if (error) throw error;
   if (!movimentacao) return respostaErro(res, 404, "Movimentação não encontrada.");
   if (movimentacao.ativo) return respostaErro(res, 409, "Um check-in ativo não pode ser excluído do histórico.");
-  if ((movimentacao.fotos_entrada || []).length || (movimentacao.fotos_saida || []).length) return respostaErro(res, 409, "A movimentação possui fotos vinculadas e não pode ser excluída com segurança.");
   const { data: ocorrencias, error: erroOcorrencias } = await db.from("viatura_ocorrencias").select("id").eq("checkin_id", id).limit(1);
   if (erroOcorrencias) throw erroOcorrencias;
   if (ocorrencias?.length) return respostaErro(res, 409, "A movimentação possui ocorrências vinculadas e não pode ser excluída.");
+
+  const caminhosFotos = [...new Set([...(movimentacao.fotos_entrada || []), ...(movimentacao.fotos_saida || [])])];
+  if (caminhosFotos.some((path) => typeof path !== "string" || !path.startsWith("viaturas/") || path.split("/").includes(".."))) {
+    return respostaErro(res, 409, "As fotos desta movimentação não podem ser removidas com segurança.");
+  }
+  const arquivosFotos = [];
+  for (const path of caminhosFotos) {
+    const { data: arquivo, error: erroDownload } = await db.storage.from("documentos-seguranca").download(path);
+    if (erroDownload || !arquivo) return respostaErro(res, 409, "Não foi possível confirmar as fotos vinculadas; a movimentação foi preservada.");
+    arquivosFotos.push({ path, conteudo: Buffer.from(await arquivo.arrayBuffer()), tipo: arquivo.type || "application/octet-stream" });
+  }
+  if (caminhosFotos.length) {
+    const { error: erroRemocaoFotos } = await db.storage.from("documentos-seguranca").remove(caminhosFotos);
+    if (erroRemocaoFotos) {
+      const restauracoes = await Promise.all(arquivosFotos.map(({ path, conteudo, tipo }) => db.storage.from("documentos-seguranca").upload(path, conteudo, { contentType: tipo, upsert: true })));
+      if (restauracoes.some((resultado) => resultado.error)) return respostaErro(res, 500, "Não foi possível remover as fotos e restaurar os arquivos; contate o suporte antes de repetir a exclusão.");
+      return respostaErro(res, 409, "Não foi possível remover as fotos vinculadas; a movimentação foi preservada.");
+    }
+  }
   const { data, error: erroDelete } = await db.from("viatura_checkins").delete().eq("id", id).select("id").maybeSingle();
-  if (erroDelete) throw erroDelete;
-  if (!data) return respostaErro(res, 404, "Movimentação não encontrada.");
+  if (erroDelete || !data) {
+    if (arquivosFotos.length) {
+      const restauracoes = await Promise.all(arquivosFotos.map(({ path, conteudo, tipo }) => db.storage.from("documentos-seguranca").upload(path, conteudo, { contentType: tipo, upsert: true })));
+      if (restauracoes.some((resultado) => resultado.error)) return respostaErro(res, 500, "A movimentação foi preservada, mas não foi possível restaurar todas as fotos após a falha na exclusão. Contate o suporte.");
+    }
+    if (erroDelete) throw erroDelete;
+    return respostaErro(res, 404, "Movimentação não encontrada.");
+  }
   return res.status(200).json({ excluido: true, tipo });
 }
 

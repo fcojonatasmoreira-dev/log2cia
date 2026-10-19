@@ -195,7 +195,7 @@ export default function HistoricoOperacionalViaturas({ user, onVoltar }) {
 
   async function excluir(tipo, id, etapa = null) {
     const descricao = tipo === "ocorrencia" ? "ocorrência" : tipo === "checklist" ? `checklist de ${etapa}` : "movimentação";
-    const impacto = tipo === "ocorrencia" ? "Comentários e encaminhamentos vinculados serão excluídos na mesma transação; ocorrências com fotos não podem ser removidas por segurança." : tipo === "checklist" ? "Somente as respostas deste checklist serão apagadas; movimentação, fotos e quilometragem serão preservadas." : "Movimentações com fotos ou ocorrências vinculadas não podem ser removidas por segurança.";
+    const impacto = tipo === "ocorrencia" ? "Comentários e encaminhamentos vinculados serão excluídos na mesma transação; ocorrências com fotos não podem ser removidas por segurança." : tipo === "checklist" ? "Somente as respostas deste checklist serão apagadas; movimentação, fotos e quilometragem serão preservadas." : "As fotos vinculadas serão apagadas junto com a movimentação. Registros com ocorrências vinculadas não podem ser removidos. A quilometragem oficial será preservada.";
     if (!window.confirm(`Excluir esta ${descricao} do histórico? ${impacto} A quilometragem oficial da viatura não será alterada.`)) return;
     try {
       await excluirRegistroHistoricoViaturas(tipo, id, etapa);
