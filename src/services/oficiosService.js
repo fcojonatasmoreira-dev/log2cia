@@ -11,7 +11,7 @@ async function request(url, options = {}) {
   return body;
 }
 
-export async function getOficios({ busca = "", data = "", ano = "", estante_id = "", coluna_id = "", pasta_id = "" } = {}) {
+export async function getOficios({ busca = "", data = "", ano = "", estante_id = "", coluna_id = "", pasta_id = "", tipo_origem = "" } = {}) {
   const params = new URLSearchParams();
   if (busca) params.set("busca", busca);
   if (data) params.set("data", data);
@@ -19,6 +19,7 @@ export async function getOficios({ busca = "", data = "", ano = "", estante_id =
   if (estante_id) params.set("estante_id", estante_id);
   if (coluna_id) params.set("coluna_id", coluna_id);
   if (pasta_id) params.set("pasta_id", pasta_id);
+  if (tipo_origem) params.set("tipo_origem", tipo_origem);
   const query = params.toString();
   return request(`${API}${query ? `?${query}` : ""}`);
 }

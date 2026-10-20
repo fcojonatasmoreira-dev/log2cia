@@ -21,6 +21,8 @@ import GerenciamentoArquivo from "../pages/GerenciamentoArquivo";
 import Viaturas from "../pages/Viaturas";
 import CheckinsViaturas from "../pages/CheckinsViaturas";
 import ChecklistPublico from "../pages/ChecklistPublico";
+import SolicitacaoEventoPublica from "../pages/SolicitacaoEventoPublica";
+import Eventos from "../pages/Eventos";
 import AreasOperacao from "../pages/AreasOperacao";
 import DRSO from "../pages/DRSO";
 import EfetivoExternoDRSO from "../pages/EfetivoExternoDRSO";
@@ -79,6 +81,7 @@ export default function AppRoutes() {
     <BrowserRouter>
       <Routes>
         <Route path="/checklist-publico/:token" element={<ChecklistPublico />} />
+        <Route path="/solicitar-evento" element={<SolicitacaoEventoPublica />} />
         {!usuario ? (
           <Route path="*" element={<Login />} />
         ) : usuario.tipo_acesso === "drso_externo" ? (
@@ -113,6 +116,9 @@ export default function AppRoutes() {
               <Route path="areas-operacao" element={<AreasOperacao />} />
             )}
             <Route path="policiais" element={<Policiais />} />
+            {(usuario.is_master === true || ["master", "p1", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+              <Route path="eventos" element={<Eventos user={usuario} />} />
+            )}
             {(usuario.is_master === true || ["master", "p4", "p1", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
               <Route path="oficios" element={<Oficios />} />
             )}

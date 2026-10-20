@@ -80,9 +80,10 @@ export default async function handler(req, res) {
       }
 
       if (tipo === "estante") {
+        const recebeOficiosExternos = req.body?.recebe_oficios_externos === true;
         const { data, error } = await db
           .from("arquivos_estantes")
-          .insert({ nome, ativo: true })
+          .insert({ nome, ativo: true, recebe_oficios_externos: recebeOficiosExternos })
           .select("*")
           .single();
 
@@ -182,12 +183,16 @@ export default async function handler(req, res) {
       const nome = texto(req.body?.nome);
       const ativo =
         typeof req.body?.ativo === "boolean" ? req.body.ativo : undefined;
+      const recebeOficiosExternos =
+        typeof req.body?.recebe_oficios_externos === "boolean"
+          ? req.body.recebe_oficios_externos
+          : undefined;
 
       if (!id || !["estante", "coluna", "pasta"].includes(tipo)) {
         return respostaErro(res, 400, "Informe o item que será alterado.");
       }
 
-      if (nome === "" && ativo === undefined) {
+      if (nome === "" && ativo === undefined && recebeOficiosExternos === undefined) {
         return respostaErro(res, 400, "Informe uma alteração válida.");
       }
 
@@ -204,6 +209,9 @@ export default async function handler(req, res) {
 
       if (nome) atualizacao.nome = nome;
       if (ativo !== undefined) atualizacao.ativo = ativo;
+      if (tipo === "estante" && recebeOficiosExternos !== undefined) {
+        atualizacao.recebe_oficios_externos = recebeOficiosExternos;
+      }
 
       const { data, error } = await db
         .from(tabela)
@@ -236,6 +244,20 @@ export default async function handler(req, res) {
       }
 
       if (tipo === "estante") {
+        const { count: eventosVinculados, error: erroEventos } = await db
+          .from("solicitacoes_eventos")
+          .select("id", { count: "exact", head: true })
+          .eq("estante_id", id);
+
+        if (erroEventos) throw erroEventos;
+        if ((eventosVinculados || 0) > 0) {
+          return respostaErro(
+            res,
+            409,
+            "Não é possível excluir esta estante porque existem solicitações de eventos vinculadas. Desative o recebimento externo para impedir novos envios.",
+          );
+        }
+
         const { count, error } = await db
           .from("arquivos_colunas")
           .select("id", { count: "exact", head: true })

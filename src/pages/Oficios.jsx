@@ -8,7 +8,7 @@ import { getEstruturaArquivo } from "../services/arquivoService";
 function hoje() { return new Date().toISOString().slice(0, 10); }
 function formatarData(data) { if (!data) return "—"; const [ano, mes, dia] = data.split("-"); return `${dia}/${mes}/${ano}`; }
 function formularioInicial() {
-  return { data_oficio: hoje(), remetente: "", destinatario: "", assunto: "", referencia: "", descricao: "", anexos_nominais: [], pasta_id: "" };
+  return { data_oficio: hoje(), tipo_origem: "", remetente: "", destinatario: "", assunto: "", referencia: "", descricao: "", anexos_nominais: [], pasta_id: "" };
 }
 
 export default function Oficios() {
@@ -20,6 +20,7 @@ export default function Oficios() {
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
   const [dataFiltro, setDataFiltro] = useState("");
+  const [tipoFiltro, setTipoFiltro] = useState("");
   const [estanteFiltro, setEstanteFiltro] = useState("");
   const [colunaFiltro, setColunaFiltro] = useState("");
   const [pastaFiltro, setPastaFiltro] = useState("");
@@ -43,7 +44,7 @@ export default function Oficios() {
   const carregar = async () => {
     try {
       setLoading(true); setErro("");
-      const resultado = await getOficios({ busca, data: dataFiltro, estante_id: estanteFiltro, coluna_id: colunaFiltro, pasta_id: pastaFiltro });
+      const resultado = await getOficios({ busca, data: dataFiltro, estante_id: estanteFiltro, coluna_id: colunaFiltro, pasta_id: pastaFiltro, tipo_origem: tipoFiltro });
       setOficios(resultado.oficios || []); setProximoNumero(resultado.proximo_numero || null); setAnoNumero(resultado.ano_numero || new Date().getFullYear());
     } catch (e) { setErro(e.message); } finally { setLoading(false); }
   };
@@ -61,7 +62,7 @@ export default function Oficios() {
   const abrirEdicao = (oficio) => {
     if (!meusOficios.has(oficio.id)) return;
     setOficioEmEdicao(oficio);
-    setForm({ data_oficio: oficio.data_oficio || hoje(), remetente: oficio.remetente || "", destinatario: oficio.destinatario || "", assunto: oficio.assunto || "", referencia: oficio.referencia || "", descricao: oficio.descricao || "", anexos_nominais: Array.isArray(oficio.anexos_nominais) ? oficio.anexos_nominais : [], pasta_id: oficio.pasta_id || "", estante_id: oficio.arquivo?.estante_id || "", coluna_id: oficio.arquivo?.coluna_id || "" });
+    setForm({ data_oficio: oficio.data_oficio || hoje(), tipo_origem: oficio.tipo_origem || "", remetente: oficio.remetente || "", destinatario: oficio.destinatario || "", assunto: oficio.assunto || "", referencia: oficio.referencia || "", descricao: oficio.descricao || "", anexos_nominais: Array.isArray(oficio.anexos_nominais) ? oficio.anexos_nominais : [], pasta_id: oficio.pasta_id || "", estante_id: oficio.arquivo?.estante_id || "", coluna_id: oficio.arquivo?.coluna_id || "" });
     setAnexoAtual(""); setModalAberto(true);
   };
   const atualizarCampo = (campo, valor) => setForm((atual) => ({ ...atual, [campo]: valor }));
@@ -85,7 +86,7 @@ export default function Oficios() {
     setExcluindo(oficio.id); setErro("");
     try { await deleteOficio(oficio.id); await carregar(); } catch (e) { setErro(e.message); } finally { setExcluindo(null); }
   };
-  const limparFiltros = () => { setBusca(""); setDataFiltro(""); setEstanteFiltro(""); setColunaFiltro(""); setPastaFiltro(""); setTimeout(() => carregar(), 0); };
+  const limparFiltros = () => { setBusca(""); setDataFiltro(""); setTipoFiltro(""); setEstanteFiltro(""); setColunaFiltro(""); setPastaFiltro(""); setTimeout(() => carregar(), 0); };
   const executarBusca = (e) => { e?.preventDefault(); carregar(); };
 
   return (
@@ -104,6 +105,7 @@ export default function Oficios() {
             <button type="button" onClick={limparFiltros} className="inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-semibold"><RefreshCw className="w-4 h-4" /> Limpar</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <select value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)} className="px-3 py-2.5 border border-slate-300 rounded-lg text-sm"><option value="">Todos os tipos</option><option value="interno">Internos</option><option value="externo">Externos</option></select>
             <select value={estanteFiltro} onChange={(e) => { setEstanteFiltro(e.target.value); setColunaFiltro(""); setPastaFiltro(""); }} className="px-3 py-2.5 border border-slate-300 rounded-lg text-sm"><option value="">Todas as estantes</option>{estrutura.estantes.filter((e) => e.ativo).map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}</select>
             <select value={colunaFiltro} onChange={(e) => { setColunaFiltro(e.target.value); setPastaFiltro(""); }} className="px-3 py-2.5 border border-slate-300 rounded-lg text-sm"><option value="">Todas as colunas</option>{colunasFiltro.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
             <select value={pastaFiltro} onChange={(e) => setPastaFiltro(e.target.value)} className="px-3 py-2.5 border border-slate-300 rounded-lg text-sm"><option value="">Todas as pastas</option>{pastasFiltro.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</select>
@@ -116,8 +118,8 @@ export default function Oficios() {
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div><h2 className="font-bold text-slate-800">Correspondências registradas</h2><p className="text-xs text-slate-500 mt-0.5">Próximo número disponível: {proximoNumero ? `${String(proximoNumero).padStart(3, "0")}/${anoNumero}` : "—"}</p></div><button type="button" onClick={carregar} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600" title="Atualizar"><RefreshCw className="w-4 h-4" /></button></div>
         {loading ? <div className="p-8 text-center text-sm text-slate-500">Carregando Ofícios...</div> : oficios.length === 0 ? <div className="p-8 text-center text-sm text-slate-500">Nenhum Ofício encontrado.</div> : (
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="text-left px-4 py-3 font-bold">Número</th><th className="text-left px-4 py-3 font-bold">Data</th><th className="text-left px-4 py-3 font-bold">Remetente</th><th className="text-left px-4 py-3 font-bold">Destinatário</th><th className="text-left px-4 py-3 font-bold">Assunto</th><th className="text-left px-4 py-3 font-bold">Arquivo</th><th className="text-right px-4 py-3 font-bold">Ações</th></tr></thead><tbody className="divide-y divide-slate-100">
-            {oficios.map((oficio) => { const meu = meusOficios.has(oficio.id); return <tr key={oficio.id} className="hover:bg-slate-50"><td className="px-4 py-3 font-bold whitespace-nowrap">{oficio.numero}</td><td className="px-4 py-3 whitespace-nowrap">{formatarData(oficio.data_oficio)}</td><td className="px-4 py-3">{oficio.remetente}</td><td className="px-4 py-3">{oficio.destinatario}</td><td className="px-4 py-3 min-w-[220px]">{oficio.assunto}</td><td className="px-4 py-3 min-w-[200px]"><div className="flex items-start gap-1.5 text-slate-600"><Archive className="w-4 h-4 mt-0.5 shrink-0" /><span>{oficio.localizacao_arquivo || "Não informado"}</span></div></td><td className="px-4 py-3"><div className="flex justify-end gap-1">{meu && <><button type="button" onClick={() => abrirEdicao(oficio)} title="Editar meu Ofício" className="p-2 rounded-lg text-blue-600 hover:bg-blue-50"><Pencil className="w-4 h-4" /></button><button type="button" onClick={() => excluir(oficio)} disabled={excluindo === oficio.id} title="Excluir meu Ofício" className="p-2 rounded-lg text-rose-600 hover:bg-rose-50"><Trash2 className="w-4 h-4" /></button></>}</div></td></tr>; })}
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="text-left px-4 py-3 font-bold">Número</th><th className="text-left px-4 py-3 font-bold">Data</th><th className="text-left px-4 py-3 font-bold">Tipo</th><th className="text-left px-4 py-3 font-bold">Remetente</th><th className="text-left px-4 py-3 font-bold">Destinatário</th><th className="text-left px-4 py-3 font-bold">Assunto</th><th className="text-left px-4 py-3 font-bold">Arquivo</th><th className="text-right px-4 py-3 font-bold">Ações</th></tr></thead><tbody className="divide-y divide-slate-100">
+            {oficios.map((oficio) => { const meu = meusOficios.has(oficio.id); return <tr key={oficio.id} className="hover:bg-slate-50"><td className="px-4 py-3 font-bold whitespace-nowrap">{oficio.numero}</td><td className="px-4 py-3 whitespace-nowrap">{formatarData(oficio.data_oficio)}</td><td className="px-4 py-3">{oficio.tipo_origem === "interno" ? "Interno" : oficio.tipo_origem === "externo" ? "Externo" : "Legado"}</td><td className="px-4 py-3">{oficio.remetente}</td><td className="px-4 py-3">{oficio.destinatario}</td><td className="px-4 py-3 min-w-[220px]">{oficio.assunto}</td><td className="px-4 py-3 min-w-[200px]"><div className="flex items-start gap-1.5 text-slate-600"><Archive className="w-4 h-4 mt-0.5 shrink-0" /><span>{oficio.localizacao_arquivo || "Não informado"}</span></div>{oficio.documento_url && <a href={oficio.documento_url} target="_blank" rel="noreferrer" className="mt-1 block text-xs font-semibold text-blue-700 underline">Abrir documento digital</a>}</td><td className="px-4 py-3"><div className="flex justify-end gap-1">{meu && <><button type="button" onClick={() => abrirEdicao(oficio)} title="Editar meu Ofício" className="p-2 rounded-lg text-blue-600 hover:bg-blue-50"><Pencil className="w-4 h-4" /></button><button type="button" onClick={() => excluir(oficio)} disabled={excluindo === oficio.id} title="Excluir meu Ofício" className="p-2 rounded-lg text-rose-600 hover:bg-rose-50"><Trash2 className="w-4 h-4" /></button></>}</div></td></tr>; })}
           </tbody></table></div>
         )}
       </div>
@@ -125,6 +127,7 @@ export default function Oficios() {
       {modalAberto && <div className="fixed inset-0 z-50 bg-slate-950/50 flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto"><div className="flex items-center justify-between px-5 py-4 border-b border-slate-200"><div><h2 className="text-lg font-bold text-slate-800">{oficioEmEdicao ? `Editar Ofício ${oficioEmEdicao.numero}` : "Novo Ofício"}</h2><p className="text-xs text-slate-500 mt-0.5">O número é definido automaticamente pelo sistema.</p></div><button type="button" onClick={() => setModalAberto(false)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"><X className="w-5 h-5" /></button></div>
         <form onSubmit={salvar} className="p-5 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4"><label className="space-y-1.5"><span className="text-xs font-bold text-slate-700">Data *</span><input required type="date" value={form.data_oficio} onChange={(e) => atualizarCampo("data_oficio", e.target.value)} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm" /></label><div className="md:col-span-2 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2.5"><p className="text-xs text-blue-700 font-semibold">Numeração</p><p className="text-sm font-bold text-blue-900 mt-0.5">{oficioEmEdicao ? oficioEmEdicao.numero : `${String(proximoNumero || 1).padStart(3, "0")}/${(form.data_oficio || hoje()).slice(0, 4)}`}</p></div></div>
+          {oficioEmEdicao ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600"><strong>Tipo:</strong> {form.tipo_origem ? (form.tipo_origem === "externo" ? "Externo" : "Interno") : "Registro legado sem classificação"}. A classificação de um registro existente não é alterada por esta edição.</p> : <label className="grid gap-1.5 text-xs font-bold text-slate-700">Tipo de Ofício *<select required value={form.tipo_origem} onChange={(e) => atualizarCampo("tipo_origem", e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"><option value="">Selecione</option><option value="interno">Interno</option><option value="externo">Externo</option></select></label>}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><label className="space-y-1.5"><span className="text-xs font-bold text-slate-700">Remetente *</span><input required value={form.remetente} onChange={(e) => atualizarCampo("remetente", e.target.value)} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm" /></label><label className="space-y-1.5"><span className="text-xs font-bold text-slate-700">Destinatário *</span><input required value={form.destinatario} onChange={(e) => atualizarCampo("destinatario", e.target.value)} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm" /></label></div>
           <label className="space-y-1.5 block"><span className="text-xs font-bold text-slate-700">Assunto *</span><input required value={form.assunto} onChange={(e) => atualizarCampo("assunto", e.target.value)} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm" /></label>
           <label className="space-y-1.5 block"><span className="text-xs font-bold text-slate-700">Referência</span><input value={form.referencia} onChange={(e) => atualizarCampo("referencia", e.target.value)} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm" /></label>

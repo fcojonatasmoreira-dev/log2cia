@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car, CalendarDays, MapPinned } from "lucide-react";
+import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car, CalendarDays, MapPinned, CalendarCheck } from "lucide-react";
 
 export default function AppLayout({ onLogout }) {
   const navigate = useNavigate();
@@ -203,6 +203,15 @@ export default function AppLayout({ onLogout }) {
                 className={`w-full ${getLinkClass("/oficios")}`}
               >
                 <FileText className="w-4 h-4 text-sky-400" /> Ofícios
+              </button>
+            )}
+
+            {(isMaster || ["p1", "oficial"].includes(userRole)) && (
+              <button
+                onClick={() => navegarPara("/eventos")}
+                className={`w-full ${getLinkClass("/eventos")}`}
+              >
+                <CalendarCheck className="w-4 h-4 text-amber-400" /> Eventos
               </button>
             )}
 

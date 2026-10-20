@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { Archive, Plus, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Archive, Plus, Pencil, Printer, RefreshCw, Trash2 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   criarItemArquivo,
   atualizarItemArquivo,
@@ -18,7 +19,9 @@ export default function GerenciamentoArquivo() {
   const [modal, setModal] = useState(null);
   const [nome, setNome] = useState("");
   const [pai, setPai] = useState("");
+  const [recebeOficiosExternos, setRecebeOficiosExternos] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const codigosQrRef = useRef({});
 
   const carregar = async () => {
     try {
@@ -50,6 +53,7 @@ export default function GerenciamentoArquivo() {
     setModal({ tipo });
     setNome("");
     setPai(parentId);
+    setRecebeOficiosExternos(false);
   };
 
   const abrirEdicao = (tipo, item) => {
@@ -59,6 +63,7 @@ export default function GerenciamentoArquivo() {
     });
 
     setNome(item.nome);
+    setRecebeOficiosExternos(item.recebe_oficios_externos === true);
 
     setPai(
       tipo === "coluna"
@@ -81,9 +86,10 @@ export default function GerenciamentoArquivo() {
       if (modal.id) {
         await atualizarItemArquivo(modal.tipo, modal.id, {
           nome: nome.trim(),
+          ...(modal.tipo === "estante" ? { recebe_oficios_externos: recebeOficiosExternos } : {}),
         });
       } else {
-        await criarItemArquivo(modal.tipo, nome.trim(), pai || null);
+        await criarItemArquivo(modal.tipo, nome.trim(), pai || null, recebeOficiosExternos);
       }
 
       setModal(null);
@@ -130,12 +136,41 @@ export default function GerenciamentoArquivo() {
     }
   };
 
+  const imprimirQr = (estante) => {
+    const origem = enderecoPublico;
+    let link;
+    try {
+      const url = new URL(`/solicitar-evento?estante=${encodeURIComponent(estante.id)}`, origem);
+      if (!import.meta.env.DEV && /^(localhost|127\.|0\.0\.0\.0)(:|$)/i.test(url.host)) throw new Error();
+      link = url.toString();
+    } catch {
+      setErro("Configure VITE_PUBLIC_APP_URL com o endereço público ou da rede local para gerar o QR Code de impressão.");
+      return;
+    }
+    const svg = codigosQrRef.current[estante.id]?.querySelector("svg")?.outerHTML;
+    if (!svg) { setErro("Não foi possível preparar o QR Code desta estante."); return; }
+    const janela = window.open("", "_blank", "width=700,height=800");
+    if (!janela) { setErro("Permita a abertura da janela de impressão do navegador."); return; }
+    const escapar = (valor) => String(valor).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll(String.fromCharCode(34), "&quot;").replaceAll(String.fromCharCode(39), "&#39;");
+    janela.document.write(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>QR Code — ${escapar(estante.nome)}</title><style>body{font:16px Arial,sans-serif;text-align:center;margin:32px;color:#172554}main{max-width:520px;margin:auto;border:2px solid #cbd5e1;border-radius:16px;padding:28px}h1{font-size:25px}svg{width:260px;height:260px}p{line-height:1.5}.link{font-size:11px;overflow-wrap:anywhere}@media print{@page{margin:15mm}body{margin:0}main{border:0}}</style><main><h1>${escapar(estante.nome)}</h1><p>Escaneie o QR Code para solicitar apoio para um evento nesta unidade.</p>${svg}<p class="link">${escapar(link)}</p></main><script>window.onload=()=>window.print()</script></html>`);
+    janela.document.close();
+  };
+
   const nomeTipo =
     modal?.tipo === "estante"
       ? "Estante"
       : modal?.tipo === "coluna"
         ? "Coluna"
         : "Pasta";
+
+  const enderecoPublico = (() => {
+    const configurado = import.meta.env.VITE_PUBLIC_APP_URL?.trim();
+    try {
+      const url = new URL(configurado || window.location.origin);
+      if (!import.meta.env.DEV && /^(localhost|127\.|0\.0\.0\.0)(:|$)/i.test(url.host)) return window.location.origin;
+      return url.origin;
+    } catch { return window.location.origin; }
+  })();
 
   return (
     <div className="space-y-5">
@@ -254,6 +289,22 @@ export default function GerenciamentoArquivo() {
                       </button>
                     </div>
                   </div>
+
+                  {estante.ativo && estante.recebe_oficios_externos && (
+                    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-blue-100 bg-blue-50 p-3 sm:flex-row sm:items-center">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-blue-900">Recebimento de ofícios externos ativo</p>
+                        <p className="mt-1 break-all text-xs text-blue-800">{`${enderecoPublico}/solicitar-evento?estante=${encodeURIComponent(estante.id)}`}</p>
+                        <p className="mt-1 text-xs text-blue-700">O formulário público aceita solicitações somente enquanto esta estante estiver ativa e autorizada.</p>
+                      </div>
+                      <div className="flex flex-col items-center gap-2 self-center">
+                        <div ref={(elemento) => { codigosQrRef.current[estante.id] = elemento; }} className="rounded border bg-white p-2">
+                          <QRCodeSVG value={`${enderecoPublico}/solicitar-evento?estante=${encodeURIComponent(estante.id)}`} size={104} level="M" includeMargin />
+                        </div>
+                        <button type="button" onClick={() => imprimirQr(estante)} className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-800"><Printer className="h-4 w-4"/>Imprimir QR Code</button>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                     {colunas.map((coluna) => {
@@ -391,6 +442,21 @@ export default function GerenciamentoArquivo() {
                 placeholder={`Ex.: ${nomeTipo} 1`}
               />
             </label>
+
+            {modal.tipo === "estante" && (
+              <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={recebeOficiosExternos}
+                  onChange={(e) => setRecebeOficiosExternos(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block font-semibold text-slate-800">Receber ofícios externos por QR Code</span>
+                  <span className="mt-1 block text-xs text-slate-500">Ao salvar, o QR Code desta estante ficará disponível para compartilhar o formulário público.</span>
+                </span>
+              </label>
+            )}
 
             {!modal.id && modal.tipo === "coluna" && (
               <p className="text-xs text-slate-500">

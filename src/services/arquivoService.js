@@ -22,13 +22,14 @@ export async function getEstruturaArquivo() {
   return request(API);
 }
 
-export async function criarItemArquivo(tipo, nome, parentId = null) {
+export async function criarItemArquivo(tipo, nome, parentId = null, recebeOficiosExternos = false) {
   return request(API, {
     method: "POST",
     body: JSON.stringify({
       tipo,
       nome,
       parent_id: parentId,
+      recebe_oficios_externos: recebeOficiosExternos,
     }),
   });
 }
