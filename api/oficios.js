@@ -9,7 +9,7 @@ import {
   conflitoDeNumero,
   numeroOficio,
   obterProximoNumero,
-} from "./oficiosNumeracao.js";
+} from "./_oficiosNumeracao.js";
 
 const ROLES_AUTORIZADAS = ["master", "p4", "p1", "oficial"];
 const ROLES_EVENTOS = ["master", "p1", "oficial"];

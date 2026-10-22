@@ -4,7 +4,7 @@ import {
   conflitoDeNumero,
   numeroOficio,
   obterProximoNumero,
-} from "./oficiosNumeracao.js";
+} from "./_oficiosNumeracao.js";
 
 test("formata números internos e de eventos", () => {
   assert.equal(numeroOficio(1, 2026), "001/2026");
