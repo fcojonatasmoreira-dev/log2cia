@@ -5,6 +5,11 @@ import {
   normalizarRole,
   respostaErro,
 } from "./_server.js";
+import {
+  conflitoDeNumero,
+  numeroOficio,
+  obterProximoNumero,
+} from "./_oficiosNumeracao.js";
 
 const ROLES_AUTORIZADAS = ["master", "p4", "p1", "oficial"];
 const ROLES_EVENTOS = ["master", "p1", "oficial"];
@@ -13,10 +18,6 @@ const UUID_VALIDO = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 
 function texto(valor) {
   return typeof valor === "string" ? valor.trim() : "";
-}
-
-function numeroOficio(numero, ano) {
-  return `${String(numero).padStart(3, "0")}/${ano}`;
 }
 
 function normalizarData(valor) {
@@ -29,24 +30,6 @@ function validarAnexos(valor) {
   if (!Array.isArray(valor)) return null;
   const anexos = valor.map(texto).filter(Boolean);
   return anexos.length <= 50 ? anexos : null;
-}
-
-async function obterProximoNumero(db, ano) {
-  const { data, error } = await db
-    .from("oficios")
-    .select("numero_sequencial")
-    .eq("ano", ano)
-    .order("numero_sequencial", { ascending: true });
-  if (error) throw error;
-
-  let esperado = 1;
-  for (const item of data || []) {
-    const numero = Number(item.numero_sequencial);
-    if (numero < esperado) continue;
-    if (numero === esperado) esperado += 1;
-    if (numero > esperado) break;
-  }
-  return esperado;
 }
 
 async function obterEstrutura(db) {
@@ -88,7 +71,11 @@ function formatarOficio(oficio, indiceArquivo) {
   const localizacao = indiceArquivo.localizacaoPorPasta.get(oficio.pasta_id) || null;
   return {
     ...oficio,
-    numero: numeroOficio(oficio.numero_sequencial, oficio.ano),
+    numero: numeroOficio(
+      oficio.numero_sequencial,
+      oficio.ano,
+      Boolean(oficio.solicitacao_evento_id),
+    ),
     localizacao_arquivo: localizacao?.texto || null,
     arquivo: localizacao,
   };
@@ -411,7 +398,7 @@ async function processarEventos(req, res) {
     if (erroPoliciais) throw erroPoliciais;
     const pessoas = new Map((policiais || []).map((item) => [item.id, item]));
     const nomesEstantes = new Map((estantes || []).map((item) => [item.id, item.nome]));
-    const oficioPorEvento = new Map((oficiosRegistrados || []).map((item) => [item.solicitacao_evento_id, `${String(item.numero_sequencial).padStart(3, "0")}/${item.ano}`]));
+    const oficioPorEvento = new Map((oficiosRegistrados || []).map((item) => [item.solicitacao_evento_id, numeroOficio(item.numero_sequencial, item.ano, true)]));
     const interacoesPorEvento = new Map();
     for (const item of visiveis) {
       if (!interacoesPorEvento.has(item.evento_id)) interacoesPorEvento.set(item.evento_id, []);
@@ -513,7 +500,7 @@ async function processarEventos(req, res) {
     }
     const ano = Number(dados.data_oficio.slice(0, 4));
     for (let tentativa = 0; tentativa < 5; tentativa += 1) {
-      const numero = await obterProximoNumero(db, ano);
+      const numero = await obterProximoNumero(db, ano, "evento");
       const { data, error } = await db.from("oficios").insert({
         ...dados,
         tipo_origem: "externo",
@@ -522,12 +509,13 @@ async function processarEventos(req, res) {
         ano,
         criado_por: usuario.id,
       }).select("id,numero_sequencial,ano").single();
-      if (!error) return res.status(201).json({ oficio: { ...data, numero: numeroOficio(data.numero_sequencial, data.ano) } });
+      if (!error) return res.status(201).json({ oficio: { ...data, numero: numeroOficio(data.numero_sequencial, data.ano, true) } });
       if (error.code === "23505") {
         const { data: existente, error: erroExistente } = await db.from("oficios").select("id,numero_sequencial,ano").eq("solicitacao_evento_id", eventoId).maybeSingle();
         if (erroExistente) throw erroExistente;
-        if (existente) return respostaErro(res, 409, `Esta solicitação já foi registrada como Ofício ${numeroOficio(existente.numero_sequencial, existente.ano)}.`);
-        continue;
+        if (existente) return respostaErro(res, 409, `Esta solicitação já foi registrada como Ofício ${numeroOficio(existente.numero_sequencial, existente.ano, true)}.`);
+        if (conflitoDeNumero(error)) continue;
+        throw error;
       }
       throw error;
     }
@@ -584,9 +572,10 @@ export default async function handler(req, res) {
       const estrutura = await obterEstrutura(db);
       const indiceArquivo = indexarEstrutura(estrutura);
       const tipoFiltro = texto(req.query?.tipo_origem);
-      if (tipoFiltro && !["interno", "externo"].includes(tipoFiltro)) return respostaErro(res, 400, "O filtro de tipo do Ofício é inválido.");
+      if (tipoFiltro && !["interno", "externo", "evento"].includes(tipoFiltro)) return respostaErro(res, 400, "O filtro de tipo do Ofício é inválido.");
       let query = db.from("oficios").select("*").order("ano", { ascending: false }).order("numero_sequencial", { ascending: false });
-      if (tipoFiltro) query = query.eq("tipo_origem", tipoFiltro);
+      if (tipoFiltro === "evento") query = query.not("solicitacao_evento_id", "is", null);
+      else if (tipoFiltro) query = query.eq("tipo_origem", tipoFiltro).is("solicitacao_evento_id", null);
       const { data, error } = await query;
       if (error) throw error;
 
@@ -599,13 +588,14 @@ export default async function handler(req, res) {
       const filtrados = (data || []).filter((oficio) => {
         if (dataFiltro && oficio.data_oficio !== dataFiltro) return false;
         if (["interno", "externo"].includes(tipoFiltro) && oficio.tipo_origem !== tipoFiltro) return false;
+        if (tipoFiltro === "evento" && !oficio.solicitacao_evento_id) return false;
         const localizacao = indiceArquivo.localizacaoPorPasta.get(oficio.pasta_id);
         if (estanteFiltro && localizacao?.estante_id !== estanteFiltro) return false;
         if (colunaFiltro && localizacao?.coluna_id !== colunaFiltro) return false;
         if (pastaFiltro && oficio.pasta_id !== pastaFiltro) return false;
         if (!busca) return true;
         const campos = [
-          numeroOficio(oficio.numero_sequencial, oficio.ano),
+          numeroOficio(oficio.numero_sequencial, oficio.ano, Boolean(oficio.solicitacao_evento_id)),
           oficio.remetente,
           oficio.destinatario,
           oficio.assunto,
@@ -632,7 +622,7 @@ export default async function handler(req, res) {
       res.setHeader("Cache-Control", "private, no-store");
 
       const anoConsulta = Number(req.query?.ano) || new Date().getFullYear();
-      const proximoNumero = await obterProximoNumero(db, anoConsulta);
+      const proximoNumero = await obterProximoNumero(db, anoConsulta, texto(req.query?.tipo_numero) === "evento" ? "evento" : "interno");
       return res.status(200).json({
         oficios: filtrados.map((item) => ({
           ...formatarOficio(item, indiceArquivo),
@@ -672,7 +662,7 @@ export default async function handler(req, res) {
           const indice = indexarEstrutura(estrutura);
           return res.status(201).json({ oficio: formatarOficio(data, indice) });
         }
-        if (error.code !== "23505") throw error;
+        if (!conflitoDeNumero(error)) throw error;
       }
       return respostaErro(res, 409, "Não foi possível reservar um número de Ofício. Tente novamente.");
     }
@@ -682,7 +672,7 @@ export default async function handler(req, res) {
       const validacao = validarFormulario(req.body);
       if (validacao.erro) return respostaErro(res, 400, validacao.erro);
 
-      const { data: existente, error: erroBusca } = await db.from("oficios").select("id,criado_por,numero_sequencial,ano").eq("id", id).maybeSingle();
+      const { data: existente, error: erroBusca } = await db.from("oficios").select("id,criado_por,numero_sequencial,ano,solicitacao_evento_id").eq("id", id).maybeSingle();
       if (erroBusca) throw erroBusca;
       if (!existente) return respostaErro(res, 404, "Ofício não encontrado.");
       if (existente.criado_por !== usuario.id) return respostaErro(res, 403, "Você só pode editar seus próprios Ofícios.");
@@ -694,19 +684,24 @@ export default async function handler(req, res) {
       const dados = validacao.dados;
       const ano = Number(dados.data_oficio.slice(0, 4));
       let numeroSequencial = existente.numero_sequencial;
-      if (Number(existente.ano) !== ano) numeroSequencial = await obterProximoNumero(db, ano);
+      if (Number(existente.ano) !== ano) numeroSequencial = await obterProximoNumero(db, ano, existente.solicitacao_evento_id ? "evento" : "interno");
 
-      const { data, error } = await db.from("oficios").update({
-        ...Object.fromEntries(Object.entries(dados).filter(([chave]) => chave !== "tipo_origem")),
-        ano,
-        numero_sequencial: numeroSequencial,
-        atualizado_em: new Date().toISOString(),
-      }).eq("id", id).eq("criado_por", usuario.id).select("*").single();
-      if (error) {
-        if (error.code === "23505") return respostaErro(res, 409, "Já existe outro Ofício com esse número e ano.");
-        throw error;
+      for (let tentativa = 0; tentativa < 5; tentativa += 1) {
+        const { data, error } = await db.from("oficios").update({
+          ...Object.fromEntries(Object.entries(dados).filter(([chave]) => chave !== "tipo_origem")),
+          ano,
+          numero_sequencial: numeroSequencial,
+          atualizado_em: new Date().toISOString(),
+        }).eq("id", id).eq("criado_por", usuario.id).select("*").single();
+        if (!error) return res.status(200).json({ oficio: formatarOficio(data, indexarEstrutura(estrutura)) });
+        if (!conflitoDeNumero(error)) {
+          if (error.code === "23505") return respostaErro(res, 409, "Já existe outro Ofício com esse número e ano.");
+          throw error;
+        }
+        if (Number(existente.ano) !== ano) numeroSequencial = await obterProximoNumero(db, ano, existente.solicitacao_evento_id ? "evento" : "interno");
+        else return respostaErro(res, 409, "Já existe outro Ofício com esse número e ano.");
       }
-      return res.status(200).json({ oficio: formatarOficio(data, indexarEstrutura(estrutura)) });
+      return respostaErro(res, 409, "Não foi possível reservar um número de Ofício. Tente novamente.");
     }
 
     if (req.method === "DELETE") {
