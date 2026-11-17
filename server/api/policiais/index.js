@@ -19,7 +19,7 @@ export function autorizarLeituraPoliciais(usuario, uso) {
     cautelas: ["p4", "armeiro", "oficial"],
     "nova-cautela": ["p4", "armeiro"],
     livro: ["p1", "permanente", "permanente da guarda", "armeiro", "oficial", "p1_escalante_servico_ordinario"],
-    "banco-horas": ["p1"],
+    "banco-horas": ["p1", "oficial"],
     ativos: PERFIS_SISTEMA.filter((perfil) => perfil !== "master"),
   };
   return (permitidos[uso] || []).includes(role);

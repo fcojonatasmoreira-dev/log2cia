@@ -17,6 +17,10 @@ export async function getPoliciais({ uso = "gestao" } = {}) {
   return policiais;
 }
 
+export function getPoliciaisBancoHoras() {
+  return getPoliciais({ uso: "banco-horas" });
+}
+
 export async function getContagemPoliciaisAtivos() {
   const { count } = await request(`${API}?uso=ativos`);
   return count;

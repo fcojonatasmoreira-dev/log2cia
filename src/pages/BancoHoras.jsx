@@ -11,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { getPoliciaisBancoHoras } from "../services/policiaisService";
 
 const dataBR = (valor) => {
   if (!valor) return "—";
@@ -59,20 +60,18 @@ export default function BancoHoras() {
     setCarregando(true);
     setErro("");
     try {
-      const [resBH, resPol] = await Promise.all([
+      const [resBH, policiaisLista] = await Promise.all([
         fetch("/api/banco-horas", { credentials: "include" }),
-        fetch("/api/policiais", { credentials: "include" }),
+        getPoliciaisBancoHoras(),
       ]);
-      const [bh, pol] = await Promise.all([resBH.json(), resPol.json()]);
+      const bh = await resBH.json();
       if (!resBH.ok)
         throw new Error(
           bh.error || "Não foi possível carregar as solicitações.",
         );
-      if (!resPol.ok)
-        throw new Error(pol.error || "Não foi possível carregar os policiais.");
       setSolicitacoes(bh.solicitacoes || []);
       setMovimentacoes(bh.movimentacoes || []);
-      setPoliciais(pol.policiais || []);
+      setPoliciais(policiaisLista || []);
       setPodeEditarMovimentacao(Boolean(bh.permissoes?.editar_movimentacao));
       setPodeExcluirMovimentacao(Boolean(bh.permissoes?.excluir_movimentacao));
     } catch (e) {

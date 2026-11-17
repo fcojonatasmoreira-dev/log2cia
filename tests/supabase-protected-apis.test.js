@@ -4,6 +4,7 @@ import { criarSessao } from "../server/api/auth/_session.js";
 import { usuarioAutenticado } from "../server/api/_server.js";
 import { autorizarLeituraPoliciais } from "../server/api/policiais/index.js";
 import { podeGerenciarTipoEquipamento, podeLerInventario, validarNovoEquipamento } from "../server/api/equipamentos/index.js";
+import { getPoliciaisBancoHoras } from "../src/services/policiaisService.js";
 
 function resposta() {
   return { status(code) { this.statusCode = code; return this; }, json(value) { this.body = value; return this; } };
@@ -47,8 +48,29 @@ test("a listagem de policiais autoriza finalidade e perfil no servidor", () => {
   assert.equal(autorizarLeituraPoliciais({ id: "3", role: "policial" }, "proprio"), true);
   assert.equal(autorizarLeituraPoliciais({ id: "4", role: "p1" }, "nova-cautela"), false);
   assert.equal(autorizarLeituraPoliciais({ id: "4", role: "p1" }, "livro"), true);
+  assert.equal(autorizarLeituraPoliciais({ id: "4", role: "p1" }, "banco-horas"), true);
+  assert.equal(autorizarLeituraPoliciais({ id: "5", role: "oficial" }, "banco-horas"), true);
+  assert.equal(autorizarLeituraPoliciais({ id: "6", role: "p4" }, "banco-horas"), false);
+  assert.equal(autorizarLeituraPoliciais({ id: "7", role: "policial" }, "banco-horas"), false);
+  assert.equal(autorizarLeituraPoliciais({ id: "8", role: "armeiro" }, "banco-horas"), false);
+  assert.equal(autorizarLeituraPoliciais({ id: "9", role: "master" }, "banco-horas"), true);
   assert.equal(autorizarLeituraPoliciais({ id: "5", role: "p4" }, "nova-cautela"), true);
   assert.equal(autorizarLeituraPoliciais({ id: "6", role: "armeiro" }, "gestao"), true);
+});
+
+test("Banco de Horas solicita efetivo pela finalidade que autoriza P1", async () => {
+  const fetchOriginal = globalThis.fetch;
+  let url;
+  globalThis.fetch = async (destino) => {
+    url = destino;
+    return { ok: true, async json() { return { policiais: [{ id: "policial-1" }] }; } };
+  };
+  try {
+    assert.deepEqual(await getPoliciaisBancoHoras(), [{ id: "policial-1" }]);
+    assert.equal(new URL(url, "http://localhost").searchParams.get("uso"), "banco-horas");
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
 });
 
 test("equipamentos aplica perfis por tipo e aceita apenas payload validado", () => {
