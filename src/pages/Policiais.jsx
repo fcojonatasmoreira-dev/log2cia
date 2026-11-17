@@ -169,16 +169,16 @@ export default function Policiais() {
 
     if (
       !confirm(
-        "Confirma o reset da senha deste militar? A senha voltará a ser o padrão e ele precisará redefini-la no próximo acesso.",
+        "Confirma o reset da senha deste militar? Uma senha temporária será gerada e exigirá troca no próximo acesso.",
       )
     ) {
       return;
     }
 
     try {
-      await resetarSenhaPolicial(editingId);
+      const resultado = await resetarSenhaPolicial(editingId);
 
-      alert("Senha resetada com sucesso!");
+      alert(`Senha temporária (exibida uma única vez): ${resultado.senhaTemporaria}\nEntregue-a diretamente ao policial.`);
       setIsModalOpen(false);
       loadPoliciais();
     } catch (err) {
@@ -251,6 +251,7 @@ export default function Policiais() {
         delete dadosParaSalvar.role;
       }
 
+      let senhaTemporaria = null;
       if (editingId) {
         await updatePolicial(editingId, dadosParaSalvar);
       } else {
@@ -258,10 +259,16 @@ export default function Policiais() {
           userRole === "p4"
             ? { ...dadosParaSalvar, role: "policial" }
             : dadosParaSalvar;
-        await createPolicial(dadosNovos);
+        const resultado = await createPolicial(dadosNovos);
+        senhaTemporaria = resultado.senhaTemporaria;
       }
       setIsModalOpen(false);
       loadPoliciais();
+      if (senhaTemporaria) {
+        alert(`Policial cadastrado. Senha temporária (exibida uma única vez): ${senhaTemporaria}\nEntregue-a diretamente ao policial.`);
+      } else if (!editingId && userRole === "p4") {
+        alert("Cadastro realizado sem credencial. O Master deverá provisionar o acesso.");
+      }
     } catch (err) {
       alert(`Erro ao salvar dados: ${err.message}`);
     }

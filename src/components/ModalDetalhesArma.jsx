@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { supabase } from "../lib/supabaseClient";
+import {
+  updateEquipamento,
+  deleteEquipamento,
+  enviarImagemEquipamento,
+} from "../services/equipamentosService";
 
 function formatarTipo(texto) {
   if (!texto) return "Armamento";
@@ -51,6 +55,12 @@ export default function ModalDetalhesArma({
   const [fotoNumeracaoUrl, setFotoNumeracaoUrl] = useState(
     arma?.detalhes?.foto_numeracao_url || "",
   );
+  const [fotoArmaPath, setFotoArmaPath] = useState(
+    arma?.detalhes?.foto_arma_path || "",
+  );
+  const [fotoNumeracaoPath, setFotoNumeracaoPath] = useState(
+    arma?.detalhes?.foto_numeracao_path || "",
+  );
   const [arquivoArma, setArquivoArma] = useState(null);
   const [arquivoNumeracao, setArquivoNumeracao] = useState(null);
 
@@ -81,24 +91,7 @@ export default function ModalDetalhesArma({
 
   async function fazerUploadImagem(file, prefixo) {
     if (!file) return null;
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${prefixo}_${Date.now()}.${fileExt}`;
-    const filePath = `equipamentos/${fileName}`;
-
-    // Bucket correto criado no Supabase
-    const nomeBucket = "documentos-seguranca";
-
-    const { error: uploadError } = await supabase.storage
-      .from(nomeBucket)
-      .upload(filePath, file);
-
-    if (uploadError) throw uploadError;
-
-    const { data: publicUrlData } = supabase.storage
-      .from(nomeBucket)
-      .getPublicUrl(filePath);
-
-    return publicUrlData.publicUrl;
+    return enviarImagemEquipamento(file, prefixo);
   }
 
   const handleSalvarEdicao = async () => {
@@ -115,12 +108,18 @@ export default function ModalDetalhesArma({
     try {
       let novaFotoArma = fotoArmaUrl;
       let novaFotoNum = fotoNumeracaoUrl;
+      let novoCaminhoArma = fotoArmaPath;
+      let novoCaminhoNum = fotoNumeracaoPath;
 
       if (arquivoArma) {
-        novaFotoArma = await fazerUploadImagem(arquivoArma, "arma");
+        const enviada = await fazerUploadImagem(arquivoArma, "arma");
+        novaFotoArma = enviada.url || "";
+        novoCaminhoArma = enviada.path || "";
       }
       if (arquivoNumeracao) {
-        novaFotoNum = await fazerUploadImagem(arquivoNumeracao, "num");
+        const enviada = await fazerUploadImagem(arquivoNumeracao, "num");
+        novaFotoNum = enviada.url || "";
+        novoCaminhoNum = enviada.path || "";
       }
 
       // Trata o patrimônio para enviar null se estiver vazio
@@ -139,17 +138,12 @@ export default function ModalDetalhesArma({
           localizacao_atual: localizacao,
           estado_conservacao: estadoConservacao,
           obs: obs, // <--- Salvando o campo de observações atualizado
-          foto_arma_url: novaFotoArma,
-          foto_numeracao_url: novaFotoNum,
+          foto_arma_path: novoCaminhoArma,
+          foto_numeracao_path: novoCaminhoNum,
         },
       };
 
-      const { error } = await supabase
-        .from("equipamentos")
-        .update(payload)
-        .eq("id", arma.id);
-
-      if (error) throw error;
+      await updateEquipamento(arma.id, payload);
 
       setMensagem({
         tipo: "sucesso",
@@ -186,12 +180,7 @@ export default function ModalDetalhesArma({
 
     setExcluindo(true);
     try {
-      const { error } = await supabase
-        .from("equipamentos")
-        .delete()
-        .eq("id", arma.id);
-
-      if (error) throw error;
+      await deleteEquipamento(arma.id);
 
       alert("Equipamento excluído com sucesso!");
       if (onUpdateSuccess) onUpdateSuccess();

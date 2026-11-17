@@ -1,12 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-import NovaCautela from "../pages/NovaCautela";
-import MinhasCautelas from "../pages/MinhasCautelas";
-import Devolucao from "../pages/Devolucao";
 import AppLayout from "../components/layout/AppLayout";
 import Dashboard from "../pages/Dashboard";
-import Cautelas from "../pages/Cautelas";
 import Inventario from "../pages/Inventario";
 import Policiais from "../pages/Policiais";
 import PainelMaster from "../pages/PainelMaster";
@@ -84,10 +80,10 @@ export default function AppRoutes() {
         <Route path="/solicitar-evento" element={<SolicitacaoEventoPublica />} />
         {!usuario ? (
           <Route path="*" element={<Login />} />
-        ) : usuario.tipo_acesso === "drso_externo" ? (
-          <Route path="*" element={<div className="min-h-screen bg-slate-100"><header className="flex items-center justify-between bg-slate-900 px-4 py-3 text-white"><div><strong>Log2CIA · DRSO</strong><p className="text-xs text-slate-300">Acesso externo restrito ao voluntariado</p></div><button className="rounded-lg border border-slate-600 px-3 py-2 text-sm" onClick={handleLogout}>Sair</button></header><main className="mx-auto max-w-7xl p-4"><DRSO /></main></div>} />
         ) : usuario.primeiro_acesso ? (
           <Route path="*" element={<AlterarSenhaObrigatoria />} />
+        ) : usuario.tipo_acesso === "drso_externo" ? (
+          <Route path="*" element={<div className="min-h-screen bg-slate-100"><header className="flex items-center justify-between bg-slate-900 px-4 py-3 text-white"><div><strong>Log2CIA · DRSO</strong><p className="text-xs text-slate-300">Acesso externo restrito ao voluntariado</p></div><button className="rounded-lg border border-slate-600 px-3 py-2 text-sm" onClick={handleLogout}>Sair</button></header><main className="mx-auto max-w-7xl p-4"><DRSO /></main></div>} />
         ) : (
           <Route
             path="/"
@@ -100,7 +96,6 @@ export default function AppRoutes() {
             }
           >
             <Route index element={<Dashboard />} />
-            <Route path="cautelas" element={<Cautelas />} />
             <Route path="drso" element={<DRSO />} />
             {(usuario.is_master === true || ["master", "p1"].includes(String(usuario.role || "").trim().toLowerCase()) || usuario.permissoes?.gerenciar_drso === true || usuario.drso_escalante === true) && (
               <Route path="drso/efetivo-externo" element={<EfetivoExternoDRSO />} />
@@ -121,15 +116,6 @@ export default function AppRoutes() {
             )}
             {(usuario.is_master === true || ["master", "p4", "p1", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
               <Route path="oficios" element={<Oficios />} />
-            )}
-            {(usuario.is_master === true || ["master", "p4", "armeiro"].includes(String(usuario.role || "").trim().toLowerCase())) && (
-              <Route path="cautelas/nova" element={<NovaCautela />} />
-            )}
-            {String(usuario.role || "").trim().toLowerCase() !== "oficial" && (
-              <Route path="minhas-cautelas" element={<MinhasCautelas />} />
-            )}
-            {(usuario.is_master === true || ["master", "p4", "armeiro"].includes(String(usuario.role || "").trim().toLowerCase())) && (
-              <Route path="devolucao" element={<Devolucao />} />
             )}
 
             <Route

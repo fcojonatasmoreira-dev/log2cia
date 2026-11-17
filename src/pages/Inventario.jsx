@@ -1,7 +1,11 @@
 // ENTREGA INCREMENTAL: Inventario.jsx | 2026-10-02 | v2: cadastro e edição de coletes alinhados (gênero e tamanho).
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabaseClient";
 import ModalDetalhesArma from "../components/ModalDetalhesArma";
+import {
+  getEquipamentos,
+  createEquipamento,
+  enviarImagemEquipamento,
+} from "../services/equipamentosService";
 import {
   classificarEquipamento,
   obterLocalizacaoGravada,
@@ -338,19 +342,13 @@ export default function Inventario() {
   async function carregarDados() {
     setLoading(true);
     try {
-      const { data: equipData, error: equipError } = await supabase
-        .from("equipamentos")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (equipError) throw equipError;
+      const equipData = await getEquipamentos();
       if (equipData) setEquipamentos(equipData);
 
-      const { data: cautelasAtivas, error: cautelasError } = await supabase
-        .from("cautelas")
-        .select("id, tipo_cautela, cautela_itens(equipamento_id)")
-        .eq("status", "ativa");
-      if (cautelasError) throw cautelasError;
+      const cautelasResponse = await fetch("/api/cautelas?uso=ativas", { credentials: "include" });
+      const cautelasBody = await cautelasResponse.json().catch(() => ({}));
+      if (!cautelasResponse.ok) throw new Error(cautelasBody.error || "Não foi possível carregar as cautelas ativas.");
+      const cautelasAtivas = cautelasBody.cautelas;
 
       const mapaCautelas = {};
       (cautelasAtivas || []).forEach((cautela) => {
@@ -384,22 +382,8 @@ export default function Inventario() {
 
   async function fazerUploadImagem(file, prefixo) {
     if (!file) return null;
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${prefixo}_${Date.now()}.${fileExt}`;
-    const filePath = `equipamentos/${fileName}`;
-    const nomeBucket = "documentos-seguranca";
-
-    const { error: uploadError } = await supabase.storage
-      .from(nomeBucket)
-      .upload(filePath, file);
-
-    if (uploadError) throw uploadError;
-
-    const { data: publicUrlData } = supabase.storage
-      .from(nomeBucket)
-      .getPublicUrl(filePath);
-
-    return publicUrlData.publicUrl;
+    const { path } = await enviarImagemEquipamento(file, prefixo);
+    return path;
   }
 
   const handleTipoChange = (val) => {
@@ -483,8 +467,8 @@ export default function Inventario() {
         let detalhesObj = {
           localizacao_atual: novoLocalizacao,
           estado_conservacao: novoEstado,
-          foto_arma_url: foto1Url,
-          foto_numeracao_url: foto2Url,
+          foto_arma_path: foto1Url,
+          foto_numeracao_path: foto2Url,
           obs: observacoes,
         };
 
@@ -518,7 +502,7 @@ export default function Inventario() {
             ? patrimonioFinal.trim()
             : null;
 
-        const { error } = await supabase.from("equipamentos").insert([
+        await createEquipamento(
           {
             tipo: novoTipo.toLowerCase(),
             modelo_descricao: novoModelo,
@@ -527,9 +511,7 @@ export default function Inventario() {
             status: "disponivel",
             detalhes: detalhesObj,
           },
-        ]);
-
-        if (error) throw error;
+        );
         alert("Equipamento cadastrado com sucesso!");
 
         setNovoModelo("");

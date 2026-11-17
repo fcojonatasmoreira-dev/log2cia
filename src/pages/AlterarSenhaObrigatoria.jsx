@@ -70,8 +70,9 @@ export default function AlterarSenhaObrigatoria() {
 
       localStorage.setItem("log2cia_user", JSON.stringify(sessaoSegura));
 
-      // Redireciona limpo para o dashboard
-      window.location.href = "/dashboard";
+      // A sessão antiga foi revogada; entrar novamente cria uma sessão válida.
+      localStorage.removeItem("log2cia_user");
+      window.location.href = "/";
     } catch (err) {
       console.error("Erro no update da senha:", err);
       setErro("Erro ao atualizar senha: " + err.message);

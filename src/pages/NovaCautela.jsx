@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabaseClient";
+import { obterSessao } from "../services/sessionService";
+import { getPoliciais } from "../services/policiaisService";
+import { buscarEquipamento, pesquisarEquipamentos } from "../services/equipamentosService";
+import { executarOperacaoCautela } from "../services/cautelasService";
 import { Html5QrcodeScanner } from "html5-qrcode";
 import { Search } from "lucide-react";
-import { TIPOS_CAUTELA, LOCALIZACOES, STATUS_ACERVO } from "../utils/classificacaoAcervo";
+import { TIPOS_CAUTELA } from "../utils/classificacaoAcervo";
 
 const obterPesoHierarquia = (posto) => {
   const p = String(posto || "")
@@ -60,29 +63,14 @@ export default function NovaCautela() {
 
   async function carregarDadosIniciais() {
     await identificarPolicialLogadoEPerfil();
-    await carregarPoliciais();
   }
 
   async function identificarPolicialLogadoEPerfil() {
     try {
-      const usuarioSalvo = localStorage.getItem("log2cia_user");
-      if (!usuarioSalvo) return;
-
-      const dadosUser = JSON.parse(usuarioSalvo);
-      const matriculaLogada = dadosUser?.matricula;
-      const roleLida = String(dadosUser?.role || "policial")
-        .trim()
-        .toLowerCase();
+      const { user } = await obterSessao();
+      const roleLida = String(user?.role || "policial").trim().toLowerCase();
       setUserRole(roleLida);
-
-      if (matriculaLogada) {
-        const { data: polData } = await supabase
-          .from("policiais")
-          .select("id")
-          .eq("matricula", matriculaLogada)
-          .maybeSingle();
-        if (polData) setPolicialLogadoId(polData.id);
-      }
+      if (user?.id) setPolicialLogadoId(user.id);
     } catch (err) {
       console.error("Aviso ao identificar sessão:", err.message);
     }
@@ -90,11 +78,7 @@ export default function NovaCautela() {
 
   async function carregarPoliciais() {
     try {
-      const { data, error } = await supabase
-        .from("policiais")
-        .select("id, nome_guerra, posto_graduacao, matricula, nome_completo");
-
-      if (error) throw error;
+      const data = await getPoliciais({ uso: "nova-cautela" });
       if (data) {
         const roleAtual = String(userRole || "").toLowerCase();
         let listaTrabalho = data;
@@ -164,13 +148,7 @@ export default function NovaCautela() {
     setArmaEncontrada(null);
 
     try {
-      const { data, error } = await supabase
-        .from("equipamentos")
-        .select("*")
-        .eq("id", idArma)
-        .maybeSingle();
-
-      if (error) throw error;
+      const data = await buscarEquipamento(idArma);
       if (!data) {
         setMensagemErro("Armamento não encontrado pelo QR Code!");
         return;
@@ -196,16 +174,7 @@ export default function NovaCautela() {
     setArmaEncontrada(null);
 
     try {
-      const { data, error } = await supabase
-        .from("equipamentos")
-        .select("*")
-        .or(
-          `num_serie.ilike.%${termo}%,modelo_descricao.ilike.%${termo}%,patrimonio.ilike.%${termo}%`,
-        )
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
+      const data = await pesquisarEquipamentos(termo);
 
       if (!data) {
         setMensagemErro("Armamento não encontrado no acervo com este termo!");
@@ -232,27 +201,6 @@ export default function NovaCautela() {
     setModoDigitacao("manual");
   };
 
-  // Função para gerar o Hash SHA-256 de Emissão de forma síncrona/assíncrona limpa
-  const gerarHashEmissaoDirect = async (
-    cautelaId,
-    matriculaArmeiro,
-    dataStr,
-  ) => {
-    try {
-      const msg = `LOG2CIA-AUDIT-EMISSAO-${cautelaId}-${matriculaArmeiro}-${dataStr}`;
-      const msgBuffer = new TextEncoder().encode(msg);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = hashArray
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
-        .toUpperCase();
-      return hashHex;
-    } catch (e) {
-      return `HASH-FALLBACK-EMISSAO-${Date.now().toString(16).toUpperCase()}`;
-    }
-  };
-
   const handleFinalizarCautela = async (e) => {
     e.preventDefault();
     if (!armaEncontrada) {
@@ -275,68 +223,14 @@ export default function NovaCautela() {
     setMensagemErro("");
 
     try {
-      let matriculaArmeiro = "ARMEIRO";
-      const usuarioSalvo = localStorage.getItem("log2cia_user");
-      if (usuarioSalvo) {
-        const dadosUser = JSON.parse(usuarioSalvo);
-        if (dadosUser?.matricula) matriculaArmeiro = dadosUser.matricula;
-      }
-
-      const dataHoraAtual = new Date().toISOString();
-      const tempId = `temp_${Date.now()}`;
-      const hashEmissaoGerado = await gerarHashEmissaoDirect(
-        tempId,
-        matriculaArmeiro,
-        dataHoraAtual,
-      );
-
-      const dadosNovaCautela = {
+      await executarOperacaoCautela("emitir", {
         policial_id: policialSelecionado,
-        status: "ativa",
+        equipamento_id: armaEncontrada.id,
         tipo_cautela: tipoCautela,
-        status_aceite: "pendente",
-        data_cautela: dataHoraAtual,
-        armeiro_id: policialLogadoId || null,
-        hash_emissao: hashEmissaoGerado, // Garante que o hash de saída já nasce gerado e gravado
-      };
-
-      const { data: novaCautela, error: errCautela } = await supabase
-        .from("cautelas")
-        .insert([dadosNovaCautela])
-        .select()
-        .single();
-
-      if (errCautela) throw errCautela;
-
-      const { error: errItem } = await supabase.from("cautela_itens").insert([
-        {
-          cautela_id: novaCautela.id,
-          equipamento_id: armaEncontrada.id || null,
-          quantidade_carregadores: Math.max(
-            0,
-            parseInt(qtdCarregadores, 10) || 0,
-          ),
-          quantidade_municao: Math.max(0, parseInt(qtdMunicao, 10) || 0),
-          tipo_municao: tipoMunicao,
-        },
-      ]);
-
-      if (errItem) {
-        await supabase.from("cautelas").delete().eq("id", novaCautela.id);
-        throw errItem;
-      }
-
-      await supabase
-        .from("equipamentos")
-        .update({
-          status: STATUS_ACERVO.INDISPONIVEL,
-          detalhes: {
-            ...(armaEncontrada.detalhes || {}),
-            localizacao_atual: LOCALIZACOES.ACAUTELADA,
-            tipo_cautela: tipoCautela,
-          },
-        })
-        .eq("id", armaEncontrada.id);
+        quantidade_carregadores: Math.max(0, parseInt(qtdCarregadores, 10) || 0),
+        quantidade_municao: Math.max(0, parseInt(qtdMunicao, 10) || 0),
+        tipo_municao: tipoMunicao,
+      });
 
       navigate("/cautelas");
     } catch (err) {

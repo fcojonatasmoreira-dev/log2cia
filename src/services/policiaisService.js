@@ -11,14 +11,19 @@ async function request(url, options = {}) {
   return body;
 }
 
-export async function getPoliciais() {
-  const { policiais } = await request(API);
+export async function getPoliciais({ uso = "gestao" } = {}) {
+  const query = new URLSearchParams({ uso });
+  const { policiais } = await request(`${API}?${query}`);
   return policiais;
 }
 
+export async function getContagemPoliciaisAtivos() {
+  const { count } = await request(`${API}?uso=ativos`);
+  return count;
+}
+
 export async function createPolicial(policialData) {
-  const { policial } = await request(API, { method: "POST", body: JSON.stringify(policialData) });
-  return policial;
+  return request(API, { method: "POST", body: JSON.stringify(policialData) });
 }
 
 export async function updatePolicial(id, policialData) {

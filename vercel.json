@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/api/auth/:action",
+      "destination": "/api/gateway?__dispatch=auth/:action"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/gateway?__dispatch=:path*"
+    },
+    {
       "source":"/((?!api/).*)" ,
       "destination": "/index.html"
     }

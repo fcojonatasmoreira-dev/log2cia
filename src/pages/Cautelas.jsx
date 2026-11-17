@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabaseClient";
+import { executarOperacaoCautela } from "../services/cautelasService";
+import { obterSessao } from "../services/sessionService";
+import { getEquipamentos } from "../services/equipamentosService";
 import {
   Search,
   Filter,
@@ -50,44 +52,17 @@ export default function Cautelas() {
   async function carregarSessaoEData() {
     setLoading(true);
     try {
-      let roleLida = "policial";
-      let matriculaLogada = null;
-      let nomeLido = "Militar";
-
-      const usuarioSalvo = localStorage.getItem("log2cia_user");
-      if (usuarioSalvo) {
-        const dadosUser = JSON.parse(usuarioSalvo);
-        roleLida = String(dadosUser?.role || "policial")
-          .trim()
-          .toLowerCase();
-        nomeLido =
-          dadosUser?.nome_guerra || dadosUser?.nome_completo || "Militar";
-        matriculaLogada = dadosUser?.matricula;
-
-        setUserRole(roleLida);
-        setUserName(nomeLido);
-      }
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) setCurrentUser(user);
-
-      let policialIdEncontrado = null;
-      if (matriculaLogada) {
-        const { data: polData } = await supabase
-          .from("policiais")
-          .select("id")
-          .eq("matricula", matriculaLogada)
-          .maybeSingle();
-        if (polData) policialIdEncontrado = polData.id;
-      }
-
+      const { user } = await obterSessao();
+      const roleLida = String(user?.role || "policial").trim().toLowerCase();
+      const policialIdEncontrado = user?.id || null;
+      setCurrentUser(user || null);
+      setUserRole(roleLida);
+      setUserName(user?.nome_guerra || user?.nome_completo || "Militar");
       setUserId(policialIdEncontrado);
 
       const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(roleLida);
-      await carregarCautelas(temAcessoTotal, policialIdEncontrado);
-      await carregarEquipamentosDisponiveis();
+      await carregarCautelas();
+      if (temAcessoTotal) await carregarEquipamentosDisponiveis();
     } catch (err) {
       console.error("Erro ao carregar dados:", err.message);
     } finally {
@@ -97,113 +72,25 @@ export default function Cautelas() {
 
   async function carregarEquipamentosDisponiveis() {
     try {
-      const { data, error } = await supabase
-        .from("equipamentos")
-        .select("id, tipo, modelo_descricao, num_serie, status")
-        .eq("status", "disponivel");
-      if (error) throw error;
-      if (data) setEquipamentosDisponiveis(data);
+      const data = await getEquipamentos({ disponiveis: true });
+      setEquipamentosDisponiveis(data || []);
     } catch (err) {
       console.error("Erro ao carregar equipamentos disponíveis:", err.message);
     }
   }
 
-  async function carregarCautelas(acessoTotal, policialId) {
+  async function carregarCautelas() {
     try {
-      let query = supabase
-        .from("cautelas")
-        .select(
-          `
-          id,
-          status,
-          status_aceite,
-          data_cautela,
-          data_devolucao,
-          alteracoes,
-          hash_emissao,
-          hash_aceite,
-          hash_devolucao,
-          armeiro_id,
-          armeiro_baixa_id,
-          policial_id,
-          cautela_itens (
-            id,
-            quantidade_municao,
-            tipo_municao,
-            quantidade_carregadores,
-            equipamento_id,
-            equipamento:equipamentos (
-              id,
-              tipo,
-              modelo_descricao,
-              num_serie,
-              status
-            )
-          )
-        `,
-        )
-        .order("data_cautela", { ascending: false });
-
-      if (!acessoTotal) {
-        if (policialId) {
-          query = query.eq("policial_id", policialId);
-        } else {
-          setCautelas([]);
-          setLoading(false);
-          return;
-        }
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      if (data) {
-        const { data: policiaisData } = await supabase
-          .from("policiais")
-          .select("id, posto_graduacao, nome_guerra, matricula");
-        const mapPoliciais = {};
-        if (policiaisData) {
-          policiaisData.forEach((p) => {
-            mapPoliciais[p.id] = p;
-          });
-        }
-
-        const dadosEnriquecidos = data.map((c) => ({
-          ...c,
-          policial: mapPoliciais[c.policial_id] || null,
-          armeiro: mapPoliciais[c.armeiro_id] || null,
-          armeiro_baixa: mapPoliciais[c.armeiro_baixa_id] || null,
-        }));
-
-        setCautelas(dadosEnriquecidos);
-      }
+      const response = await fetch("/api/cautelas?uso=lista", { credentials: "include" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Não foi possível consultar as cautelas.");
+      setCautelas(body.cautelas || []);
     } catch (err) {
       console.error("Erro crítico ao carregar cautelas:", err.message);
     } finally {
       setLoading(false);
     }
   }
-
-  const gerarHashEtapa = async (
-    cautelaId,
-    identificadorAtor,
-    etapa,
-    dataStr,
-  ) => {
-    try {
-      const msg = `LOG2CIA-AUDIT-${etapa}-${cautelaId}-${identificadorAtor}-${dataStr}`;
-      const msgBuffer = new TextEncoder().encode(msg);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = hashArray
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
-        .toUpperCase();
-      return hashHex;
-    } catch (e) {
-      return `HASH-FALLBACK-${etapa}-${Date.now().toString(16).toUpperCase()}`;
-    }
-  };
 
   const handleAceitarCautela = async (cautelaObj) => {
     if (userRole === "oficial") {
@@ -212,33 +99,18 @@ export default function Cautelas() {
     }
     setProcessando(true);
     try {
-      const dataHoraAtual = new Date().toISOString();
-      const matriculaPolicial = cautelaObj.policial?.matricula || "MILITAR";
-      const hashAceiteGerado = await gerarHashEtapa(
-        cautelaObj.id,
-        matriculaPolicial,
-        "ACEITE",
-        dataHoraAtual,
+      const { cautela: cautelaAceita } = await executarOperacaoCautela(
+        "registrar-aceite",
+        { cautela_id: cautelaObj.id },
       );
-
-      const { error } = await supabase
-        .from("cautelas")
-        .update({
-          status_aceite: "aceito",
-          hash_aceite: hashAceiteGerado,
-        })
-        .eq("id", cautelaObj.id);
-
-      if (error) throw error;
       alert("Cautela aceita e validada eletronicamente com sucesso!");
-      const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(userRole);
-      await carregarCautelas(temAcessoTotal, userId);
+      await carregarCautelas();
 
       if (cautelaVisualizando && cautelaVisualizando.id === cautelaObj.id) {
         setCautelaVisualizando((prev) => ({
           ...prev,
           status_aceite: "aceito",
-          hash_aceite: hashAceiteGerado,
+          hash_aceite: cautelaAceita?.hash_aceite || prev.hash_aceite,
         }));
       }
     } catch (err) {
@@ -269,28 +141,13 @@ export default function Cautelas() {
 
     setProcessando(true);
     try {
-      const equipamentoIdAntigo = cautela.cautela_itens?.[0]?.equipamento?.id;
-      await supabase
-        .from("cautela_itens")
-        .delete()
-        .eq("cautela_id", cautela.id);
-      const { error } = await supabase
-        .from("cautelas")
-        .delete()
-        .eq("id", cautela.id);
-      if (error) throw error;
-
-      if (equipamentoIdAntigo) {
-        await supabase
-          .from("equipamentos")
-          .update({ status: "disponivel" })
-          .eq("id", equipamentoIdAntigo);
-      }
+      await executarOperacaoCautela("cancelar-pendente", {
+        cautela_id: cautela.id,
+      });
 
       alert("Cautela cancelada com sucesso!");
       setCautelaVisualizando(null);
-      const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(userRole);
-      await carregarCautelas(temAcessoTotal, userId);
+      await carregarCautelas();
       await carregarEquipamentosDisponiveis();
     } catch (err) {
       alert("Erro ao cancelar cautela: " + err.message);
@@ -314,71 +171,27 @@ export default function Cautelas() {
     setProcessando(true);
 
     try {
-      let armeiroBaixaIdFinal = userId;
-      let matriculaArmeiroBaixa = "ARMEIRO";
-
-      const usuarioSalvo = localStorage.getItem("log2cia_user");
-      if (usuarioSalvo) {
-        const dadosUser = JSON.parse(usuarioSalvo);
-        if (dadosUser?.matricula) matriculaArmeiroBaixa = dadosUser.matricula;
+      const item = cautelaDevolvendo.cautela_itens?.[0];
+      if (!item?.id) {
+        throw new Error("A cautela não possui item para devolver.");
       }
 
-      if (!armeiroBaixaIdFinal && usuarioSalvo) {
-        const dadosUser = JSON.parse(usuarioSalvo);
-        if (dadosUser?.matricula) {
-          const { data: polData } = await supabase
-            .from("policiais")
-            .select("id")
-            .eq("matricula", dadosUser.matricula)
-            .maybeSingle();
-          if (polData) armeiroBaixaIdFinal = polData.id;
-        }
-      }
-
-      const equipamentoId =
-        cautelaDevolvendo.cautela_itens?.[0]?.equipamento?.id;
-      const dataHoraAtual = new Date().toISOString();
-      const checklistStatus = `ARMA:${checkArma ? "OK" : "NOK"}|CARREGADORES:${checkCarregadores ? "OK" : "NOK"}|MUNICAO:${checkMunicao ? "OK" : "NOK"}`;
-      const relatorioFormatado = `${checklistStatus} | OBS:${campoAlteracoes ? campoAlteracoes.trim() : "Sem alterações"}`;
-
-      const hashDevolucaoGerado = await gerarHashEtapa(
-        cautelaDevolvendo.id,
-        matriculaArmeiroBaixa,
-        "DEVOLUCAO",
-        dataHoraAtual,
-      );
-
-      const dadosUpdate = {
-        status: "finalizada",
-        data_devolucao: dataHoraAtual,
-        alteracoes: relatorioFormatado,
-        hash_devolucao: hashDevolucaoGerado,
-      };
-
-      if (armeiroBaixaIdFinal) {
-        dadosUpdate.armeiro_baixa_id = armeiroBaixaIdFinal;
-      }
-
-      const { error: errCautela } = await supabase
-        .from("cautelas")
-        .update(dadosUpdate)
-        .eq("id", cautelaDevolvendo.id);
-
-      if (errCautela) throw errCautela;
-
-      if (equipamentoId) {
-        await supabase
-          .from("equipamentos")
-          .update({ status: "disponivel" })
-          .eq("id", equipamentoId);
-      }
+      await executarOperacaoCautela("devolver-gestao", {
+        cautela_id: cautelaDevolvendo.id,
+        item_id: item.id,
+        checklist: {
+          arma: Boolean(checkArma),
+          carregadores: Boolean(checkCarregadores),
+          municao: Boolean(checkMunicao),
+        },
+        observacoes: campoAlteracoes ? campoAlteracoes.trim() : "",
+      });
 
       setCautelaDevolvendo(null);
       alert(
         "Ok, devolução homologada com sucesso! O armamento voltou a ficar disponível.",
       );
-      const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(userRole);
-      await carregarCautelas(temAcessoTotal, userId);
+      await carregarCautelas();
       await carregarEquipamentosDisponiveis();
     } catch (err) {
       alert("Erro ao homologar devolução: " + err.message);
@@ -401,28 +214,11 @@ export default function Cautelas() {
       return;
 
     try {
-      const equipamentoId = cautela.cautela_itens?.[0]?.equipamento?.id;
-      await supabase
-        .from("cautela_itens")
-        .delete()
-        .eq("cautela_id", cautela.id);
-      const { error } = await supabase
-        .from("cautelas")
-        .delete()
-        .eq("id", cautela.id);
-      if (error) throw error;
-
-      if (equipamentoId && cautela.status === "ativa") {
-        await supabase
-          .from("equipamentos")
-          .update({ status: "disponivel" })
-          .eq("id", equipamentoId);
-      }
+      await executarOperacaoCautela("excluir", { cautela_id: cautela.id });
 
       setCautelaVisualizando(null);
       alert("Cautela excluída com sucesso!");
-      const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(userRole);
-      await carregarCautelas(temAcessoTotal, userId);
+      await carregarCautelas();
       await carregarEquipamentosDisponiveis();
     } catch (err) {
       alert("Erro ao excluir cautela: " + err.message);
@@ -437,40 +233,23 @@ export default function Cautelas() {
     try {
       const itemAtual = cautelaEditando.cautela_itens[0] || {};
       const novoEquipamentoId = itemAtual.equipamento_id;
-      const equipamentoAntigoId = cautelaEditando.equipamentoAntigoId;
-
-      const { error: errItem } = await supabase
-        .from("cautela_itens")
-        .update({
-          equipamento_id: novoEquipamentoId || null,
-          quantidade_carregadores:
-            Number(itemAtual.quantidade_carregadores) || 0,
-          quantidade_municao: Number(itemAtual.quantidade_municao) || 0,
-          tipo_municao: itemAtual.tipo_municao || "",
-        })
-        .eq("id", itemAtual.id);
-
-      if (errItem) throw errItem;
-
-      if (
-        equipamentoAntigoId &&
-        novoEquipamentoId &&
-        equipamentoAntigoId !== novoEquipamentoId
-      ) {
-        await supabase
-          .from("equipamentos")
-          .update({ status: "disponivel" })
-          .eq("id", equipamentoAntigoId);
-        await supabase
-          .from("equipamentos")
-          .update({ status: "cautelado" })
-          .eq("id", novoEquipamentoId);
+      if (!itemAtual.id || !novoEquipamentoId) {
+        throw new Error("O item deve permanecer vinculado a um equipamento.");
       }
+
+      await executarOperacaoCautela("editar-item", {
+        cautela_id: cautelaEditando.id,
+        item_id: itemAtual.id,
+        equipamento_id: novoEquipamentoId,
+        quantidade_carregadores:
+          Number(itemAtual.quantidade_carregadores) || 0,
+        quantidade_municao: Number(itemAtual.quantidade_municao) || 0,
+        tipo_municao: itemAtual.tipo_municao || "",
+      });
 
       alert("Cautela atualizada com sucesso!");
       setCautelaEditando(null);
-      const temAcessoTotal = ["master", "p4", "armeiro", "oficial"].includes(userRole);
-      await carregarCautelas(temAcessoTotal, userId);
+      await carregarCautelas();
       await carregarEquipamentosDisponiveis();
     } catch (err) {
       alert("Erro ao atualizar cautela: " + err.message);

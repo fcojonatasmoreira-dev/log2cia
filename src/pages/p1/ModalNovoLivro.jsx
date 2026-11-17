@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { getPoliciais } from "../../services/policiaisService";
 import {
   atualizarLivroPermanencia,
   carregarItensLivro,
@@ -176,9 +176,7 @@ export default function ModalNovoLivro({
   async function carregarPoliciais() {
     setLoadingPoliciais(true);
     try {
-      const { data, error } = await supabase.from("policiais").select("*");
-
-      if (error) throw error;
+      const data = await getPoliciais({ uso: "livro" });
       if (data) setPoliciais(data);
     } catch (err) {
       console.error("Erro ao carregar policiais:", err.message);

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { supabase } from "../lib/supabaseClient";
 import QrScanner from "../components/qr/QrScanner";
+import { executarOperacaoCautela } from "../services/cautelasService";
 
 export default function Devolucao() {
   const [cautelaItem, setCautelaItem] = useState(null);
@@ -11,25 +11,21 @@ export default function Devolucao() {
     setLoading(true);
     setMensagem(null);
 
-    // Busca item ativo vinculado a esse equipamento
-    const { data, error } = await supabase
-      .from("cautela_itens")
-      .select(
-        `
-        id, quantidade_municao, tipo_municao, quantidade_carregadores,
-        cautelas!inner ( id, status, policial_id, profiles ( nome_guerra, posto_graduacao ) ),
-        equipamentos!inner ( id, tipo, modelo, numero_serie )
-      `,
-      )
-      .eq("cautelas.status", "ativa")
-      .or(
-        `equipamento_id.eq.${codigoLido},equipamentos.numero_serie.eq.${codigoLido}`,
-      )
-      .single();
+    let item = null;
+    try {
+      const query = new URLSearchParams({ uso: "devolucao", codigo: String(codigoLido || "") });
+      const response = await fetch(`/api/cautelas?${query}`, { credentials: "include" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Falha na consulta da cautela.");
+      item = body.item;
+    } catch (err) {
+      setMensagem({ tipo: "erro", texto: err.message });
+      return;
+    } finally {
+      setLoading(false);
+    }
 
-    setLoading(false);
-
-    if (error || !data) {
+    if (!item) {
       setMensagem({
         tipo: "erro",
         texto: "Nenhuma cautela ATIVA encontrada para este armamento.",
@@ -37,7 +33,7 @@ export default function Devolucao() {
       return;
     }
 
-    setCautelaItem(data);
+    setCautelaItem(item);
   };
 
   const handleConfirmarDevolucao = async () => {
@@ -45,29 +41,9 @@ export default function Devolucao() {
     setMensagem(null);
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      // 1. Atualiza cautela para devolvida
-      const { error: errCautela } = await supabase
-        .from("cautelas")
-        .update({
-          status: "devolvida",
-          data_devolucao_real: new Date().toISOString(),
-          operador_fechamento_id: user.id,
-        })
-        .eq("id", cautelaItem.cautelas.id);
-
-      if (errCautela) throw errCautela;
-
-      // 2. Libera o equipamento no acervo
-      const { error: errEq } = await supabase
-        .from("equipamentos")
-        .update({ status: "disponivel" })
-        .eq("id", cautelaItem.equipamentos.id);
-
-      if (errEq) throw errEq;
+      await executarOperacaoCautela("devolver-qr", {
+        item_id: cautelaItem.id,
+      });
 
       setMensagem({
         tipo: "sucesso",
@@ -122,8 +98,8 @@ export default function Devolucao() {
               Série: {cautelaItem.equipamentos.numero_serie}
             </span>
             <span className="text-xs text-slate-600 block">
-              Cautelado por: {cautelaItem.cautelas.profiles?.posto_graduacao}{" "}
-              {cautelaItem.cautelas.profiles?.nome_guerra}
+              Cautelado por: {cautelaItem.cautelas.policiais?.posto_graduacao}{" "}
+              {cautelaItem.cautelas.policiais?.nome_guerra}
             </span>
           </div>
 

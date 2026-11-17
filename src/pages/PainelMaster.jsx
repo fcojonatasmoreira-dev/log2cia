@@ -1,19 +1,19 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Shield,
-  KeyRound,
-  CheckCircle2,
   AlertCircle,
   Users,
   UserPlus,
   FileText,
+  KeyRound,
+  RefreshCw,
+  Search,
 } from "lucide-react";
+import { listarGestaoCredenciais, resetarCredencial } from "../services/credenciaisService";
 
 export default function PainelMaster() {
   const navigate = useNavigate();
-  const [solicitacoes, setSolicitacoes] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [modalOperador, setModalOperador] = useState(false);
 
   // Estados para o formulário de Cadastro de Operador
@@ -24,26 +24,56 @@ export default function PainelMaster() {
   const [postoGraduacao, setPostoGraduacao] = useState("Soldado");
   const [role, setRole] = useState("policial");
   const [unidade, setUnidade] = useState("2ª CIA");
-  const [primeiroAcesso, setPrimeiroAcesso] = useState(true);
   const [cadastrando, setCadastrando] = useState(false);
+  const [usuarios, setUsuarios] = useState([]);
+  const [resumoCredenciais, setResumoCredenciais] = useState(null);
+  const [historicoDisponivel, setHistoricoDisponivel] = useState(false);
+  const [carregandoUsuarios, setCarregandoUsuarios] = useState(true);
+  const [erroUsuarios, setErroUsuarios] = useState("");
+  const [buscaUsuarios, setBuscaUsuarios] = useState("");
+  const [resetandoUsuario, setResetandoUsuario] = useState("");
 
-  useEffect(() => {
-    carregarSolicitacoes();
-  }, []);
-
-  async function carregarSolicitacoes() {
-    setLoading(true);
+  const carregarUsuarios = async () => {
+    setCarregandoUsuarios(true);
+    setErroUsuarios("");
     try {
-      const response = await fetch("/api/solicitacoes-senha", { credentials: "include" });
-      const resultado = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(resultado.error || "Não foi possível carregar as solicitações.");
-      setSolicitacoes(resultado.solicitacoes || []);
-    } catch (err) {
-      console.error("Erro ao carregar solicitações de senha:", err.message);
+      const resultado = await listarGestaoCredenciais();
+      setUsuarios(resultado.usuarios || []);
+      setResumoCredenciais(resultado.resumo || null);
+      setHistoricoDisponivel(resultado.historicoDisponivel === true);
+    } catch (error) {
+      setErroUsuarios(error.message);
     } finally {
-      setLoading(false);
+      setCarregandoUsuarios(false);
     }
-  }
+  };
+
+  useEffect(() => { carregarUsuarios(); }, []);
+
+  const usuariosFiltrados = useMemo(() => {
+    const termo = buscaUsuarios.trim().toLocaleLowerCase("pt-BR");
+    if (!termo) return usuarios;
+    return usuarios.filter((usuario) =>
+      `${usuario.nome_completo || ""} ${usuario.nome_guerra || ""} ${usuario.matricula || ""}`
+        .toLocaleLowerCase("pt-BR").includes(termo),
+    );
+  }, [buscaUsuarios, usuarios]);
+
+  const handleResetCredencial = async (usuario) => {
+    const nome = usuario.nome_guerra || usuario.nome_completo || usuario.matricula;
+    if (!window.confirm(`Gerar nova senha temporária para ${nome}? As sessões atuais serão invalidadas.`)) return;
+    const chave = `${usuario.origem}:${usuario.id}`;
+    setResetandoUsuario(chave);
+    try {
+      const resultado = await resetarCredencial(usuario);
+      window.alert(`Senha temporária (exibida uma única vez): ${resultado.senhaTemporaria}\nEntregue-a diretamente ao usuário.`);
+      await carregarUsuarios();
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      setResetandoUsuario("");
+    }
+  };
 
   // Lista de postos que NÃO possuem numeral (Subtenente pra cima)
   const postosSemNumeral = [
@@ -67,32 +97,6 @@ export default function PainelMaster() {
     }
   };
 
-  const handleAprovarReset = async (solicitacao) => {
-    if (
-      !confirm(
-        `Confirma a aprovação de reset de senha para o militar ${solicitacao.nome_guerra} (Mat: ${solicitacao.matricula})? A senha voltará a ser o padrão e ele será obrigado a redefinir no próximo acesso.`,
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/solicitacoes-senha?acao=aprovar&id=${encodeURIComponent(solicitacao.id)}`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const resultado = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(resultado.error || "Não foi possível aprovar a solicitação.");
-
-      alert(
-        "Senha resetada com sucesso! O militar agora está em regime de primeiro acesso.",
-      );
-      carregarSolicitacoes();
-    } catch (err) {
-      alert("Erro ao aprovar reset: " + err.message);
-    }
-  };
-
   const handleCadastrarOperador = async (e) => {
     e.preventDefault();
     setCadastrando(true);
@@ -109,7 +113,7 @@ export default function PainelMaster() {
         posto_graduacao: postoGraduacao,
         role: role.toLowerCase(),
         unidade: unidade.trim(),
-        primeiro_acesso: primeiroAcesso,
+        primeiro_acesso: true,
         status: "EM ATIVIDADE",
       };
 
@@ -122,7 +126,7 @@ export default function PainelMaster() {
       const resultado = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(resultado.error || "Não foi possível cadastrar o operador.");
 
-      alert("Operador cadastrado com sucesso!");
+      alert(`Operador cadastrado. Senha temporária (exibida uma única vez): ${resultado.senhaTemporaria}\nEntregue-a diretamente ao policial.`);
       setNomeCompleto("");
       setNomeGuerra("");
       setMatricula("");
@@ -130,7 +134,6 @@ export default function PainelMaster() {
       setPostoGraduacao("Soldado");
       setRole("policial");
       setUnidade("2ª CIA");
-      setPrimeiroAcesso(true);
       setModalOperador(false);
     } catch (err) {
       alert("Erro ao cadastrar operador: " + err.message);
@@ -148,8 +151,7 @@ export default function PainelMaster() {
             <span>Painel Master — Governança e Segurança</span>
           </h1>
           <p className="text-sm text-slate-500">
-            Gerenciamento absoluto do sistema, cadastros de operadores e
-            aprovação de redefinições de senhas.
+            Cadastros de operadores e gestão exclusiva de credenciais.
           </p>
         </div>
 
@@ -172,6 +174,64 @@ export default function PainelMaster() {
         </button>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Gestão de usuários e credenciais</h2>
+            <p className="text-xs text-slate-500">Acesso administrativo restrito ao Master. Senhas e hashes nunca são exibidos.</p>
+          </div>
+          <button type="button" onClick={carregarUsuarios} disabled={carregandoUsuarios} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50">
+            <RefreshCw className={`h-4 w-4 ${carregandoUsuarios ? "animate-spin" : ""}`} /> Atualizar
+          </button>
+        </div>
+
+        {resumoCredenciais && <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+          {[
+            ["Total", resumoCredenciais.total],
+            ["Policiais", resumoCredenciais.porOrigem?.policiais],
+            ["DRSO externo", resumoCredenciais.porOrigem?.drso_policiais_externos],
+            ["Sem senha", resumoCredenciais.semSenha],
+            ["Primeiro acesso pendente", resumoCredenciais.primeiroAcessoPendente],
+          ].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3">
+            <p className="text-[10px] font-semibold uppercase text-slate-500">{label}</p>
+            <p className="mt-1 text-xl font-bold text-slate-800">{value ?? "—"}</p>
+          </div>)}
+        </div>}
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <label className="relative block w-full sm:max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={buscaUsuarios} onChange={(event) => setBuscaUsuarios(event.target.value)} placeholder="Buscar por nome ou matrícula" className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm" />
+          </label>
+          <span className="text-xs text-slate-500">Credenciais cadastradas: {resumoCredenciais?.credenciaisCadastradas ?? "—"}</span>
+        </div>
+
+        {!carregandoUsuarios && !erroUsuarios && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">{historicoDisponivel ? "O histórico é registrado a partir da ativação desta trilha. Ausência de registro não significa que o usuário nunca acessou ou alterou a senha." : "Histórico de acessos e alterações não está disponível. Ausência de registro não significa que o usuário nunca acessou ou alterou a senha."}</p>}
+        {erroUsuarios && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-xs text-rose-700">{erroUsuarios}</p>}
+        {carregandoUsuarios ? <p className="py-5 text-center text-sm text-slate-500">Carregando usuários...</p> : !erroUsuarios && <div className="overflow-x-auto rounded-xl border border-slate-100">
+          <table className="w-full min-w-[1050px] text-left text-xs">
+            <thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr>
+              <th className="p-3">Usuário</th><th className="p-3">Origem</th><th className="p-3">Perfil</th><th className="p-3">Status cadastral</th><th className="p-3">Credencial</th><th className="p-3">Primeiro acesso</th><th className="p-3">Último login</th><th className="p-3">Última alteração de senha</th><th className="p-3">Ação</th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">{usuariosFiltrados.map((usuario) => {
+              const chave = `${usuario.origem}:${usuario.id}`;
+              const data = (valor) => valor ? new Date(valor).toLocaleString("pt-BR") : "Sem registro disponível";
+              return <tr key={chave}>
+                <td className="p-3"><span className="font-semibold text-slate-800">{usuario.nome_guerra || usuario.nome_completo || "—"}</span><span className="block text-slate-500">{usuario.nome_completo || ""} · {usuario.matricula || "Sem matrícula"}</span></td>
+                <td className="p-3">{usuario.origem === "policiais" ? "Efetivo" : "DRSO externo"}</td>
+                <td className="p-3">{usuario.role}</td><td className="p-3">{usuario.status || "Não informado"}</td>
+                <td className="p-3">{usuario.temSenha ? "Cadastrada" : "Sem senha"}</td>
+                <td className="p-3">{usuario.primeiroAcesso ? "Pendente" : "Concluído"}</td>
+                <td className="p-3">{historicoDisponivel ? data(usuario.ultimoLogin) : "Histórico indisponível"}</td>
+                <td className="p-3">{historicoDisponivel ? data(usuario.ultimaAlteracaoSenha) : "Histórico indisponível"}</td>
+                <td className="p-3"><button type="button" onClick={() => handleResetCredencial(usuario)} disabled={resetandoUsuario === chave} className="inline-flex items-center gap-1 rounded-lg border border-amber-200 px-2 py-1.5 font-semibold text-amber-800 disabled:opacity-50"><KeyRound className="h-3.5 w-3.5" />{resetandoUsuario === chave ? "Gerando..." : "Redefinir"}</button></td>
+              </tr>;
+            })}</tbody>
+          </table>
+          {!usuariosFiltrados.length && <p className="p-5 text-center text-sm text-slate-500">Nenhum usuário encontrado.</p>}
+        </div>}
+      </section>
 
       {modalOperador && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -321,16 +381,15 @@ export default function PainelMaster() {
                 <input
                   type="checkbox"
                   id="primeiroAcessoCheck"
-                  checked={primeiroAcesso}
-                  onChange={(e) => setPrimeiroAcesso(e.target.checked)}
+                  checked
+                  disabled
                   className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
                 />
                 <label
                   htmlFor="primeiroAcessoCheck"
                   className="font-semibold text-slate-700 cursor-pointer"
                 >
-                  Exigir alteração de senha no primeiro acesso (Senha inicial
-                  automática)
+                  Exigir alteração de senha no primeiro acesso (senha temporária)
                 </label>
               </div>
 
@@ -355,63 +414,6 @@ export default function PainelMaster() {
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <KeyRound className="w-5 h-5 text-amber-600" />
-            <h2 className="text-base font-bold text-slate-800">
-              Solicitações Pendentes de Redefinição de Senha
-            </h2>
-          </div>
-          <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full">
-            {solicitacoes.length} pendente(s)
-          </span>
-        </div>
-
-        {loading ? (
-          <p className="text-center py-6 text-slate-400 text-xs">
-            Carregando...
-          </p>
-        ) : solicitacoes.length === 0 ? (
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center text-slate-500 text-xs">
-            Nenhuma solicitação de redefinição de senha pendente no momento.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {solicitacoes.map((sol) => (
-              <div
-                key={sol.id}
-                className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs"
-              >
-                <div className="space-y-1">
-                  <div className="font-bold text-slate-900 text-sm">
-                    {sol.nome_guerra}{" "}
-                    <span className="font-mono font-normal text-slate-500">
-                      (Mat: {sol.matricula})
-                    </span>
-                  </div>
-                  <p className="text-slate-600 font-medium">
-                    <strong>Motivo:</strong> {sol.motivo}
-                  </p>
-                  <p className="text-[10px] text-slate-400 font-mono">
-                    Solicitado em:{" "}
-                    {new Date(sol.created_at).toLocaleString("pt-BR")}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleAprovarReset(sol)}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow transition-all shrink-0 flex items-center gap-1.5"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Aprovar Reset de Senha</span>
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

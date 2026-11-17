@@ -118,13 +118,6 @@ export default function AppLayout({ onLogout }) {
               <span>📊</span> Dashboard
             </button>
 
-            <button
-              onClick={() => navegarPara("/cautelas")}
-              className={`w-full ${getLinkClass("/cautelas")}`}
-            >
-              <span>🔄</span> Cautelas
-            </button>
-
             {/* LIVRO DA PERMANÊNCIA (MÓDULO P1) */}
             {isP1OrAuthorized && (
               <button

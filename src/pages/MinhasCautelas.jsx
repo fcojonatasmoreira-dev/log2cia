@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { executarOperacaoCautela } from "../services/cautelasService";
+import { obterSessao } from "../services/sessionService";
 
 export default function MinhasCautelas() {
   const [cautelasPendentes, setCautelasPendentes] = useState([]);
@@ -14,49 +15,20 @@ export default function MinhasCautelas() {
   async function carregarCautelas() {
     setLoading(true);
     try {
-      // Obtém o usuário logado na sessão unificada do localStorage ou auth
-      let policialId = null;
-      const usuarioSalvo = localStorage.getItem("log2cia_user");
-      if (usuarioSalvo) {
-        const dadosUser = JSON.parse(usuarioSalvo);
-        if (dadosUser?.matricula) {
-          const { data: polData } = await supabase
-            .from("policiais")
-            .select("id")
-            .eq("matricula", dadosUser.matricula)
-            .maybeSingle();
-          if (polData) policialId = polData.id;
-        }
-      }
-
-      if (!policialId) {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) policialId = user.id;
-      }
+      const { user } = await obterSessao();
+      const policialId = user?.id;
 
       if (!policialId) {
         setLoading(false);
         return;
       }
 
-      const { data, error } = await supabase
-        .from("cautelas")
-        .select(
-          `
-          id, status, data_cautela,
-          cautela_itens (
-            quantidade_municao, tipo_municao, quantidade_carregadores, observacoes,
-            equipamentos ( id, tipo, modelo, modelo_descricao, num_serie, numero_serie, calibre )
-          )
-        `,
-        )
-        .eq("policial_id", policialId)
-        .in("status", ["pendente_confirmacao", "ativa"])
-        .order("data_cautela", { ascending: false });
+      const response = await fetch("/api/cautelas?uso=minhas", { credentials: "include" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Não foi possível carregar suas cautelas.");
+      const data = body.cautelas;
 
-      if (!error && data) {
+      if (data) {
         setCautelasPendentes(
           data.filter((c) => c.status === "pendente_confirmacao"),
         );
@@ -73,27 +45,9 @@ export default function MinhasCautelas() {
     setProcessandoId(cautela.id);
 
     try {
-      // 1. Atualiza status da cautela para ativa
-      const { error: errorCautela } = await supabase
-        .from("cautelas")
-        .update({ status: "ativa" })
-        .eq("id", cautela.id);
-
-      if (errorCautela) throw errorCautela;
-
-      // 2. Atualiza status dos equipamentos vinculados para 'cautelado'
-      const equipamentosIds = cautela.cautela_itens
-        .map((i) => i.equipamentos?.id)
-        .filter(Boolean);
-
-      if (equipamentosIds.length > 0) {
-        const { error: errorArma } = await supabase
-          .from("equipamentos")
-          .update({ status: "cautelado" })
-          .in("id", equipamentosIds);
-
-        if (errorArma) throw errorArma;
-      }
+      await executarOperacaoCautela("aceitar-pendencia", {
+        cautela_id: cautela.id,
+      });
 
       alert("Cautela confirmada e assinada com sucesso!");
       carregarCautelas();
