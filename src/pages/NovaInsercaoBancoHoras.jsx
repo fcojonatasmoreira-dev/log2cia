@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Wallet,
 } from "lucide-react";
+import { getPoliciaisBancoHoras } from "../services/policiaisService";
 
 const formatarData = (valor) => {
   if (!valor) return "—";
@@ -38,11 +39,8 @@ export default function NovaInsercaoBancoHoras() {
   const [sucesso, setSucesso] = useState("");
 
   const carregarPoliciais = useCallback(async () => {
-    const response = await fetch("/api/policiais", { credentials: "include" });
-    const json = await response.json();
-    if (!response.ok)
-      throw new Error(json.error || "Não foi possível carregar os policiais.");
-    const lista = (json.policiais || []).filter((p) => p.status !== "inativo");
+    const policiais = await getPoliciaisBancoHoras();
+    const lista = (policiais || []).filter((p) => p.status !== "inativo");
     setPoliciais(lista);
     setPolicialId((atual) =>
       atual && lista.some((p) => p.id === atual) ? atual : "",
