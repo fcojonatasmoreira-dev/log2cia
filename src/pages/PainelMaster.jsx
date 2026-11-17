@@ -9,6 +9,8 @@ import {
   KeyRound,
   RefreshCw,
   Search,
+  Copy,
+  Check,
 } from "lucide-react";
 import { listarGestaoCredenciais, resetarCredencial } from "../services/credenciaisService";
 
@@ -32,6 +34,22 @@ export default function PainelMaster() {
   const [erroUsuarios, setErroUsuarios] = useState("");
   const [buscaUsuarios, setBuscaUsuarios] = useState("");
   const [resetandoUsuario, setResetandoUsuario] = useState("");
+  const [senhaTemporaria, setSenhaTemporaria] = useState("");
+  const [feedbackCopiaSenha, setFeedbackCopiaSenha] = useState("");
+
+  const fecharModalSenha = () => {
+    setSenhaTemporaria("");
+    setFeedbackCopiaSenha("");
+  };
+
+  const copiarSenhaTemporaria = async () => {
+    try {
+      await navigator.clipboard.writeText(senhaTemporaria);
+      setFeedbackCopiaSenha("Senha copiada");
+    } catch {
+      setFeedbackCopiaSenha("Não foi possível copiar. Tente novamente.");
+    }
+  };
 
   const carregarUsuarios = async () => {
     setCarregandoUsuarios(true);
@@ -66,7 +84,7 @@ export default function PainelMaster() {
     setResetandoUsuario(chave);
     try {
       const resultado = await resetarCredencial(usuario);
-      window.alert(`Senha temporária (exibida uma única vez): ${resultado.senhaTemporaria}\nEntregue-a diretamente ao usuário.`);
+      setSenhaTemporaria(resultado.senhaTemporaria || "");
       await carregarUsuarios();
     } catch (error) {
       window.alert(error.message);
@@ -126,7 +144,7 @@ export default function PainelMaster() {
       const resultado = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(resultado.error || "Não foi possível cadastrar o operador.");
 
-      alert(`Operador cadastrado. Senha temporária (exibida uma única vez): ${resultado.senhaTemporaria}\nEntregue-a diretamente ao policial.`);
+      setSenhaTemporaria(resultado.senhaTemporaria || "");
       setNomeCompleto("");
       setNomeGuerra("");
       setMatricula("");
@@ -411,6 +429,59 @@ export default function PainelMaster() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {senhaTemporaria && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="senha-temporaria-titulo"
+            className="w-full max-w-md space-y-5 rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-blue-50 p-2.5 text-blue-700">
+                <KeyRound className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 id="senha-temporaria-titulo" className="text-lg font-bold text-slate-900">Senha temporária gerada</h2>
+                <p className="text-sm text-slate-500">Entregue-a diretamente ao usuário.</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="select-all break-all text-center font-mono text-lg font-semibold tracking-wide text-slate-900">{senhaTemporaria}</p>
+            </div>
+
+            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+              Esta senha será exibida apenas uma vez. Entregue-a diretamente ao usuário.
+            </p>
+
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={copiarSenhaTemporaria}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-800 hover:bg-blue-100"
+              >
+                {feedbackCopiaSenha === "Senha copiada" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                Copiar senha
+              </button>
+              {feedbackCopiaSenha && (
+                <p role="status" aria-live="polite" className={`text-center text-sm font-semibold ${feedbackCopiaSenha === "Senha copiada" ? "text-emerald-700" : "text-rose-700"}`}>
+                  {feedbackCopiaSenha}
+                </p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={fecharModalSenha}
+              className="w-full rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-900"
+            >
+              Concluir
+            </button>
+          </section>
         </div>
       )}
 
