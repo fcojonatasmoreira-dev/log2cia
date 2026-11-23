@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car, CalendarDays, MapPinned, CalendarCheck } from "lucide-react";
+import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car, CalendarDays, MapPinned, CalendarCheck, ArrowLeftRight } from "lucide-react";
 
 export default function AppLayout({ onLogout }) {
   const navigate = useNavigate();
@@ -61,6 +61,7 @@ export default function AppLayout({ onLogout }) {
   const isArmeiroOrAdmin = isMaster || ["p4", "armeiro"].includes(userRole);
   const isOficial = userRole === "oficial";
   const isBancoHorasGestor = isMaster || userRole === "p1" || isOficial;
+  const podeAcessarPermutas = isMaster || ["policial", "p1", "p1_escalante_servico_ordinario", "oficial"].includes(userRole);
 
   // Livro da Permanência: o escalante do serviço ordinário recebe as ações Master só neste módulo.
   const isP1OrAuthorized =
@@ -150,6 +151,15 @@ export default function AppLayout({ onLogout }) {
             >
               <Clock3 className="w-4 h-4 text-emerald-400" /> Banco de Horas
             </button>
+
+            {podeAcessarPermutas && (
+              <button
+                onClick={() => navegarPara("/permutas")}
+                className={`w-full ${getLinkClass("/permutas")}`}
+              >
+                <ArrowLeftRight className="w-4 h-4 text-cyan-400" /> Permutas de Serviço
+              </button>
+            )}
 
             {/* ACERVO / INVENTÁRIO - consulta também disponível ao Oficial */}
             {(isArmeiroOrAdmin || isOficial) && (

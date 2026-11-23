@@ -21,6 +21,14 @@ export function getPoliciaisBancoHoras() {
   return getPoliciais({ uso: "banco-horas" });
 }
 
+export function getPoliciaisPermutas() {
+  return getPoliciais({ uso: "permutas" });
+}
+
+export function getPoliciaisPermutasCalendario() {
+  return getPoliciais({ uso: "permutas-calendario" });
+}
+
 export async function getContagemPoliciaisAtivos() {
   const { count } = await request(`${API}?uso=ativos`);
   return count;

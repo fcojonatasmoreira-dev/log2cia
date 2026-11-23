@@ -22,6 +22,7 @@ import Eventos from "../pages/Eventos";
 import AreasOperacao from "../pages/AreasOperacao";
 import DRSO from "../pages/DRSO";
 import EfetivoExternoDRSO from "../pages/EfetivoExternoDRSO";
+import Permutas from "../pages/Permutas";
 import { obterSessao, logout } from "../services/sessionService";
 
 export default function AppRoutes() {
@@ -97,6 +98,9 @@ export default function AppRoutes() {
           >
             <Route index element={<Dashboard />} />
             <Route path="drso" element={<DRSO />} />
+            {(usuario.is_master === true || ["master", "policial", "p1", "p1_escalante_servico_ordinario", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+              <Route path="permutas" element={<Permutas user={usuario} />} />
+            )}
             {(usuario.is_master === true || ["master", "p1"].includes(String(usuario.role || "").trim().toLowerCase()) || usuario.permissoes?.gerenciar_drso === true || usuario.drso_escalante === true) && (
               <Route path="drso/efetivo-externo" element={<EfetivoExternoDRSO />} />
             )}

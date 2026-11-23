@@ -1,6 +1,7 @@
 import { supabaseAdmin, usuarioAutenticado, normalizarRole, respostaErro, semSenha } from "../_server.js";
 import { gerarSenhaTemporaria, hashSenha } from "../auth/_password.js";
 import { definirCredencialMaster } from "../_credentialAudit.js";
+import { ehPostoOficial, ordenarPoliciaisHierarquicamente } from "../../../src/utils/hierarquiaPolicial.js";
 
 const CAMPOS = [
   "nome_completo", "nome_guerra", "matricula", "posto_graduacao",
@@ -20,6 +21,8 @@ export function autorizarLeituraPoliciais(usuario, uso) {
     "nova-cautela": ["p4", "armeiro"],
     livro: ["p1", "permanente", "permanente da guarda", "armeiro", "oficial", "p1_escalante_servico_ordinario"],
     "banco-horas": ["p1", "oficial"],
+    permutas: ["policial", "p1", "p1_escalante_servico_ordinario", "oficial"],
+    "permutas-calendario": ["p1", "p1_escalante_servico_ordinario", "oficial"],
     ativos: PERFIS_SISTEMA.filter((perfil) => perfil !== "master"),
   };
   return (permitidos[uso] || []).includes(role);
@@ -79,6 +82,23 @@ export default async function handler(req, res) {
         const { count, error } = await db.from("policiais").select("id", { count: "exact", head: true }).eq("status", "EM ATIVIDADE");
         if (error) throw error;
         return res.status(200).json({ count: count || 0 });
+      }
+      if (uso === "permutas") {
+        const { data, error } = await db.from("policiais")
+          .select("id,nome_guerra,posto_graduacao,numeral,status")
+          .eq("status", "EM ATIVIDADE")
+          .neq("id", usuario.id);
+        if (error) throw error;
+        const elegiveis = (data || [])
+          .filter((policial) => policial.id !== usuario.id && policial.status === "EM ATIVIDADE" && !ehPostoOficial(policial.posto_graduacao))
+          .map(({ id, nome_guerra, posto_graduacao, numeral }) => ({ id, nome_guerra, posto_graduacao, numeral }));
+        return res.status(200).json({ policiais: ordenarPoliciaisHierarquicamente(elegiveis) });
+      }
+      if (uso === "permutas-calendario") {
+        const { data, error } = await db.from("policiais")
+          .select("id,nome_guerra,posto_graduacao,numeral").order("nome_guerra", { ascending: true });
+        if (error) throw error;
+        return res.status(200).json({ policiais: data || [] });
       }
       const campos = uso === "gestao"
         ? CAMPOS_LEITURA

@@ -91,3 +91,23 @@ Os testes SQL exercitam banco e permissões. A regra de que apenas Master inicia
 provisionamento/reset e a invalidação efetiva de cookies são validadas pelos
 testes Node existentes, não pela RPC isolada: `service_role` é a identidade
 técnica e recebe o `ator_id` validado no backend.
+
+## Validação local de Permutas
+
+`run-permutas-validation.sh` aplica a fixture `fixture-permutas-schema.sql`, a
+migration manual de Permutas e as assertions de `assert-permutas.sql` em um
+banco novo. Também testa concorrência com duas conexões e rollback da migration
+em outro banco vazio. O script exige uma imagem `postgres:17.6` em container
+com `--network=none`, sem portas publicadas; executa tudo por `podman exec` e
+recusa bancos com nomes já existentes.
+
+Inicie um container descartável com a mesma credencial temporária descrita
+acima, retirando `--publish` e acrescentando `--network=none`. Depois rode:
+
+```bash
+bash tests/postgres/run-permutas-validation.sh NOME_DO_CONTAINER
+```
+
+Não reutilize o container após a criação dos bancos de teste. Para repetir,
+inicie outro PostgreSQL 17.6 vazio. Nenhuma instrução desta seção acessa o
+Supabase.

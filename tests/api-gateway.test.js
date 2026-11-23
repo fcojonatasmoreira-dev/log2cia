@@ -15,6 +15,7 @@ test("mapeia todos os endpoints existentes e parâmetros dinâmicos", () => {
     ["drso", "drso/index", {}],
     ["equipamentos", "equipamentos/index", {}],
     ["oficios", "oficios", {}],
+    ["permutas", "permutas/index", {}],
     ["policiais", "policiais/index", {}],
     ["policiais/p-123", "policiais/[id]", { id: "p-123" }],
     ["policiais/p-123/cautelas", "policiais/[id]/[action]", { id: "p-123", action: "cautelas" }],
@@ -34,13 +35,13 @@ test("todos os handlers reais migrados podem ser carregados pelo runtime Node", 
     "../server/api/auth/[action].js", "../server/api/arquivo.js",
     "../server/api/banco-horas/index.js", "../server/api/cautelas.js", "../server/api/credenciais.js", "../server/api/dashboard.js", "../server/api/drso/index.js",
     "../server/api/equipamentos/index.js",
-    "../server/api/oficios.js", "../server/api/policiais/index.js",
+    "../server/api/oficios.js", "../server/api/permutas/index.js", "../server/api/policiais/index.js",
     "../server/api/policiais/[id].js", "../server/api/policiais/[id]/[action].js",
     "../server/api/radios/index.js",
     "../server/api/viaturas/index.js",
   ];
   const handlers = await Promise.all(modulos.map((caminho) => import(caminho)));
-  assert.equal(handlers.length, 14);
+  assert.equal(handlers.length, 15);
   assert.ok(handlers.every((modulo) => typeof modulo.default === "function"));
 });
 
@@ -60,7 +61,7 @@ test("configuração mantém uma única função roteável e encaminha /api sem 
     destination: "/api/gateway?__dispatch=:path*",
   });
   assert.equal(config.rewrites[2].destination, "/index.html");
-  assert.equal(identificarRota("equipes"), null, "módulo fora do escopo não entra no gateway publicado");
+  assert.equal(identificarRota("equipes"), null, "módulo Equipes arquivado continua fora do gateway publicado");
 });
 
 test("repassa método, URL, corpo, cabeçalhos e resposta sem serialização", async () => {

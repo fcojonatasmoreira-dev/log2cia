@@ -10,6 +10,7 @@ const carregadores = {
   "drso/index": () => import("./drso/index.js"),
   "equipamentos/index": () => import("./equipamentos/index.js"),
   oficios: () => import("./oficios.js"),
+  "permutas/index": () => import("./permutas/index.js"),
   "policiais/index": () => import("./policiais/index.js"),
   "policiais/[id]": () => import("./policiais/[id].js"),
   "policiais/[id]/[action]": () => import("./policiais/[id]/[action].js"),
@@ -51,6 +52,7 @@ function identificarRota(caminho) {
     drso: "drso/index",
     equipamentos: "equipamentos/index",
     oficios: "oficios",
+    permutas: "permutas/index",
     radios: "radios/index",
     viaturas: "viaturas/index",
   };
