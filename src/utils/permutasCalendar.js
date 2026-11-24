@@ -88,6 +88,36 @@ export function criarEventosCalendario(permutas, filtros = {}) {
     || a.permuta.id.localeCompare(b.permuta.id));
 }
 
+export function criarEventosDispensasCalendario(dispensas, filtros = {}) {
+  if ((filtros.status && filtros.status !== "DEFERIDA") || filtros.tipo || filtros.participacao) return [];
+  return (dispensas || []).filter((dispensa) => {
+    const dataServico = String(dispensa.data_servico || "").slice(0, 10);
+    return dispensa.tipo === undefined || dispensa.tipo === "dispensa"
+      ? dispensa.status === "deferida"
+        && (!filtros.policialId || dispensa.policial_id === filtros.policialId)
+        && dataUtc(dataServico)
+        && (!filtros.dataInicio || dataServico >= filtros.dataInicio)
+        && (!filtros.dataFim || dataServico <= filtros.dataFim)
+      : false;
+  }).map((dispensa) => ({
+    tipoEvento: "dispensa",
+    dispensa,
+    dataServico: String(dispensa.data_servico).slice(0, 10),
+    dataMarcacao: String(dispensa.data_servico).slice(0, 10),
+    chaveParticipacao: "dispensa",
+  })).sort((a, b) => a.dataMarcacao.localeCompare(b.dataMarcacao)
+    || String(a.dispensa.turno || "").localeCompare(String(b.dispensa.turno || ""))
+    || String(a.dispensa.id).localeCompare(String(b.dispensa.id)));
+}
+
+export function criarEventosCalendarioCompleto(permutas, dispensas, filtros = {}) {
+  return [
+    ...criarEventosCalendario(permutas, filtros),
+    ...criarEventosDispensasCalendario(dispensas, filtros),
+  ].sort((a, b) => a.dataMarcacao.localeCompare(b.dataMarcacao)
+    || (a.tipoEvento === "dispensa" ? 1 : 0) - (b.tipoEvento === "dispensa" ? 1 : 0));
+}
+
 export function filtrarServicosDeferidosPassados(permutas, agora = new Date()) {
   const hoje = dataLocalHoje(agora);
   const horaAtual = `${String(agora.getHours()).padStart(2, "0")}:${String(agora.getMinutes()).padStart(2, "0")}:${String(agora.getSeconds()).padStart(2, "0")}`;

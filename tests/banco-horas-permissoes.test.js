@@ -11,7 +11,7 @@ function resposta() {
   };
 }
 
-async function executar({ role, method, body = {}, query = {} }) {
+async function executar({ role, method, body = {}, query = {}, actorId = "ator-1" }) {
   const anterior = {
     fetch: globalThis.fetch,
     sessionSecret: process.env.SESSION_SECRET,
@@ -25,11 +25,11 @@ async function executar({ role, method, body = {}, query = {} }) {
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(typeof input === "string" ? input : input.url);
     const metodo = (init.method || "GET").toUpperCase();
-    chamadas.push({ path: url.pathname, metodo });
+    chamadas.push({ path: url.pathname, metodo, search: url.searchParams });
 
     if (url.pathname === "/rest/v1/policiais") {
       return Response.json({
-        id: "ator-1",
+        id: actorId,
         auth_version: 0,
         role,
         credencial_provisionada: true,
@@ -45,6 +45,10 @@ async function executar({ role, method, body = {}, query = {} }) {
       return Response.json({ id: "movimentacao-1" });
     }
 
+    if (url.pathname === "/rest/v1/banco_horas_solicitacoes") {
+      return Response.json([{ id: "dispensa-1", tipo: "dispensa", status: "deferida" }]);
+    }
+
     return Response.json({ message: "Requisição inesperada no teste." }, { status: 404 });
   };
 
@@ -53,7 +57,7 @@ async function executar({ role, method, body = {}, query = {} }) {
     query,
     body,
     headers: {
-      cookie: `log2cia_session=${criarSessao({ id: "ator-1", auth_version: 0 })}`,
+      cookie: `log2cia_session=${criarSessao({ id: actorId, auth_version: 0 })}`,
     },
   };
   const res = resposta();
@@ -158,4 +162,50 @@ test("validação inválida continua distinta de autorização negada", async ()
   const p4 = await executar({ role: "p4", method: "POST", body });
   assert.equal(p4.status, 403);
   assert.equal(p4.chamadas.some(({ path }) => path === "/rest/v1/banco_horas_movimentacoes"), false);
+});
+
+test("consulta do calendário devolve somente dispensas deferidas e campos operacionais mínimos", async () => {
+  const ator = "11111111-1111-4111-8111-111111111111";
+  const resultado = await executar({
+    role: "policial",
+    actorId: ator,
+    method: "GET",
+    query: { uso: "permutas-calendario", policiais_ids: ator, data_inicio: "2026-11-01", data_fim: "2026-11-30" },
+  });
+  assert.equal(resultado.status, 200);
+  const consulta = resultado.chamadas.find(({ path }) => path === "/rest/v1/banco_horas_solicitacoes");
+  assert.ok(consulta);
+  assert.equal(consulta.search.get("select"), "id,policial_id,data_servico,turno,turno_descricao,horas_solicitadas,origem_dispensa,status");
+  assert.deepEqual(consulta.search.getAll("tipo"), ["eq.dispensa"]);
+  assert.deepEqual(consulta.search.getAll("status"), ["eq.deferida"]);
+  assert.equal(consulta.search.get("policial_id"), `in.(${ator})`);
+  assert.equal(resultado.chamadas.some(({ path }) => path === "/rest/v1/banco_horas_movimentacoes"), false);
+});
+
+test("policial comum não consulta dispensas de outro policial", async () => {
+  const ator = "11111111-1111-4111-8111-111111111111";
+  const outro = "22222222-2222-4222-8222-222222222222";
+  const resultado = await executar({
+    role: "policial",
+    actorId: ator,
+    method: "GET",
+    query: { uso: "permutas-calendario", policiais_ids: outro, data_inicio: "2026-11-01", data_fim: "2026-11-30" },
+  });
+  assert.equal(resultado.status, 403);
+  assert.equal(resultado.chamadas.some(({ path }) => path === "/rest/v1/banco_horas_solicitacoes"), false);
+});
+
+test("P1, escalante P1, Oficial e Master consultam dispensas do calendário autorizado", async () => {
+  const ator = "11111111-1111-4111-8111-111111111111";
+  const alvo = "22222222-2222-4222-8222-222222222222";
+  for (const role of ["p1", "p1_escalante_servico_ordinario", "oficial", "master"]) {
+    const resultado = await executar({
+      role,
+      actorId: ator,
+      method: "GET",
+      query: { uso: "permutas-calendario", policiais_ids: alvo, data_inicio: "2026-11-01", data_fim: "2026-11-30" },
+    });
+    assert.equal(resultado.status, 200, role);
+    assert.ok(resultado.chamadas.some(({ path }) => path === "/rest/v1/banco_horas_solicitacoes"), role);
+  }
 });

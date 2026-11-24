@@ -24,7 +24,11 @@ test("serviço frontend envia os payloads que o handler e as RPCs esperam", asyn
   try {
     await criarPermuta({ tipo: "SUBSTITUICAO_SIMPLES", destinatario_id: "destinatario", motivo, servico });
     await confirmarPermuta("permuta", servico);
-    await decidirPermuta("permuta", true, "Serviços conferidos", true);
+    await decidirPermuta("permuta", true, true, {
+      mensagem_escalante: "Mensagem P1",
+      mensagem_policial_1: "Mensagem P1 da permuta",
+      mensagem_policial_2: "Mensagem P2 da permuta",
+    });
     await cancelarPermuta("permuta", "Motivo administrativo");
   } finally {
     globalThis.fetch = fetchAnterior;
@@ -32,7 +36,7 @@ test("serviço frontend envia os payloads que o handler e as RPCs esperam", asyn
   assert.deepEqual(chamadas.map(({ url, options, body }) => ({ url, method: options.method, credentials: options.credentials, body })), [
     { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "criar", tipo: "SUBSTITUICAO_SIMPLES", destinatario_id: "destinatario", motivo, servico } },
     { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "confirmar", permuta_id: "permuta", servico } },
-    { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "decidir", permuta_id: "permuta", deferir: true, justificativa: "Serviços conferidos", servicos_conferidos: true } },
+    { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "decidir", permuta_id: "permuta", deferir: true, servicos_conferidos: true, mensagem_escalante: "Mensagem P1", mensagem_policial_1: "Mensagem P1 da permuta", mensagem_policial_2: "Mensagem P2 da permuta" } },
     { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "cancelar", permuta_id: "permuta", justificativa: "Motivo administrativo" } },
   ]);
 });
@@ -79,6 +83,20 @@ test("listagem administrativa encaminha filtros combinados à API existente", as
   assert.equal(query.get("tipo"), "TROCA_RECIPROCA");
   assert.equal(query.get("data_inicio"), "2026-11-01");
   assert.equal(query.get("data_fim"), "2026-11-30");
+});
+
+test("abertura de notificação navega para a permuta indicada pelo parâmetro protegido", async () => {
+  const fetchAnterior = globalThis.fetch;
+  let url;
+  globalThis.fetch = async (destino) => { url = destino; return Response.json({ permutas: [] }); };
+  const permutaId = "30000000-0000-4000-8000-000000000001";
+  try {
+    await listarPermutas({ permuta_id: permutaId });
+  } finally {
+    globalThis.fetch = fetchAnterior;
+  }
+  const query = new URL(url, "http://localhost").searchParams;
+  assert.equal(query.get("permuta_id"), permutaId);
 });
 
 test("consulta do calendário encaminha tipo e intervalo de datas à mesma API", async () => {

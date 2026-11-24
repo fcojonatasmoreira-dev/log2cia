@@ -43,7 +43,7 @@ async function executar({ role, body, actorId = ATOR_ID, permutaInfo = {}, desti
     }
     if (url.pathname.startsWith("/rest/v1/rpc/")) {
       if (url.pathname.endsWith("permutas_servico_criar_v1")) return Response.json(PERMUTA_ID);
-      const status = url.pathname.endsWith("decidir_v1")
+      const status = url.pathname.endsWith("decidir_v2")
         ? (JSON.parse(init.body).p_deferir ? "DEFERIDA" : "INDEFERIDA")
         : url.pathname.endsWith("confirmar_v1") ? "AGUARDANDO_ANALISE" : "CANCELADA";
       return Response.json(status);
@@ -71,7 +71,7 @@ async function executar({ role, body, actorId = ATOR_ID, permutaInfo = {}, desti
   }
 }
 
-async function executarListagem({ role = "oficial", query = {}, calendarioGrande = false } = {}) {
+async function executarListagem({ role = "oficial", query = {}, calendarioGrande = false, actorId = ATOR_ID } = {}) {
   const anterior = {
     fetch: globalThis.fetch,
     sessionSecret: process.env.SESSION_SECRET,
@@ -104,7 +104,7 @@ async function executarListagem({ role = "oficial", query = {}, calendarioGrande
     if (range) faixas.push({ path: url.pathname, range });
     if (calendarioGrande) {
       if (url.pathname === "/rest/v1/policiais" && url.searchParams.get("select") === "*") {
-        return Response.json({ id: ATOR_ID, auth_version: 0, role, credencial_provisionada: true, primeiro_acesso: false });
+        return Response.json({ id: actorId, auth_version: 0, role, credencial_provisionada: true, primeiro_acesso: false });
       }
       if (url.pathname === "/rest/v1/permutas_servico_manifestacoes" && url.searchParams.get("select") === "permuta_id") {
         const inicio = paginasManifestacoesPeriodo++ * 1000;
@@ -123,7 +123,7 @@ async function executarListagem({ role = "oficial", query = {}, calendarioGrande
       return Response.json({ message: `Requisição inesperada: ${url.pathname}` }, { status: 404 });
     }
     if (url.pathname === "/rest/v1/policiais" && url.searchParams.get("select") === "*") {
-      return Response.json({ id: ATOR_ID, auth_version: 0, role, credencial_provisionada: true, primeiro_acesso: false });
+      return Response.json({ id: actorId, auth_version: 0, role, credencial_provisionada: true, primeiro_acesso: false });
     }
     if (url.pathname === "/rest/v1/permutas_servico") {
       return Response.json([{
@@ -142,7 +142,12 @@ async function executarListagem({ role = "oficial", query = {}, calendarioGrande
     }
     if (url.pathname === "/rest/v1/permutas_servico_confirmacoes") return Response.json([]);
     if (url.pathname === "/rest/v1/permutas_servico_historico") {
-      return Response.json([{ id: 1, permuta_id: PERMUTA_ID, ator_id: TERCEIRO_ID, tipo_evento: "DEFERIDA", estado_novo: "DEFERIDA", ocorrido_em: "2026-11-21T12:00:00Z" }]);
+      return Response.json([{
+        id: 1, permuta_id: PERMUTA_ID, ator_id: TERCEIRO_ID, tipo_evento: "DEFERIDA",
+        estado_novo: "DEFERIDA", ocorrido_em: "2026-11-21T12:00:00Z", justificativa: "Observação antiga privada",
+        mensagem_escalante: "Orientação ao escalante", mensagem_policial_1: "Mensagem ao solicitante",
+        mensagem_policial_2: "Mensagem ao destinatário",
+      }]);
     }
     if (url.pathname === "/rest/v1/policiais") {
       return Response.json([
@@ -155,7 +160,7 @@ async function executarListagem({ role = "oficial", query = {}, calendarioGrande
   };
   const req = {
     method: "GET", query,
-    headers: { cookie: `log2cia_session=${criarSessao({ id: ATOR_ID, auth_version: 0 })}` },
+    headers: { cookie: `log2cia_session=${criarSessao({ id: actorId, auth_version: 0 })}` },
   };
   const res = resposta();
   try {
@@ -307,14 +312,17 @@ test("Oficial registra deferimento e indeferimento como decisões autenticadas",
   for (const deferir of [true, false]) {
     const resultado = await executar({
       role: "oficial",
-      body: { acao: "decidir", permuta_id: PERMUTA_ID, deferir, justificativa: "Decisão de teste", servicos_conferidos: true, ator_id: "forjado" },
+      body: { acao: "decidir", permuta_id: PERMUTA_ID, deferir, servicos_conferidos: true, ator_id: "forjado" },
     });
     assert.equal(resultado.status, 200);
     assert.equal(resultado.body.status, deferir ? "DEFERIDA" : "INDEFERIDA");
-    const chamada = resultado.chamadas.find((item) => item.path.endsWith("permutas_servico_decidir_v1"));
+    const chamada = resultado.chamadas.find((item) => item.path.endsWith("permutas_servico_decidir_v2"));
     assert.equal(chamada.body.p_ator_id, ATOR_ID);
     assert.equal(chamada.body.p_deferir, deferir);
     assert.equal(chamada.body.p_servicos_conferidos, true);
+    assert.equal(chamada.body.p_mensagem_escalante, null);
+    assert.equal(chamada.body.p_mensagem_policial_1, null);
+    assert.equal(chamada.body.p_mensagem_policial_2, null);
   }
 });
 
@@ -324,16 +332,42 @@ test("decisão administrativa exige declaração de conferência dos serviços",
     body: { acao: "decidir", permuta_id: PERMUTA_ID, deferir: true, justificativa: "Deferimento" },
   });
   assert.equal(resultado.status, 400);
-  assert.equal(resultado.chamadas.some((item) => item.path.endsWith("permutas_servico_decidir_v1")), false);
+  assert.equal(resultado.chamadas.some((item) => item.path.endsWith("permutas_servico_decidir_v2")), false);
 });
 
-test("decisão administrativa exige observação ou justificativa não vazia", async () => {
+test("decisão administrativa aceita mensagens opcionais e encaminha mensagens diferentes", async () => {
   const resultado = await executar({
     role: "oficial",
-    body: { acao: "decidir", permuta_id: PERMUTA_ID, deferir: false, justificativa: "   ", servicos_conferidos: true },
+    body: { acao: "decidir", permuta_id: PERMUTA_ID, deferir: true, servicos_conferidos: true,
+      mensagem_escalante: "Escala ajustada", mensagem_policial_1: "Ciente, solicitante", mensagem_policial_2: "Ciente, destinatário" },
   });
-  assert.equal(resultado.status, 400);
-  assert.equal(resultado.chamadas.some((item) => item.path.endsWith("permutas_servico_decidir_v1")), false);
+  assert.equal(resultado.status, 200);
+  const chamada = resultado.chamadas.find((item) => item.path.endsWith("permutas_servico_decidir_v2"));
+  assert.deepEqual({
+    escalante: chamada.body.p_mensagem_escalante,
+    policial1: chamada.body.p_mensagem_policial_1,
+    policial2: chamada.body.p_mensagem_policial_2,
+  }, { escalante: "Escala ajustada", policial1: "Ciente, solicitante", policial2: "Ciente, destinatário" });
+});
+
+test("indeferimento aceita mensagem parcial, mas limita cada mensagem", async () => {
+  const parcial = await executar({
+    role: "oficial",
+    body: { acao: "decidir", permuta_id: PERMUTA_ID, deferir: false, servicos_conferidos: true, mensagem_policial_2: "Destinatário" },
+  });
+  assert.equal(parcial.status, 200);
+  const chamada = parcial.chamadas.find((item) => item.path.endsWith("permutas_servico_decidir_v2"));
+  assert.equal(chamada.body.p_mensagem_escalante, null);
+  assert.equal(chamada.body.p_mensagem_policial_1, null);
+  assert.equal(chamada.body.p_mensagem_policial_2, "Destinatário");
+
+  const longa = await executar({ role: "oficial", body: {
+    acao: "decidir", permuta_id: PERMUTA_ID, deferir: false, servicos_conferidos: true,
+    mensagem_escalante: "x".repeat(3001),
+  } });
+  assert.equal(longa.status, 400);
+  assert.equal(longa.body.error, "Cada mensagem pode ter até 3000 caracteres.");
+  assert.equal(longa.chamadas.some((item) => item.path.endsWith("permutas_servico_decidir_v2")), false);
 });
 
 test("cancelamento administrativo exige justificativa não vazia", async () => {
@@ -381,6 +415,62 @@ test("calendário filtra por período e resolve apenas nomes mínimos dos atores
   assert.ok(consultaIdentidades.searchParams.get("id").includes(TERCEIRO_ID));
   assert.equal(consultaIdentidades.searchParams.has("matricula"), false);
   assert.equal(consultaIdentidades.searchParams.has("unidade"), false);
+});
+
+test("histórico filtra mensagens e justificativa antiga no backend por papel e participação", async () => {
+  const eventoVisivel = (resultado) => resultado.body.permutas[0].historico[0];
+  const p1 = await executarListagem({ role: "p1", actorId: TERCEIRO_ID });
+  const eventoP1 = eventoVisivel(p1);
+  assert.equal(eventoP1.mensagem_escalante, "Orientação ao escalante");
+  assert.equal(Object.hasOwn(eventoP1, "mensagem_policial_1"), false);
+  assert.equal(Object.hasOwn(eventoP1, "mensagem_policial_2"), false);
+  assert.equal(Object.hasOwn(eventoP1, "justificativa"), false);
+
+  const escalante = await executarListagem({ role: "p1_escalante_servico_ordinario", actorId: TERCEIRO_ID });
+  const eventoEscalante = eventoVisivel(escalante);
+  assert.equal(eventoEscalante.mensagem_escalante, "Orientação ao escalante");
+  assert.equal(Object.hasOwn(eventoEscalante, "mensagem_policial_1"), false);
+  assert.equal(Object.hasOwn(eventoEscalante, "mensagem_policial_2"), false);
+
+  const solicitante = await executarListagem({ role: "policial", actorId: ATOR_ID });
+  const eventoSolicitante = eventoVisivel(solicitante);
+  assert.equal(eventoSolicitante.mensagem_policial_1, "Mensagem ao solicitante");
+  assert.equal(Object.hasOwn(eventoSolicitante, "mensagem_escalante"), false);
+  assert.equal(Object.hasOwn(eventoSolicitante, "mensagem_policial_2"), false);
+  assert.equal(Object.hasOwn(eventoSolicitante, "justificativa"), false);
+
+  const destinatario = await executarListagem({ role: "policial", actorId: OUTRO_ID });
+  const eventoDestinatario = eventoVisivel(destinatario);
+  assert.equal(eventoDestinatario.mensagem_policial_2, "Mensagem ao destinatário");
+  assert.equal(Object.hasOwn(eventoDestinatario, "mensagem_policial_1"), false);
+  assert.equal(Object.hasOwn(eventoDestinatario, "mensagem_escalante"), false);
+
+  for (const role of ["oficial", "master"]) {
+    const admin = await executarListagem({ role, actorId: TERCEIRO_ID });
+    const eventoAdmin = eventoVisivel(admin);
+    assert.equal(eventoAdmin.mensagem_escalante, "Orientação ao escalante");
+    assert.equal(eventoAdmin.mensagem_policial_1, "Mensagem ao solicitante");
+    assert.equal(eventoAdmin.mensagem_policial_2, "Mensagem ao destinatário");
+    assert.equal(eventoAdmin.justificativa, "Observação antiga privada");
+  }
+
+  const p1Participante = await executarListagem({ role: "p1", actorId: ATOR_ID });
+  const eventoUniao = eventoVisivel(p1Participante);
+  assert.equal(eventoUniao.mensagem_escalante, "Orientação ao escalante");
+  assert.equal(eventoUniao.mensagem_policial_1, "Mensagem ao solicitante");
+  assert.equal(Object.hasOwn(eventoUniao, "mensagem_policial_2"), false);
+});
+
+test("calendário individual aplica a mesma filtragem das mensagens no backend", async () => {
+  const resultado = await executarListagem({
+    role: "p1", actorId: TERCEIRO_ID,
+    query: { calendario: "individual", policial_id: OUTRO_ID, data_inicio: "2026-11-24", data_fim: "2026-12-06" },
+  });
+  const evento = resultado.body.permutas[0].historico[0];
+  assert.equal(evento.mensagem_escalante, "Orientação ao escalante");
+  assert.equal(Object.hasOwn(evento, "mensagem_policial_1"), false);
+  assert.equal(Object.hasOwn(evento, "mensagem_policial_2"), false);
+  assert.equal(Object.hasOwn(evento, "justificativa"), false);
 });
 
 test("listagem operacional combina data do serviço, situação, tipo e policial sem duplicar troca recíproca", async () => {
@@ -440,6 +530,9 @@ test("mini calendário de policial comum contém só os próprios movimentos e n
   assert.equal(proprio.body.calendarios[0].permutas.length, 1);
   assert.equal(proprio.body.calendarios[0].permutas[0].historico, undefined);
   assert.equal(proprio.body.calendarios[0].permutas[0].confirmacoes, undefined);
+  assert.equal(Object.hasOwn(proprio.body.calendarios[0].permutas[0], "mensagem_escalante"), false);
+  assert.equal(Object.hasOwn(proprio.body.calendarios[0].permutas[0], "mensagem_policial_1"), false);
+  assert.equal(Object.hasOwn(proprio.body.calendarios[0].permutas[0], "mensagem_policial_2"), false);
   assert.equal(proprio.chamadas.some((url) => url.pathname.endsWith("permutas_servico_historico") || url.pathname.endsWith("permutas_servico_confirmacoes")), false);
 
   const alheio = await executarListagem({ role: "policial", query: {

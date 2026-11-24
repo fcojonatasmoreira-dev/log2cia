@@ -12,7 +12,7 @@ async function request(options = {}, url = API) {
   return data;
 }
 
-export function listarPermutas({ policial_id, status, tipo, participacao, data_inicio, data_fim, calendario } = {}) {
+export function listarPermutas({ policial_id, status, tipo, participacao, data_inicio, data_fim, calendario, permuta_id } = {}) {
   const query = new URLSearchParams();
   if (policial_id) query.set("policial_id", policial_id);
   if (status) query.set("status", status);
@@ -21,6 +21,7 @@ export function listarPermutas({ policial_id, status, tipo, participacao, data_i
   if (data_inicio) query.set("data_inicio", data_inicio);
   if (data_fim) query.set("data_fim", data_fim);
   if (calendario) query.set("calendario", calendario);
+  if (permuta_id) query.set("permuta_id", permuta_id);
   const parametros = query.toString();
   return request({}, parametros ? `${API}?${parametros}` : API);
 }
@@ -51,8 +52,16 @@ export function confirmarPermuta(permuta_id, servico) {
   return request({ method: "POST", body: JSON.stringify({ acao: "confirmar", permuta_id, servico }) });
 }
 
-export function decidirPermuta(permuta_id, deferir, justificativa, servicos_conferidos) {
-  return request({ method: "POST", body: JSON.stringify({ acao: "decidir", permuta_id, deferir, justificativa, servicos_conferidos }) });
+export function decidirPermuta(permuta_id, deferir, servicos_conferidos, mensagens = {}) {
+  return request({
+    method: "POST",
+    body: JSON.stringify({
+      acao: "decidir", permuta_id, deferir, servicos_conferidos,
+      mensagem_escalante: mensagens.mensagem_escalante || "",
+      mensagem_policial_1: mensagens.mensagem_policial_1 || "",
+      mensagem_policial_2: mensagens.mensagem_policial_2 || "",
+    }),
+  });
 }
 
 export function cancelarPermuta(permuta_id, justificativa) {

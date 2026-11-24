@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Filter, History, Plus, RefreshCw, Search, Send, X, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
+import { AlertCircle, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, History, Plus, RefreshCw, Search, Send, X, XCircle } from "lucide-react";
 import { cancelarPermuta, confirmarPermuta, criarPermuta, decidirPermuta, listarCalendariosMini, listarPermutas } from "../services/permutasService";
+import { listarDispensasDeferidasCalendario } from "../services/bancoHorasService";
 import { getPoliciaisPermutas, getPoliciaisPermutasCalendario } from "../services/policiaisService";
-import { calcularIndicadoresCalendario, criarEventosCalendario, dataLocalHoje, deslocarData, deslocarReferenciaCalendario, filtrarServicosDeferidosPassados, obterDiasCalendario } from "../utils/permutasCalendar";
+import { calcularIndicadoresCalendario, criarEventosCalendarioCompleto, dataLocalHoje, deslocarData, deslocarReferenciaCalendario, filtrarServicosDeferidosPassados, obterDiasCalendario } from "../utils/permutasCalendar";
 import { filtrarPoliciaisPorBusca, filtrarPoliciaisSubstitutos, formatarIdentificacaoPolicial } from "../utils/hierarquiaPolicial";
 import { alternarEstadoLinhaPermuta, atualizarStatusPermuta, obterIdsMiniCalendariosAbertos, podeCancelarPermuta, podeConsultarCalendario, podeConsultarCalendarioProprio, podeDecidirPermuta } from "../utils/permutasUi";
 
@@ -47,6 +49,14 @@ function nomePolicial(policial) {
 function identificacaoPolicial(policial) {
   if (!policial) return "Policial não localizado";
   return [policial.posto_graduacao, policial.numeral && `Nº ${policial.numeral}`, nomePolicial(policial)].filter(Boolean).join(" · ");
+}
+
+function mensagensDecisaoExibiveis(evento, permuta) {
+  return [
+    ["Mensagem ao escalante (P1)", evento.mensagem_escalante],
+    [`Mensagem para ${identificacaoPolicial(permuta.solicitante)} · solicitante`, evento.mensagem_policial_1],
+    [`Mensagem para ${identificacaoPolicial(permuta.destinatario)} · destinatário`, evento.mensagem_policial_2],
+  ].filter(([, mensagem]) => Boolean(mensagem));
 }
 
 function formatarDataCalendario(chave, opcoes = { day: "2-digit", month: "2-digit", year: "numeric" }) {
@@ -112,7 +122,7 @@ function chaveMiniCalendario(permutaId, policialId) {
   return `${permutaId}:${policialId}`;
 }
 
-function MiniCalendarioPolicial({ id, policial, permutas, carregando, erro }) {
+function MiniCalendarioPolicial({ id, policial, permutas, dispensas, carregando, erro }) {
   const hoje = dataLocalHoje();
   const [agora, setAgora] = useState(() => new Date());
   const dias = useMemo(() => obterDiasCalendario(hoje, "mes"), [hoje]);
@@ -124,11 +134,9 @@ function MiniCalendarioPolicial({ id, policial, permutas, carregando, erro }) {
     return () => window.clearInterval(intervalo);
   }, []);
   const servicosPassados = useMemo(() => filtrarServicosDeferidosPassados(permutas, agora), [permutas, agora]);
-  const eventos = useMemo(() => criarEventosCalendario(servicosPassados, {
-    policialId: policial.id,
-    dataInicio,
-    dataFim,
-  }), [servicosPassados, policial.id, dataInicio, dataFim]);
+  const eventos = useMemo(() => criarEventosCalendarioCompleto(servicosPassados, dispensas, {
+    policialId: policial.id, dataInicio, dataFim,
+  }), [servicosPassados, dispensas, policial.id, dataInicio, dataFim]);
   const eventosPorDia = useMemo(() => {
     const mapa = new Map();
     for (const evento of eventos) mapa.set(evento.dataMarcacao, [...(mapa.get(evento.dataMarcacao) || []), evento]);
@@ -146,7 +154,8 @@ function MiniCalendarioPolicial({ id, policial, permutas, carregando, erro }) {
       <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] font-medium text-slate-600">
         <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-amber-400" />Laranja: foi substituído</span>
         <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-blue-500" />Azul: substituiu alguém</span>
-        <span className="text-slate-500">Somente serviços deferidos com horário final passado; isso não confirma a execução.</span>
+        <span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-emerald-500" />Verde: dispensa deferida</span>
+        <span className="text-slate-500">Permutas: horário final transcorrido, sem confirmação de execução. Dispensas: somente deferidas.</span>
       </div>
       <div className="grid grid-cols-7 text-center text-[9px] font-bold text-slate-500">
         {["S", "T", "Q", "Q", "S", "S", "D"].map((dia, indice) => <span key={`${dia}-${indice}`} className="py-1">{dia}</span>)}
@@ -165,7 +174,7 @@ function MiniCalendarioPolicial({ id, policial, permutas, carregando, erro }) {
           >
             {Number(dia.slice(-2))}
             {eventosDia.length > 0 && <span className="absolute inset-x-1 bottom-0.5 flex justify-center gap-0.5" aria-hidden="true">
-              {eventosDia.slice(0, 3).map((evento) => <i key={`${evento.permuta.id}-${evento.manifestacao.id}-${evento.dataMarcacao}`} className={`h-1 w-1 rounded-full ${evento.chaveParticipacao === "foi_substituido" ? "bg-amber-500" : "bg-blue-500"}`} />)}
+              {eventosDia.slice(0, 3).map((evento) => <i key={evento.tipoEvento === "dispensa" ? `dispensa-${evento.dispensa.id}` : `${evento.permuta.id}-${evento.manifestacao.id}-${evento.dataMarcacao}`} className={`h-1 w-1 rounded-full ${evento.tipoEvento === "dispensa" ? "bg-emerald-500" : evento.chaveParticipacao === "foi_substituido" ? "bg-amber-500" : "bg-blue-500"}`} />)}
               {eventosDia.length > 3 && <i className="text-[7px] not-italic leading-none text-slate-500">+</i>}
             </span>}
           </button>;
@@ -173,9 +182,16 @@ function MiniCalendarioPolicial({ id, policial, permutas, carregando, erro }) {
       </div>
       <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
         {erro && <p role="alert" className="text-[10px] font-medium text-rose-700">{erro}</p>}
-        <p className="text-[10px] font-bold text-slate-600">Serviços deferidos passados em {formatarDataCalendario(diaSelecionado, { day: "2-digit", month: "2-digit" })}</p>
+        <p className="text-[10px] font-bold text-slate-600">Movimentações em {formatarDataCalendario(diaSelecionado, { day: "2-digit", month: "2-digit" })}</p>
         {!eventosSelecionados.length && <p className="text-[10px] text-slate-500">Nenhuma movimentação neste dia.</p>}
         {eventosSelecionados.map((evento) => {
+          if (evento.tipoEvento === "dispensa") {
+            const dispensa = evento.dispensa;
+            return <div key={`dispensa-${dispensa.id}`} className="rounded-md border-l-2 border-emerald-500 bg-emerald-50 p-1.5 text-[10px]">
+              <strong className="text-emerald-900">Dispensa de serviço · Deferida</strong>
+              <p className="mt-0.5 text-slate-600">Serviço {dataBrasileira(dispensa.data_servico)} · Turno {dispensa.turno === "OUTRO" ? dispensa.turno_descricao || "Outros" : dispensa.turno || "—"} · {dispensa.horas_solicitadas} h · Compensação: {dispensa.origem_dispensa === "folga" ? "Folga disponível" : "Banco de Horas"}</p>
+            </div>;
+          }
           const permuta = evento.permuta;
           const manifestacao = evento.manifestacao;
           const coberto = permuta.solicitante_id === manifestacao.policial_id ? permuta.solicitante : permuta.destinatario;
@@ -197,6 +213,8 @@ function MiniCalendarioPolicial({ id, policial, permutas, carregando, erro }) {
 }
 
 export default function Permutas({ user }) {
+  const location = useLocation();
+  const permutaDestinoId = new URLSearchParams(location.search).get("permuta_id") || "";
   const usuarioId = user?.id;
   const role = String(user?.role || "").trim().toLowerCase();
   const isMaster = role === "master" || user?.is_master === true;
@@ -229,10 +247,10 @@ export default function Permutas({ user }) {
   const [filtroTipoLista, setFiltroTipoLista] = useState("");
   const [filtroDataInicioLista, setFiltroDataInicioLista] = useState("");
   const [filtroDataFimLista, setFiltroDataFimLista] = useState("");
-  const [filtrosAplicados, setFiltrosAplicados] = useState({ status: statusInicial, policial_id: "", tipo: "", data_inicio: "", data_fim: "" });
   const [linhasOperacionaisAbertas, setLinhasOperacionaisAbertas] = useState({});
   const [acaoAdministrativa, setAcaoAdministrativa] = useState(null);
   const [justificativaAdministrativa, setJustificativaAdministrativa] = useState("");
+  const [mensagensDecisao, setMensagensDecisao] = useState({ mensagem_escalante: "", mensagem_policial_1: "", mensagem_policial_2: "" });
   const [servicosConferidos, setServicosConferidos] = useState(false);
   const [visaoGeral, setVisaoGeral] = useState("lista");
   const [modoCalendario, setModoCalendario] = useState("mes");
@@ -242,6 +260,7 @@ export default function Permutas({ user }) {
   const [buscaPolicialCalendario, setBuscaPolicialCalendario] = useState("");
   const [listaPoliciaisCalendarioAberta, setListaPoliciaisCalendarioAberta] = useState(false);
   const [permutasCalendario, setPermutasCalendario] = useState([]);
+  const [dispensasCalendario, setDispensasCalendario] = useState([]);
   const [carregandoCalendario, setCarregandoCalendario] = useState(false);
   const [erroCalendario, setErroCalendario] = useState("");
   const [atualizacaoCalendario, setAtualizacaoCalendario] = useState(0);
@@ -250,38 +269,70 @@ export default function Permutas({ user }) {
   const [erroMiniCalendarios, setErroMiniCalendarios] = useState(null);
   const [atualizacaoMiniCalendarios, setAtualizacaoMiniCalendarios] = useState(0);
   const [miniCalendariosAbertos, setMiniCalendariosAbertos] = useState({});
+  const versaoConsultaLista = useRef(0);
 
   const parametrosConsulta = useMemo(() => {
+    if (permutaDestinoId) return { permuta_id: permutaDestinoId };
     if (!podeConsultarGeral) return { policial_id: usuarioId };
     return {
-      ...(filtrosAplicados.status ? { status: filtrosAplicados.status } : {}),
-      ...(filtrosAplicados.policial_id ? { policial_id: filtrosAplicados.policial_id } : {}),
-      ...(filtrosAplicados.tipo ? { tipo: filtrosAplicados.tipo } : {}),
-      ...(filtrosAplicados.data_inicio ? { data_inicio: filtrosAplicados.data_inicio, data_fim: filtrosAplicados.data_fim } : {}),
+      ...(filtroStatus ? { status: filtroStatus } : {}),
+      ...(filtroPolicialId ? { policial_id: filtroPolicialId } : {}),
+      ...(filtroTipoLista ? { tipo: filtroTipoLista } : {}),
+      ...(filtroDataInicioLista ? { data_inicio: filtroDataInicioLista, data_fim: filtroDataFimLista } : {}),
     };
-  }, [filtrosAplicados, podeConsultarGeral, usuarioId]);
+  }, [filtroStatus, filtroPolicialId, filtroTipoLista, filtroDataInicioLista, filtroDataFimLista, podeConsultarGeral, usuarioId, permutaDestinoId]);
 
   const carregar = useCallback(async () => {
     if (!usuarioId) return;
+    const versao = ++versaoConsultaLista.current;
+    const datasIncompletas = Boolean(filtroDataInicioLista) !== Boolean(filtroDataFimLista);
+    const intervaloInvalido = filtroDataInicioLista && filtroDataFimLista
+      && (filtroDataInicioLista > filtroDataFimLista
+        || (Date.parse(`${filtroDataFimLista}T00:00:00Z`) - Date.parse(`${filtroDataInicioLista}T00:00:00Z`)) / 86400000 > 44);
+    if (datasIncompletas || intervaloInvalido) {
+      setPermutas([]);
+      setErro(datasIncompletas ? "Informe as datas inicial e final do serviço." : "O período de serviço não pode exceder 45 dias nem começar após a data final.");
+      setCarregando(false);
+      return;
+    }
     try {
       const resultado = await listarPermutas(parametrosConsulta);
-      setPermutas(resultado.permutas || []);
+      if (versao === versaoConsultaLista.current) setPermutas(resultado.permutas || []);
     } catch (error) {
-      setErro(error.message || "Não foi possível carregar suas permutas.");
+      if (versao === versaoConsultaLista.current) setErro(error.message || "Não foi possível carregar suas permutas.");
     } finally {
-      setCarregando(false);
+      if (versao === versaoConsultaLista.current) setCarregando(false);
     }
-  }, [parametrosConsulta, usuarioId]);
+  }, [parametrosConsulta, usuarioId, filtroDataInicioLista, filtroDataFimLista]);
 
   useEffect(() => {
     if (!usuarioId) return undefined;
     let ativo = true;
-    listarPermutas(parametrosConsulta)
-      .then((resultado) => { if (ativo) setPermutas(resultado.permutas || []); })
-      .catch((error) => { if (ativo) setErro(error.message || "Não foi possível carregar suas permutas."); })
-      .finally(() => { if (ativo) setCarregando(false); });
-    return () => { ativo = false; };
-  }, [parametrosConsulta, usuarioId]);
+    const versao = ++versaoConsultaLista.current;
+    const temporizador = window.setTimeout(() => {
+      const datasIncompletas = Boolean(filtroDataInicioLista) !== Boolean(filtroDataFimLista);
+      const intervaloInvalido = filtroDataInicioLista && filtroDataFimLista
+        && (filtroDataInicioLista > filtroDataFimLista
+          || (Date.parse(`${filtroDataFimLista}T00:00:00Z`) - Date.parse(`${filtroDataInicioLista}T00:00:00Z`)) / 86400000 > 44);
+      if (datasIncompletas || intervaloInvalido) {
+        if (ativo && versao === versaoConsultaLista.current) {
+          setErro(datasIncompletas ? "Informe as datas inicial e final do serviço." : "O período de serviço não pode exceder 45 dias nem começar após a data final.");
+          setPermutas([]);
+          setCarregando(false);
+        }
+        return;
+      }
+      if (ativo && versao === versaoConsultaLista.current) {
+        setErro("");
+        setCarregando(true);
+      }
+      listarPermutas(parametrosConsulta)
+      .then((resultado) => { if (ativo && versao === versaoConsultaLista.current) setPermutas(resultado.permutas || []); })
+      .catch((error) => { if (ativo && versao === versaoConsultaLista.current) setErro(error.message || "Não foi possível carregar suas permutas."); })
+      .finally(() => { if (ativo && versao === versaoConsultaLista.current) setCarregando(false); });
+    }, 250);
+    return () => { ativo = false; window.clearTimeout(temporizador); };
+  }, [parametrosConsulta, usuarioId, filtroDataInicioLista, filtroDataFimLista]);
   useEffect(() => {
     let ativo = true;
     getPoliciaisPermutas()
@@ -339,10 +390,17 @@ export default function Permutas({ user }) {
     if (visaoGeral !== "lista" || !idsMiniCalendariosChave || !inicioMiniCalendario || !fimMiniCalendario
       || calendariosMiniChaveCarregada === chaveConsultaMiniCalendarios) return undefined;
     let ativo = true;
-    listarCalendariosMini(idsMiniCalendariosChave.split(","), inicioMiniCalendario, fimMiniCalendario)
-      .then((resultado) => {
+    const ids = idsMiniCalendariosChave.split(",");
+    Promise.all([
+      listarCalendariosMini(ids, inicioMiniCalendario, fimMiniCalendario),
+      listarDispensasDeferidasCalendario(ids, inicioMiniCalendario, fimMiniCalendario),
+    ])
+      .then(([resultado, resultadoDispensas]) => {
         if (!ativo) return;
-        setCalendariosMini(Object.fromEntries(resultado.map((item) => [item.policial_id, item.permutas || []])));
+        setCalendariosMini(Object.fromEntries(ids.map((policialId) => [policialId, {
+          permutas: resultado.find((item) => item.policial_id === policialId)?.permutas || [],
+          dispensas: (resultadoDispensas.dispensas || []).filter((item) => item.policial_id === policialId),
+        }])));
         setCalendariosMiniChaveCarregada(chaveConsultaMiniCalendarios);
         setErroMiniCalendarios(null);
       })
@@ -356,27 +414,31 @@ export default function Permutas({ user }) {
     if (!podeConsultarProprioCalendario || visaoGeral !== "calendario" || !usuarioId || !dataFimConsultaCalendario || !idPolicialCalendario) return undefined;
     let ativo = true;
     const { policial_id: idSelecionado, ...filtros } = filtrosCalendario;
-    listarPermutas({
+    Promise.all([listarPermutas({
       ...(podeConsultarGeral ? { policial_id: idSelecionado } : {}),
       ...filtros,
       data_inicio: dataInicioConsultaCalendario,
       data_fim: dataFimConsultaCalendario,
       calendario: "individual",
-    })
-      .then((resultado) => { if (ativo) setPermutasCalendario(resultado.permutas || []); })
+    }), listarDispensasDeferidasCalendario([idPolicialCalendario], dataInicioConsultaCalendario, dataFimConsultaCalendario)])
+      .then(([resultado, resultadoDispensas]) => {
+        if (!ativo) return;
+        setPermutasCalendario(resultado.permutas || []);
+        setDispensasCalendario(resultadoDispensas.dispensas || []);
+      })
       .catch((error) => { if (ativo) setErroCalendario(error.message || "Não foi possível carregar o calendário de Permutas."); })
       .finally(() => { if (ativo) setCarregandoCalendario(false); });
     return () => { ativo = false; };
   }, [podeConsultarProprioCalendario, podeConsultarGeral, visaoGeral, usuarioId, idPolicialCalendario, filtrosCalendario, dataInicioConsultaCalendario, dataFimConsultaCalendario, atualizacaoCalendario]);
 
-  const eventosCalendario = useMemo(() => idPolicialCalendario ? criarEventosCalendario(permutasCalendario, {
-    policialId: idPolicialCalendario,
-    participacao: filtrosCalendario.participacao,
-    status: filtrosCalendario.status,
-    tipo: filtrosCalendario.tipo,
-    dataInicio: dataInicioConsultaCalendario,
-    dataFim: dataFimConsultaCalendario,
-  }) : [], [permutasCalendario, idPolicialCalendario, filtrosCalendario, dataInicioConsultaCalendario, dataFimConsultaCalendario]);
+  const eventosCalendario = useMemo(() => idPolicialCalendario ? criarEventosCalendarioCompleto(permutasCalendario, dispensasCalendario, {
+      policialId: idPolicialCalendario,
+      participacao: filtrosCalendario.participacao,
+      status: filtrosCalendario.status,
+      tipo: filtrosCalendario.tipo,
+      dataInicio: dataInicioConsultaCalendario,
+      dataFim: dataFimConsultaCalendario,
+    }) : [], [permutasCalendario, dispensasCalendario, idPolicialCalendario, filtrosCalendario, dataInicioConsultaCalendario, dataFimConsultaCalendario]);
   const eventosPorDia = useMemo(() => {
     const diasVisiveis = new Set(diasCalendario);
     const mapa = new Map();
@@ -389,6 +451,19 @@ export default function Permutas({ user }) {
   const eventosDiaSelecionado = eventosPorDia.get(dataSelecionada) || [];
 
   const limparMensagens = () => { setErro(""); setSucesso(""); };
+  function alterarFiltroLista(campo, valor) {
+    versaoConsultaLista.current += 1;
+    setErro("");
+    setCarregando(true);
+    const setters = {
+      data_inicio: setFiltroDataInicioLista,
+      data_fim: setFiltroDataFimLista,
+      status: setFiltroStatus,
+      tipo: setFiltroTipoLista,
+      policial_id: setFiltroPolicialId,
+    };
+    setters[campo](valor);
+  }
   const atualizarLista = () => {
     setErro("");
     if (visaoGeral === "calendario") {
@@ -510,35 +585,8 @@ export default function Permutas({ user }) {
     setServicoConfirmacao(SERVICO_VAZIO);
   }
 
-  function aplicarFiltros(evento) {
-    evento.preventDefault();
-    setErro("");
-    if (Boolean(filtroDataInicioLista) !== Boolean(filtroDataFimLista)) {
-      setErro("Informe as datas inicial e final do serviço.");
-      return;
-    }
-    if (filtroDataInicioLista && filtroDataInicioLista > filtroDataFimLista) {
-      setErro("A data inicial do serviço deve ser anterior ou igual à data final.");
-      return;
-    }
-    if (filtroDataInicioLista) {
-      const intervaloDias = (Date.parse(`${filtroDataFimLista}T00:00:00Z`) - Date.parse(`${filtroDataInicioLista}T00:00:00Z`)) / 86400000;
-      if (intervaloDias > 44) {
-        setErro("O período de serviço não pode exceder 45 dias.");
-        return;
-      }
-    }
-    setCarregando(true);
-    setFiltrosAplicados({
-      status: filtroStatus,
-      policial_id: filtroPolicialId,
-      tipo: filtroTipoLista,
-      data_inicio: filtroDataInicioLista,
-      data_fim: filtroDataFimLista,
-    });
-  }
-
   function limparFiltros() {
+    versaoConsultaLista.current += 1;
     setErro("");
     setFiltroStatus("");
     setFiltroPolicialId("");
@@ -546,7 +594,6 @@ export default function Permutas({ user }) {
     setFiltroDataInicioLista("");
     setFiltroDataFimLista("");
     setCarregando(true);
-    setFiltrosAplicados({ status: "", policial_id: "", tipo: "", data_inicio: "", data_fim: "" });
   }
 
   function navegarCalendario(direcao) {
@@ -583,6 +630,7 @@ export default function Permutas({ user }) {
     limparMensagens();
     setAcaoAdministrativa({ permuta, tipo: "decidir", deferir });
     setJustificativaAdministrativa("");
+    setMensagensDecisao({ mensagem_escalante: "", mensagem_policial_1: "", mensagem_policial_2: "" });
     setServicosConferidos(false);
   }
 
@@ -591,6 +639,7 @@ export default function Permutas({ user }) {
     limparMensagens();
     setAcaoAdministrativa({ permuta, tipo: "cancelar" });
     setJustificativaAdministrativa("");
+    setMensagensDecisao({ mensagem_escalante: "", mensagem_policial_1: "", mensagem_policial_2: "" });
     setServicosConferidos(false);
   }
 
@@ -601,22 +650,28 @@ export default function Permutas({ user }) {
     if (tipoAcao === "decidir" && !podeDecidirPermuta(user, permuta.status)) return;
     if (tipoAcao === "cancelar" && !podeCancelarPermuta(user, permuta.status)) return;
     const justificativa = justificativaAdministrativa.trim();
-    if (!justificativa || justificativa.length > 3000) {
-      setErro("Informe justificativa ou observação de até 3000 caracteres.");
+    if (tipoAcao === "cancelar" && (!justificativa || justificativa.length > 3000)) {
+      setErro("Informe justificativa de cancelamento de até 3000 caracteres.");
+      return;
+    }
+    if (tipoAcao === "decidir" && Object.values(mensagensDecisao).some((mensagem) => Array.from(mensagem.trim()).length > 3000)) {
+      setErro("Cada mensagem pode ter até 3000 caracteres.");
       return;
     }
     if (tipoAcao === "decidir" && !servicosConferidos) {
       setErro("Confirme que conferiu os serviços informados antes de registrar a decisão.");
       return;
     }
-    if (tipoAcao === "decidir" && deferir && !window.confirm("Confirma o deferimento desta permuta após conferir os serviços informados?")) return;
+    if (tipoAcao === "decidir" && !window.confirm(deferir
+      ? "Confirma o deferimento desta permuta após conferir os serviços informados?"
+      : "Confirma o indeferimento desta permuta?")) return;
     if (tipoAcao === "cancelar" && !window.confirm("Confirma o cancelamento desta permuta deferida? O registro permanecerá no histórico.")) return;
 
     limparMensagens();
     setEnviando(true);
     try {
       const resultado = tipoAcao === "decidir"
-        ? await decidirPermuta(permuta.id, deferir, justificativa, true)
+        ? await decidirPermuta(permuta.id, deferir, true, mensagensDecisao)
         : await cancelarPermuta(permuta.id, justificativa);
       setPermutas((atuais) => atualizarStatusPermuta(atuais, permuta.id, resultado.status));
       setSucesso(tipoAcao === "cancelar"
@@ -625,6 +680,7 @@ export default function Permutas({ user }) {
       setAcaoAdministrativa(null);
       setAtualizacaoMiniCalendarios((atual) => atual + 1);
       setJustificativaAdministrativa("");
+      setMensagensDecisao({ mensagem_escalante: "", mensagem_policial_1: "", mensagem_policial_2: "" });
       setServicosConferidos(false);
       await carregar();
     } catch (error) {
@@ -650,7 +706,7 @@ export default function Permutas({ user }) {
       ...participantes.map((participante) => [participante.id, participante.nome]),
       ...policiais.map((policial) => [policial.id, nomePolicial(policial)]),
     ]);
-    const linhaOperacionalAberta = Boolean(linhasOperacionaisAbertas[item.id]);
+    const linhaOperacionalAberta = Boolean(linhasOperacionaisAbertas[item.id] || permutaDestinoId === item.id);
     const servicosResumo = [...(item.manifestacoes || [])].sort((a, b) => String(a.data_servico).localeCompare(String(b.data_servico))
       || String(a.horario_inicio).localeCompare(String(b.horario_inicio)));
 
@@ -708,7 +764,8 @@ export default function Permutas({ user }) {
               {podeVerCalendario && aberto && <MiniCalendarioPolicial
                 id={idCalendario}
                 policial={participante.policial || { id: participante.id, nome_guerra: participante.nome }}
-                permutas={calendariosMiniChaveCarregada === chaveConsultaMiniCalendarios ? calendariosMini[participante.id] || [] : []}
+                permutas={calendariosMiniChaveCarregada === chaveConsultaMiniCalendarios ? calendariosMini[participante.id]?.permutas || [] : []}
+                dispensas={calendariosMiniChaveCarregada === chaveConsultaMiniCalendarios ? calendariosMini[participante.id]?.dispensas || [] : []}
                 carregando={Boolean(idsMiniCalendariosChave) && calendariosMiniChaveCarregada !== chaveConsultaMiniCalendarios && erroMiniCalendarios?.chave !== chaveConsultaMiniCalendarios}
                 erro={erroMiniCalendarios?.chave === chaveConsultaMiniCalendarios ? erroMiniCalendarios.mensagem : ""}
               />}
@@ -749,6 +806,7 @@ export default function Permutas({ user }) {
                   <p className="text-xs text-slate-500">{evento.ator ? identificacaoPolicial(evento.ator) : nomesPorId.get(evento.ator_id) || `Responsável registrado (${evento.ator_id})`} · {dataHoraBrasileira(evento.ocorrido_em)}</p>
                   {(evento.estado_anterior || evento.estado_novo) && <p className="mt-1 text-xs text-slate-600">{STATUS[evento.estado_anterior]?.label || evento.estado_anterior || "Início"} → {STATUS[evento.estado_novo]?.label || evento.estado_novo}</p>}
                   {evento.justificativa && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{evento.justificativa}</p>}
+                  {mensagensDecisaoExibiveis(evento, item).map(([rotulo, mensagem]) => <p key={rotulo} className="mt-2 whitespace-pre-wrap rounded-md bg-indigo-50 p-2 text-sm text-indigo-950"><span className="font-semibold">{rotulo}:</span> {mensagem}</p>)}
                   {evento.servicos_conferidos && <p className="mt-1 text-xs font-medium text-emerald-700">Serviços conferidos pelo responsável.</p>}
                 </li>
               ))}
@@ -827,38 +885,36 @@ export default function Permutas({ user }) {
       {sucesso && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{sucesso}</div>}
 
       {podeConsultarGeral && visaoGeral === "lista" && (
-        <form onSubmit={aplicarFiltros} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-4 sm:items-end">
+        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-4 sm:items-end">
           <label className="grid gap-1 text-xs font-semibold text-slate-600">Serviço a partir de
-            <input type="date" value={filtroDataInicioLista} onChange={(evento) => setFiltroDataInicioLista(evento.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal" />
+            <input type="date" value={filtroDataInicioLista} onChange={(evento) => alterarFiltroLista("data_inicio", evento.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal" />
           </label>
           <label className="grid gap-1 text-xs font-semibold text-slate-600">Serviço até
-            <input type="date" value={filtroDataFimLista} onChange={(evento) => setFiltroDataFimLista(evento.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal" />
+            <input type="date" value={filtroDataFimLista} onChange={(evento) => alterarFiltroLista("data_fim", evento.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal" />
           </label>
           <label className="grid gap-1 text-xs font-semibold text-slate-600">Situação
-            <select value={filtroStatus} onChange={(evento) => setFiltroStatus(evento.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal">
+            <select value={filtroStatus} onChange={(evento) => alterarFiltroLista("status", evento.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal">
               <option value="">Todas as situações</option>
               {Object.entries(STATUS).map(([valor, estado]) => <option key={valor} value={valor}>{estado.label}</option>)}
             </select>
           </label>
           <label className="grid gap-1 text-xs font-semibold text-slate-600">Tipo
-            <select value={filtroTipoLista} onChange={(evento) => setFiltroTipoLista(evento.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal">
+            <select value={filtroTipoLista} onChange={(evento) => alterarFiltroLista("tipo", evento.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal">
               <option value="">Todos os tipos</option>
               <option value="SUBSTITUICAO_SIMPLES">Substituição simples</option>
               <option value="TROCA_RECIPROCA">Troca recíproca</option>
             </select>
           </label>
           <label className="grid gap-1 text-xs font-semibold text-slate-600">Policial envolvido
-            <select value={filtroPolicialId} onChange={(evento) => setFiltroPolicialId(evento.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal">
+            <select value={filtroPolicialId} onChange={(evento) => alterarFiltroLista("policial_id", evento.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal">
               <option value="">Todos os policiais</option>
               {policiais.map((policial) => <option key={policial.id} value={policial.id}>{policial.posto_graduacao ? `${policial.posto_graduacao} · ` : ""}{nomePolicial(policial)}</option>)}
             </select>
           </label>
           <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-3">
-            <button type="submit" disabled={carregando} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"><Filter className="h-4 w-4" /> Filtrar</button>
             <button type="button" onClick={limparFiltros} disabled={carregando} className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Limpar</button>
           </div>
-          <p className="text-[11px] text-slate-500 sm:col-span-2 xl:col-span-4">A data considera o serviço informado. Intervalos limitados a 45 dias; a lista segue o limite de até 1.000 solicitações por consulta.</p>
-        </form>
+        </div>
       )}
 
       {formAberto && (
@@ -1017,6 +1073,7 @@ export default function Permutas({ user }) {
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-medium text-slate-600">
                 <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-amber-400" />Amarelo/laranja: foi substituído</span>
                 <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-blue-500" />Azul: substituiu alguém</span>
+                <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-emerald-500" />Verde: dispensa deferida</span>
                 <span className="text-slate-500">A situação aparece no detalhe; somente deferidas são mostradas por padrão.</span>
               </div>
             </div>
@@ -1038,6 +1095,13 @@ export default function Permutas({ user }) {
                     <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full text-xs font-bold ${hoje ? "bg-blue-600 text-white" : dentroDoMes ? "text-slate-700" : "text-slate-400"}`}>{Number(dia.slice(-2))}</span>
                     <div className="mt-1 space-y-1">
                       {eventos.slice(0, modoCalendario === "semana" ? 3 : 2).map((evento) => {
+                        if (evento.tipoEvento === "dispensa") {
+                          const dispensa = evento.dispensa;
+                          const turno = dispensa.turno === "OUTRO" ? dispensa.turno_descricao || "Outros" : dispensa.turno || "—";
+                          return <span key={`dispensa-${dispensa.id}`} title={`Dispensa de serviço deferida · Turno ${turno} · ${dispensa.horas_solicitadas} horas`} className="block truncate rounded border-l-[3px] border-emerald-600 bg-emerald-100 px-1 py-0.5 text-[9px] leading-tight text-emerald-950 sm:text-[11px]">
+                            <span className="font-bold">DISP · </span>Turno {turno}
+                          </span>;
+                        }
                         const manifestacao = evento.manifestacao;
                         const permuta = evento.permuta;
                         const participacaoStyle = evento.chaveParticipacao === "foi_substituido" ? "bg-amber-100 text-amber-950" : "bg-blue-100 text-blue-950";
@@ -1059,11 +1123,24 @@ export default function Permutas({ user }) {
 
           <section className="space-y-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-lg font-bold text-slate-900">Serviços de {policialCalendarioSelecionado ? identificacaoPolicial(policialCalendarioSelecionado) : "policial não selecionado"} em {formatarDataCalendario(dataSelecionada, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</h2>
+              <h2 className="text-lg font-bold text-slate-900">Movimentações de {policialCalendarioSelecionado ? identificacaoPolicial(policialCalendarioSelecionado) : "policial não selecionado"} em {formatarDataCalendario(dataSelecionada, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</h2>
               <span className="text-xs text-slate-500">{eventosDiaSelecionado.length} marcação(ões)</span>
             </div>
             {!eventosDiaSelecionado.length && <div className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Nenhum serviço corresponde aos filtros nesta data.</div>}
             {eventosDiaSelecionado.map((evento) => {
+              if (evento.tipoEvento === "dispensa") {
+                const dispensa = evento.dispensa;
+                const turno = dispensa.turno === "OUTRO" ? dispensa.turno_descricao || "Outros" : dispensa.turno || "—";
+                return <article key={`dispensa-${dispensa.id}`} className="space-y-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-sm sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="rounded-md bg-emerald-100 px-2 py-1 text-sm font-bold text-emerald-950">Dispensa de serviço</h3>
+                    <span className="rounded-full border border-emerald-300 bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-800">Deferida</span>
+                  </div>
+                  <p className="text-sm text-slate-700"><span className="font-semibold">Data do serviço:</span> {formatarDataCalendario(dispensa.data_servico)} · <span className="font-semibold">Turno:</span> {turno}</p>
+                  <p className="text-sm text-slate-700"><span className="font-semibold">Carga horária solicitada:</span> {dispensa.horas_solicitadas} h</p>
+                  <p className="text-sm text-slate-700"><span className="font-semibold">Forma de compensação:</span> {dispensa.origem_dispensa === "folga" ? "Folga disponível" : "Banco de Horas"}</p>
+                </article>;
+              }
               const { permuta, manifestacao } = evento;
               const policialCoberto = permuta.solicitante_id === manifestacao.policial_id ? permuta.solicitante : permuta.destinatario;
               const policialSubstituto = permuta.solicitante_id === manifestacao.substituto_id ? permuta.solicitante : permuta.destinatario;
@@ -1091,9 +1168,9 @@ export default function Permutas({ user }) {
                   </p>
                   <div className="space-y-2 border-t border-slate-100 pt-3">
                     <h4 className="text-sm font-bold text-slate-800">Dados da decisão administrativa</h4>
-                    {decisoes.length ? decisoes.map((item) => <div key={item.id} className="rounded-lg bg-slate-50 p-2.5 text-xs text-slate-700"><p className="font-semibold">{EVENTO_HISTORICO[item.tipo_evento] || item.tipo_evento} · {atorExibicao(item)}</p><p className="mt-0.5">{dataHoraBrasileira(item.ocorrido_em)}{item.justificativa ? ` · ${item.justificativa}` : ""}</p>{item.servicos_conferidos && <p className="mt-0.5 text-emerald-700">Serviços conferidos.</p>}</div>) : <p className="text-xs text-slate-500">Ainda não há decisão administrativa registrada.</p>}
+                    {decisoes.length ? decisoes.map((item) => <div key={item.id} className="rounded-lg bg-slate-50 p-2.5 text-xs text-slate-700"><p className="font-semibold">{EVENTO_HISTORICO[item.tipo_evento] || item.tipo_evento} · {atorExibicao(item)}</p><p className="mt-0.5">{dataHoraBrasileira(item.ocorrido_em)}{item.justificativa ? ` · ${item.justificativa}` : ""}</p>{mensagensDecisaoExibiveis(item, permuta).map(([rotulo, mensagem]) => <p key={rotulo} className="mt-2 whitespace-pre-wrap rounded-md bg-indigo-50 p-2 text-indigo-950"><span className="font-semibold">{rotulo}:</span> {mensagem}</p>)}{item.servicos_conferidos && <p className="mt-0.5 text-emerald-700">Serviços conferidos.</p>}</div>) : <p className="text-xs text-slate-500">Ainda não há decisão administrativa registrada.</p>}
                   </div>
-                  {permuta.historico?.length > 0 && <details className="rounded-xl border border-slate-200"><summary className="flex cursor-pointer items-center gap-2 px-3 py-2.5 text-sm font-semibold text-slate-700"><History className="h-4 w-4 text-slate-400" />Histórico completo ({permuta.historico.length})</summary><ol className="space-y-3 border-t border-slate-100 px-3 py-3">{permuta.historico.map((item) => <li key={item.id} className="border-l-2 border-slate-200 pl-3"><p className="text-sm font-semibold text-slate-800">{EVENTO_HISTORICO[item.tipo_evento] || item.tipo_evento}</p><p className="text-xs text-slate-500">{atorExibicao(item)} · {dataHoraBrasileira(item.ocorrido_em)}</p>{(item.estado_anterior || item.estado_novo) && <p className="mt-1 text-xs text-slate-600">{STATUS[item.estado_anterior]?.label || item.estado_anterior || "Início"} → {STATUS[item.estado_novo]?.label || item.estado_novo}</p>}{item.justificativa && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{item.justificativa}</p>}</li>)}</ol></details>}
+                  {permuta.historico?.length > 0 && <details className="rounded-xl border border-slate-200"><summary className="flex cursor-pointer items-center gap-2 px-3 py-2.5 text-sm font-semibold text-slate-700"><History className="h-4 w-4 text-slate-400" />Histórico completo ({permuta.historico.length})</summary><ol className="space-y-3 border-t border-slate-100 px-3 py-3">{permuta.historico.map((item) => <li key={item.id} className="border-l-2 border-slate-200 pl-3"><p className="text-sm font-semibold text-slate-800">{EVENTO_HISTORICO[item.tipo_evento] || item.tipo_evento}</p><p className="text-xs text-slate-500">{atorExibicao(item)} · {dataHoraBrasileira(item.ocorrido_em)}</p>{(item.estado_anterior || item.estado_novo) && <p className="mt-1 text-xs text-slate-600">{STATUS[item.estado_anterior]?.label || item.estado_anterior || "Início"} → {STATUS[item.estado_novo]?.label || item.estado_novo}</p>}{item.justificativa && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{item.justificativa}</p>}{mensagensDecisaoExibiveis(item, permuta).map(([rotulo, mensagem]) => <p key={rotulo} className="mt-2 whitespace-pre-wrap rounded-md bg-indigo-50 p-2 text-sm text-indigo-950"><span className="font-semibold">{rotulo}:</span> {mensagem}</p>)}</li>)}</ol></details>}
                 </article>
               );
             })}
@@ -1154,16 +1231,17 @@ export default function Permutas({ user }) {
                 <h2 id="titulo-acao-administrativa" className="text-lg font-bold text-slate-900">
                   {acaoAdministrativa.tipo === "cancelar" ? "Cancelar permuta deferida" : acaoAdministrativa.deferir ? "Deferir permuta" : "Indeferir permuta"}
                 </h2>
-                <p className="mt-1 text-sm text-slate-600">{nomePolicial(acaoAdministrativa.permuta.solicitante)} · {nomePolicial(acaoAdministrativa.permuta.destinatario)}</p>
+                <p className="mt-1 text-xs text-slate-600">Policial 1 · {identificacaoPolicial(acaoAdministrativa.permuta.solicitante)} (solicitante)</p>
+                <p className="text-xs text-slate-600">Policial 2 · {identificacaoPolicial(acaoAdministrativa.permuta.destinatario)} (destinatário)</p>
               </div>
               <button type="button" onClick={() => setAcaoAdministrativa(null)} disabled={enviando} aria-label="Fechar ação administrativa" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button>
             </div>
             {acaoAdministrativa.tipo === "decidir" && (
               <div className={`space-y-1 rounded-xl border p-3 text-sm ${acaoAdministrativa.deferir ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}>
                 <p>{acaoAdministrativa.deferir
-                  ? "O deferimento só será enviado após a declaração de conferência e a confirmação final."
-                  : "O indeferimento exige justificativa e será registrado no histórico da permuta."}</p>
-                <p className="text-xs">O fluxo atual também registra um texto de observação e a declaração de conferência em qualquer decisão.</p>
+                  ? "O deferimento exige a declaração de conferência e confirmação final."
+                  : "Confirme explicitamente o indeferimento antes do registro."}</p>
+                <p className="text-xs">As três mensagens abaixo são opcionais e ficam vinculadas ao histórico da decisão. Para deferir, declare que conferiu os serviços.</p>
               </div>
             )}
             {acaoAdministrativa.tipo === "cancelar" && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">O cancelamento não exclui a permuta nem o deferimento anterior. Ambos permanecem na trilha de auditoria.</p>}
@@ -1174,13 +1252,26 @@ export default function Permutas({ user }) {
                   <span>Declaro que conferi os serviços informados pelos policiais.</span>
                 </label>
               )}
-              <label htmlFor="justificativa-permuta" className="grid gap-1 text-xs font-semibold text-slate-600">
-                {acaoAdministrativa.tipo === "cancelar" ? "Justificativa do cancelamento" : acaoAdministrativa.deferir ? "Observação da decisão" : "Justificativa do indeferimento"}
-                <textarea id="justificativa-permuta" required minLength={1} maxLength={3000} value={justificativaAdministrativa} onChange={(evento) => setJustificativaAdministrativa(evento.target.value)} className="min-h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder={acaoAdministrativa.tipo === "cancelar" ? "Informe o motivo do cancelamento" : acaoAdministrativa.deferir ? "Registre observação sobre a decisão" : "Informe o motivo do indeferimento"} />
-              </label>
+              {acaoAdministrativa.tipo === "decidir" ? (
+                <div className="space-y-3">
+                  {[
+                    ["mensagem_escalante", "Mensagem ao escalante (P1)"],
+                    ["mensagem_policial_1", `Mensagem para ${identificacaoPolicial(acaoAdministrativa.permuta.solicitante)} · solicitante`],
+                    ["mensagem_policial_2", `Mensagem para ${identificacaoPolicial(acaoAdministrativa.permuta.destinatario)} · destinatário`],
+                  ].map(([campo, rotulo]) => <label key={campo} htmlFor={`decisao-${campo}`} className="grid gap-1 text-xs font-semibold text-slate-600">
+                    {rotulo} <span className="font-normal text-slate-400">(opcional)</span>
+                    <textarea id={`decisao-${campo}`} maxLength={3000} value={mensagensDecisao[campo]} onChange={(evento) => setMensagensDecisao((atual) => ({ ...atual, [campo]: evento.target.value }))} className="min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="Deixe em branco se não houver mensagem para este destinatário." />
+                  </label>)}
+                </div>
+              ) : (
+                <label htmlFor="justificativa-permuta" className="grid gap-1 text-xs font-semibold text-slate-600">
+                  Justificativa do cancelamento
+                  <textarea id="justificativa-permuta" required minLength={1} maxLength={3000} value={justificativaAdministrativa} onChange={(evento) => setJustificativaAdministrativa(evento.target.value)} className="min-h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="Informe o motivo do cancelamento" />
+                </label>
+              )}
               <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:justify-end">
                 <button type="button" onClick={() => setAcaoAdministrativa(null)} disabled={enviando} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Voltar</button>
-                <button type="submit" disabled={enviando || !justificativaAdministrativa.trim() || (acaoAdministrativa.tipo === "decidir" && !servicosConferidos)} className={`rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${acaoAdministrativa.tipo === "cancelar" || !acaoAdministrativa.deferir ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+                <button type="submit" disabled={enviando || (acaoAdministrativa.tipo === "cancelar" && !justificativaAdministrativa.trim()) || (acaoAdministrativa.tipo === "decidir" && !servicosConferidos)} className={`rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${acaoAdministrativa.tipo === "cancelar" || !acaoAdministrativa.deferir ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
                   {enviando ? "Registrando..." : acaoAdministrativa.tipo === "cancelar" ? "Confirmar cancelamento" : acaoAdministrativa.deferir ? "Confirmar deferimento" : "Registrar indeferimento"}
                 </button>
               </div>

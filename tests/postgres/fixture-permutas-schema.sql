@@ -10,7 +10,8 @@ grant usage on schema public to anon, authenticated, service_role;
 create table public.policiais (
   id uuid primary key,
   role text not null,
-  status text not null
+  status text not null,
+  is_master boolean not null default false
 );
 insert into public.policiais (id, role, status) values
   ('10000000-0000-4000-8000-000000000001', 'policial', 'EM ATIVIDADE'),
@@ -18,5 +19,7 @@ insert into public.policiais (id, role, status) values
   ('10000000-0000-4000-8000-000000000003', 'oficial', 'EM ATIVIDADE'),
   ('10000000-0000-4000-8000-000000000004', 'p1', 'EM ATIVIDADE'),
   ('10000000-0000-4000-8000-000000000005', 'policial', 'EM ATIVIDADE'),
-  ('10000000-0000-4000-8000-000000000006', 'policial', 'EM ATIVIDADE');
+  ('10000000-0000-4000-8000-000000000006', 'policial', 'EM ATIVIDADE'),
+  ('10000000-0000-4000-8000-000000000007', 'oficial', 'EM ATIVIDADE');
+update public.policiais set is_master = true where id = '10000000-0000-4000-8000-000000000007';
 grant select on public.policiais to service_role;

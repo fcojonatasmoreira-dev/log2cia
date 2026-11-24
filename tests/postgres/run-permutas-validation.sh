@@ -72,8 +72,13 @@ psql_db "$banco" < "$raiz/supabase/manual/20261123_permutas_motivo.sql"
 psql_db "$banco" < "$raiz/tests/postgres/assert-permutas-motivo.sql"
 psql_db "$banco" < "$raiz/supabase/manual/20261123_permutas_concordancia_solicitante.sql"
 psql_db "$banco" < "$raiz/tests/postgres/assert-permutas-auto-confirm.sql"
+psql_db "$banco" < "$raiz/supabase/manual/20261124_permutas_mensagens_decisao.sql"
+psql_db "$banco" < "$raiz/tests/postgres/assert-permutas-mensagens.sql"
+psql_db "$banco" < "$raiz/supabase/manual/20261124_notificacoes_permutas.sql"
+psql_db "$banco" < "$raiz/tests/postgres/assert-notificacoes-permutas.sql"
 esperar_falha_comando "$banco" "set role anon; select * from public.permutas_servico" 'permission denied'
 esperar_falha_comando "$banco" "set role authenticated; select public.permutas_servico_criar_v1('SUBSTITUICAO_SIMPLES','10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','2027-06-01','A','08:00','09:00','Sem acesso','Sem motivo')" 'permission denied'
+esperar_falha_comando "$banco" "set role authenticated; select public.permutas_servico_decidir_v2('33333333-3333-4333-8333-333333333333','10000000-0000-4000-8000-000000000003',true,true,null,null,null)" 'permission denied'
 esperar_falha_comando "$banco" "set role service_role; select public.permutas_servico_bloquear_policial_v1(array['10000000-0000-4000-8000-000000000001'::uuid])" 'permission denied'
 printf 'Isolamento direto confirmado: anon/authenticated não leem tabelas nem executam RPCs; service_role não executa helpers internos.\n'
 

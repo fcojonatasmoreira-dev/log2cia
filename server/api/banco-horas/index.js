@@ -4,9 +4,12 @@ import {
   usuarioAutenticado,
   normalizarRole,
 } from "../_server.js";
+import { permissoesPermuta } from "../permutas/rules.js";
 
 const PERFIS_GESTAO = ["master", "p1", "oficial"];
 const TIPOS_SOLICITACAO = ["inclusao_horas", "dispensa", "folga"];
+const UUID_VALIDO = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 function texto(valor) {
   return typeof valor === "string" ? valor.trim() : "";
@@ -15,6 +18,57 @@ function texto(valor) {
 function numeroPositivo(valor) {
   const n = Number(valor);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function dataValida(valor) {
+  if (!DATA_ISO.test(valor || "")) return false;
+  const [ano, mes, dia] = valor.split("-").map(Number);
+  const data = new Date(Date.UTC(ano, mes - 1, dia));
+  return data.getUTCFullYear() === ano && data.getUTCMonth() === mes - 1 && data.getUTCDate() === dia;
+}
+
+async function listarDispensasCalendario(db, usuario, res, query) {
+  const permissoes = permissoesPermuta(usuario);
+  if (!permissoes.consultar_proprias) {
+    return respostaErro(res, 403, "Seu perfil não pode consultar dispensas neste calendário.");
+  }
+
+  const idsSolicitados = texto(query.policiais_ids)
+    ? [...new Set(texto(query.policiais_ids).split(",").map((id) => id.trim()))]
+    : [usuario.id];
+  if (!idsSolicitados.length || idsSolicitados.length > 25 || idsSolicitados.some((id) => !UUID_VALIDO.test(id))) {
+    return respostaErro(res, 400, "Informe até 25 policiais válidos para o calendário.");
+  }
+  if (!permissoes.consultar_geral && idsSolicitados.some((id) => id !== usuario.id)) {
+    return respostaErro(res, 403, "Você só pode consultar suas próprias dispensas.");
+  }
+
+  const dataInicio = texto(query.data_inicio);
+  const dataFim = texto(query.data_fim);
+  if (!dataValida(dataInicio) || !dataValida(dataFim) || dataInicio > dataFim
+    || (Date.parse(`${dataFim}T00:00:00Z`) - Date.parse(`${dataInicio}T00:00:00Z`)) / 86400000 > 44) {
+    return respostaErro(res, 400, "Período inválido para o calendário de dispensas.");
+  }
+
+  const dispensas = [];
+  for (let inicio = 0; ; inicio += 1000) {
+    const { data, error } = await db.from("banco_horas_solicitacoes")
+      .select("id,policial_id,data_servico,turno,turno_descricao,horas_solicitadas,origem_dispensa,status")
+      .eq("tipo", "dispensa")
+      .eq("status", "deferida")
+      .in("policial_id", idsSolicitados)
+      .gte("data_servico", dataInicio)
+      .lte("data_servico", dataFim)
+      .order("data_servico", { ascending: true })
+      .order("id", { ascending: true })
+      .range(inicio, inicio + 999);
+    if (error) throw error;
+    const pagina = data || [];
+    dispensas.push(...pagina);
+    if (pagina.length < 1000) break;
+  }
+
+  return res.status(200).json({ dispensas });
 }
 
 export default async function handler(req, res) {
@@ -26,6 +80,9 @@ export default async function handler(req, res) {
     const gestor = PERFIS_GESTAO.includes(normalizarRole(usuario));
 
     if (req.method === "GET") {
+      if (texto(req.query?.uso) === "permutas-calendario") {
+        return await listarDispensasCalendario(db, usuario, res, req.query || {});
+      }
       const solicitado = texto(req.query?.policial_id);
 
       if (!gestor && solicitado && solicitado !== usuario.id) {

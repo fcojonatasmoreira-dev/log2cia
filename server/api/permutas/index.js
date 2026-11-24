@@ -30,6 +30,24 @@ function mensagemDoErro(error) {
   return error?.message || "Não foi possível concluir a operação de permuta.";
 }
 
+function sanitizarEventoHistorico(evento, permuta, usuario, permissoes, policialPorId) {
+  const seguro = { ...evento, ator: policialPorId.get(evento.ator_id) || null };
+  const ehDecisao = ["DEFERIDA", "INDEFERIDA"].includes(evento.tipo_evento);
+  if (!ehDecisao) {
+    delete seguro.mensagem_escalante;
+    delete seguro.mensagem_policial_1;
+    delete seguro.mensagem_policial_2;
+  } else {
+    if (!permissoes.consultar_geral) delete seguro.mensagem_escalante;
+    if (!permissoes.decidir && usuario.id !== permuta.solicitante_id) delete seguro.mensagem_policial_1;
+    if (!permissoes.decidir && usuario.id !== permuta.destinatario_id) delete seguro.mensagem_policial_2;
+  }
+  // A justificativa única dos registros antigos é administrativa e não pode
+  // ser reinterpretada nem apresentada como uma das mensagens privadas novas.
+  if (!permissoes.decidir) delete seguro.justificativa;
+  return seguro;
+}
+
 async function buscarTodasPaginas(criarConsulta) {
   const registros = [];
   for (let inicio = 0; ; inicio += TAMANHO_PAGINA) {
@@ -140,6 +158,18 @@ async function listarCalendariosMini(db, usuario, res, query = {}) {
 async function listar(db, usuario, res, query = {}) {
   const permissoes = permissoesPermuta(usuario);
   const policialId = texto(usuario.id);
+  const permutaIdAlvo = texto(query.permuta_id);
+  if (permutaIdAlvo) {
+    if (!UUID_VALIDO.test(permutaIdAlvo)) return respostaErro(res, 400, "Identificador da permuta inválido.");
+    const { data: permutaAlvo, error } = await db.from("permutas_servico")
+      .select("id,solicitante_id,destinatario_id").eq("id", permutaIdAlvo).maybeSingle();
+    if (error) throw error;
+    if (!permutaAlvo) return respostaErro(res, 404, "Permuta não encontrada.");
+    if (!permissoes.consultar_geral
+      && ![permutaAlvo.solicitante_id, permutaAlvo.destinatario_id].includes(policialId)) {
+      return respostaErro(res, 404, "Permuta não encontrada.");
+    }
+  }
   const filtroPolicial = texto(query.policial_id);
   const calendarioIndividual = query.calendario === "individual";
   const policialCalendarioId = filtroPolicial || policialId;
@@ -198,6 +228,7 @@ async function listar(db, usuario, res, query = {}) {
     }
   } else {
     let consulta = db.from("permutas_servico").select("*").order("criada_em", { ascending: false }).limit(1000);
+    if (permutaIdAlvo) consulta = consulta.eq("id", permutaIdAlvo);
     if (policialConsultado) consulta = consulta.or(`solicitante_id.eq.${policialConsultado},destinatario_id.eq.${policialConsultado}`);
     if (idsNoPeriodo) consulta = consulta.in("id", idsNoPeriodo);
     if (filtroTipo) consulta = consulta.eq("tipo", filtroTipo);
@@ -250,10 +281,8 @@ async function listar(db, usuario, res, query = {}) {
     destinatario: policialPorId.get(item.destinatario_id) || null,
     manifestacoes: manifestacoes.get(item.id) || [],
     confirmacoes: confirmacoes.get(item.id) || [],
-    historico: (historico.get(item.id) || []).map((evento) => ({
-      ...evento,
-      ator: policialPorId.get(evento.ator_id) || null,
-    })),
+    historico: (historico.get(item.id) || []).map((evento) =>
+      sanitizarEventoHistorico(evento, item, usuario, permissoes, policialPorId)),
   }));
   return res.status(200).json({ permutas: resultado, permissoes });
 }
@@ -325,12 +354,21 @@ async function executarAcao(db, usuario, body, res) {
     if (!permissoes.decidir) return respostaErro(res, 403, "Somente Oficial ou Master pode decidir permutas.");
     if (typeof body.deferir !== "boolean") return respostaErro(res, 400, "Informe se a decisão é deferimento ou indeferimento.");
     if (body.servicos_conferidos !== true) return respostaErro(res, 400, "Confirme que os serviços informados foram conferidos antes da decisão.");
-    const justificativa = texto(body.justificativa);
-    if (!justificativa || justificativa.length > 3000) return respostaErro(res, 400, "Informe justificativa ou observação de até 3000 caracteres.");
-    const { data, error } = await db.rpc("permutas_servico_decidir_v1", {
+    const mensagens = {
+      mensagem_escalante: texto(body.mensagem_escalante),
+      mensagem_policial_1: texto(body.mensagem_policial_1),
+      mensagem_policial_2: texto(body.mensagem_policial_2),
+    };
+    if (Object.values(mensagens).some((mensagem) => Array.from(mensagem).length > 3000)) {
+      return respostaErro(res, 400, "Cada mensagem pode ter até 3000 caracteres.");
+    }
+    const { data, error } = await db.rpc("permutas_servico_decidir_v2", {
       p_permuta_id: permutaId, p_ator_id: usuario.id,
-      p_deferir: body.deferir, p_justificativa: justificativa,
       p_servicos_conferidos: body.servicos_conferidos,
+      p_deferir: body.deferir,
+      p_mensagem_escalante: mensagens.mensagem_escalante || null,
+      p_mensagem_policial_1: mensagens.mensagem_policial_1 || null,
+      p_mensagem_policial_2: mensagens.mensagem_policial_2 || null,
     });
     if (error) throw error;
     return res.status(200).json({ id: permutaId, status: data });

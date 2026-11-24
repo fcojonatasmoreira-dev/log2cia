@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   criarEventosCalendario,
+  criarEventosCalendarioCompleto,
+  criarEventosDispensasCalendario,
   calcularIndicadoresCalendario,
   filtrarServicosDeferidosPassados,
   deslocarData,
@@ -132,6 +134,30 @@ test("indicadores contam serviços e solicitações distintas respeitando filtro
     dataInicio: "2027-01-02", dataFim: "2027-01-02",
   });
   assert.deepEqual(somenteReciproca, { foiSubstituido: 0, substituiu: 1, simples: 0, reciprocas: 1, solicitacoes: 1 });
+});
+
+test("calendário adiciona somente dispensas deferidas sem confundi-las com eventos ou indicadores de permuta", () => {
+  const dispensas = [
+    { id: "d1", tipo: "dispensa", policial_id: A, data_servico: "2026-12-31", turno: "A", horas_solicitadas: 12, origem_dispensa: "banco_horas", status: "deferida" },
+    { id: "d2", tipo: "dispensa", policial_id: A, data_servico: "2026-12-31", turno: "B", status: "pendente" },
+    { id: "d3", tipo: "dispensa", policial_id: A, data_servico: "2027-01-01", turno: "A", status: "indeferida" },
+    { id: "d4", tipo: "inclusao_horas", policial_id: A, data_servico: "2026-12-31", turno: "A", status: "deferida" },
+  ];
+  const eventos = criarEventosDispensasCalendario(dispensas, { policialId: A, dataInicio: "2026-12-01", dataFim: "2026-12-31" });
+  assert.deepEqual(eventos.map(({ dispensa, dataMarcacao, chaveParticipacao }) => [dispensa.id, dataMarcacao, chaveParticipacao]), [
+    ["d1", "2026-12-31", "dispensa"],
+  ]);
+  assert.equal(criarEventosDispensasCalendario(dispensas, { policialId: B }).length, 0);
+  assert.equal(criarEventosDispensasCalendario(dispensas, { policialId: A, tipo: "SUBSTITUICAO_SIMPLES" }).length, 0);
+  const combinados = criarEventosCalendarioCompleto([
+    permuta("p1", "DEFERIDA", "SUBSTITUICAO_SIMPLES", [servico("s1", A, B, "2026-12-31")]),
+  ], dispensas, { policialId: A, dataInicio: "2026-12-01", dataFim: "2026-12-31" });
+  assert.deepEqual(combinados.map((evento) => [evento.dataMarcacao, evento.tipoEvento || "permuta"]), [
+    ["2026-12-31", "permuta"], ["2026-12-31", "dispensa"],
+  ]);
+  assert.deepEqual(calcularIndicadoresCalendario([], { policialId: A }), {
+    foiSubstituido: 0, substituiu: 0, simples: 0, reciprocas: 0, solicitacoes: 0,
+  });
 });
 
 test("filtro de participação no calendário não altera a data original do serviço", () => {

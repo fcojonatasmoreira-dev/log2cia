@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car, CalendarDays, MapPinned, CalendarCheck, ArrowLeftRight } from "lucide-react";
+import NotificacoesMenu from "./NotificacoesMenu";
 
 export default function AppLayout({ onLogout }) {
   const navigate = useNavigate();
@@ -281,7 +282,8 @@ export default function AppLayout({ onLogout }) {
           </div>
 
           {/* Botões Modernos no Topo: Alterar Senha e Sair */}
-          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto justify-end">
+            {podeAcessarPermutas && <NotificacoesMenu />}
             <button
               onClick={() => navegarPara("/alterar-senha")}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-700 shadow-xs"
