@@ -29,6 +29,7 @@ async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = tr
     if (url.pathname === "/rest/v1/policiais") {
       return Response.json({ id: USUARIO_ID, role: perfil, auth_version: 0, credencial_provisionada: true, primeiro_acesso: false });
     }
+    if (url.pathname === "/rest/v1/rpc/permutas_notificacoes_reconciliar_v1") return Response.json(1);
     if (url.pathname === "/rest/v1/notificacoes_internas" && method === "HEAD") {
       return new Response(null, { status: 200, headers: { "content-range": "*/3" } });
     }
@@ -112,6 +113,17 @@ test("policiais participantes e perfis administrativos autorizados podem consult
     const resultado = await executar({ perfil });
     assert.equal(resultado.status, 200, `perfil ${perfil}`);
   }
+});
+
+test("Oficial e Master reconciliam pendências antigas com identidade da sessão; P1 não executa a RPC", async () => {
+  for (const perfil of ["oficial", "master"]) {
+    const resultado = await executar({ perfil });
+    const chamada = resultado.chamadas.find((item) => item.url.pathname === "/rest/v1/rpc/permutas_notificacoes_reconciliar_v1");
+    assert.ok(chamada, `RPC executada para ${perfil}`);
+    assert.deepEqual(chamada.body, { p_destinatario_id: USUARIO_ID });
+  }
+  const p1 = await executar({ perfil: "p1" });
+  assert.equal(p1.chamadas.some((item) => item.url.pathname === "/rest/v1/rpc/permutas_notificacoes_reconciliar_v1"), false);
 });
 
 test("marcação em nome de terceiro e ações inválidas são rejeitadas antes da escrita", async () => {

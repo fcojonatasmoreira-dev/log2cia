@@ -18,6 +18,7 @@ function dataIsoValida(valor) {
 }
 
 function statusDoErro(error) {
+  if (error?.code === "P0002") return 404;
   if (["22023", "22P02", "23503"].includes(error?.code)) return 400;
   if (["23505", "40001", "42501"].includes(error?.code)) return error.code === "42501" ? 403 : 409;
   if (["42P01", "42883", "PGRST202", "PGRST205"].includes(error?.code)) return 503;
@@ -320,6 +321,41 @@ async function executarAcao(db, usuario, body, res) {
     });
     if (error) throw error;
     return res.status(201).json({ id: data, status: "AGUARDANDO_CONFIRMACAO", confirmacoes_pendentes: [destinatarioId] });
+  }
+
+  if (acao === "editar") {
+    if (!permissoes.criar) return respostaErro(res, 403, "Seu perfil não pode editar permutas.");
+    const permutaId = texto(body?.permuta_id);
+    const destinatarioId = texto(body?.destinatario_id);
+    const versaoEsperada = texto(body?.atualizada_em);
+    const motivo = texto(body?.motivo);
+    const servico = body?.servico;
+    if (!UUID_VALIDO.test(permutaId)) return respostaErro(res, 400, "Identificador da permuta inválido.");
+    if (!versaoEsperada || Number.isNaN(Date.parse(versaoEsperada))) return respostaErro(res, 400, "Atualize a solicitação antes de editar.");
+    if (!UUID_VALIDO.test(destinatarioId) || destinatarioId === usuario.id) return respostaErro(res, 400, "Policial substituto inválido.");
+    if (!motivo || Array.from(motivo).length > LIMITE_MOTIVO_PERMUTA) return respostaErro(res, 400, "Informe o motivo da permuta (até 500 caracteres).");
+    const erroServico = validarServicoInformado(servico);
+    if (erroServico) return respostaErro(res, 400, erroServico);
+    const { data: destinatario, error: erroDestinatario } = await db.from("policiais")
+      .select("id,status,posto_graduacao").eq("id", destinatarioId).maybeSingle();
+    if (erroDestinatario) throw erroDestinatario;
+    if (!destinatario || destinatario.status !== "EM ATIVIDADE" || ehPostoOficial(destinatario.posto_graduacao)) {
+      return respostaErro(res, 400, "O substituto precisa ser outro policial em atividade e não pode ocupar posto de oficial.");
+    }
+    const { data, error } = await db.rpc("permutas_servico_editar_v1", {
+      p_permuta_id: permutaId,
+      p_ator_id: usuario.id,
+      p_versao_esperada: versaoEsperada,
+      p_destinatario_id: destinatarioId,
+      p_motivo: motivo,
+      p_data: servico.data,
+      p_turno: servico.turno.trim(),
+      p_inicio: servico.horario_inicio,
+      p_fim: servico.horario_fim,
+      p_descricao: servico.descricao.trim(),
+    });
+    if (error) throw error;
+    return res.status(200).json({ id: permutaId, status: data, confirmacao_pendente: destinatarioId });
   }
 
   const permutaId = texto(body?.permuta_id);

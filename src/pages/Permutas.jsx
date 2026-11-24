@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { AlertCircle, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, History, Plus, RefreshCw, Search, Send, X, XCircle } from "lucide-react";
-import { cancelarPermuta, confirmarPermuta, criarPermuta, decidirPermuta, listarCalendariosMini, listarPermutas } from "../services/permutasService";
+import { cancelarPermuta, confirmarPermuta, criarPermuta, decidirPermuta, editarPermuta, listarCalendariosMini, listarPermutas } from "../services/permutasService";
 import { listarDispensasDeferidasCalendario } from "../services/bancoHorasService";
 import { getPoliciaisPermutas, getPoliciaisPermutasCalendario } from "../services/policiaisService";
-import { calcularIndicadoresCalendario, criarEventosCalendarioCompleto, dataLocalHoje, deslocarData, deslocarReferenciaCalendario, filtrarServicosDeferidosPassados, obterDiasCalendario } from "../utils/permutasCalendar";
+import { calcularIndicadoresCalendario, criarEventosCalendarioCompleto, dataLocalHoje, deslocarData, deslocarReferenciaCalendario, filtrarPermutasDeferidas, obterDiasCalendario } from "../utils/permutasCalendar";
 import { filtrarPoliciaisPorBusca, filtrarPoliciaisSubstitutos, formatarIdentificacaoPolicial } from "../utils/hierarquiaPolicial";
 import { alternarEstadoLinhaPermuta, atualizarStatusPermuta, obterIdsMiniCalendariosAbertos, podeCancelarPermuta, podeConsultarCalendario, podeConsultarCalendarioProprio, podeDecidirPermuta } from "../utils/permutasUi";
 
@@ -20,6 +20,7 @@ const EVENTO_HISTORICO = {
   CRIADA: "Solicitação criada",
   MANIFESTACAO: "Serviço informado",
   CONFIRMADA: "Confirmação de participação",
+  EDITADA: "Solicitação editada pelo solicitante",
   DEFERIDA: "Deferimento",
   INDEFERIDA: "Indeferimento",
   CANCELADA: "Cancelamento",
@@ -57,6 +58,14 @@ function mensagensDecisaoExibiveis(evento, permuta) {
     [`Mensagem para ${identificacaoPolicial(permuta.solicitante)} · solicitante`, evento.mensagem_policial_1],
     [`Mensagem para ${identificacaoPolicial(permuta.destinatario)} · destinatário`, evento.mensagem_policial_2],
   ].filter(([, mensagem]) => Boolean(mensagem));
+}
+
+function resumoAlteracaoPermuta(dados, nomesPorId) {
+  if (!dados || typeof dados !== "object") return "Detalhes indisponíveis.";
+  const servico = (dados.manifestacoes || []).find((item) => item.policial_id && item.policial_id !== dados.destinatario_id)
+    || (dados.manifestacoes || [])[0];
+  if (!servico) return `Substituto: ${nomesPorId.get(dados.destinatario_id) || "participante"}. Motivo: ${dados.motivo || "—"}`;
+  return `${nomesPorId.get(dados.destinatario_id) || "participante"} · ${dataBrasileira(servico.data_servico)} · Turno ${servico.turno} · ${horarioBrasileiro(servico.horario_inicio)}–${horarioBrasileiro(servico.horario_fim)} · Motivo: ${dados.motivo || "—"}`;
 }
 
 function formatarDataCalendario(chave, opcoes = { day: "2-digit", month: "2-digit", year: "numeric" }) {
@@ -124,19 +133,14 @@ function chaveMiniCalendario(permutaId, policialId) {
 
 function MiniCalendarioPolicial({ id, policial, permutas, dispensas, carregando, erro }) {
   const hoje = dataLocalHoje();
-  const [agora, setAgora] = useState(() => new Date());
   const dias = useMemo(() => obterDiasCalendario(hoje, "mes"), [hoje]);
   const dataInicio = deslocarData(dias[0], -1);
   const dataFim = dias.at(-1) || "";
   const [diaSelecionado, setDiaSelecionado] = useState(hoje);
-  useEffect(() => {
-    const intervalo = window.setInterval(() => setAgora(new Date()), 30_000);
-    return () => window.clearInterval(intervalo);
-  }, []);
-  const servicosPassados = useMemo(() => filtrarServicosDeferidosPassados(permutas, agora), [permutas, agora]);
-  const eventos = useMemo(() => criarEventosCalendarioCompleto(servicosPassados, dispensas, {
+  const servicosDeferidos = useMemo(() => filtrarPermutasDeferidas(permutas), [permutas]);
+  const eventos = useMemo(() => criarEventosCalendarioCompleto(servicosDeferidos, dispensas, {
     policialId: policial.id, dataInicio, dataFim,
-  }), [servicosPassados, dispensas, policial.id, dataInicio, dataFim]);
+  }), [servicosDeferidos, dispensas, policial.id, dataInicio, dataFim]);
   const eventosPorDia = useMemo(() => {
     const mapa = new Map();
     for (const evento of eventos) mapa.set(evento.dataMarcacao, [...(mapa.get(evento.dataMarcacao) || []), evento]);
@@ -233,6 +237,10 @@ export default function Permutas({ user }) {
   const [erroPoliciais, setErroPoliciais] = useState("");
   const [sucesso, setSucesso] = useState("");
   const [formAberto, setFormAberto] = useState(false);
+  const [edicao, setEdicao] = useState(null);
+  const [buscaSubstitutoEdicao, setBuscaSubstitutoEdicao] = useState("");
+  const [listaSubstitutosEdicaoAberta, setListaSubstitutosEdicaoAberta] = useState(false);
+  const [enviandoEdicao, setEnviandoEdicao] = useState(false);
   const [tipo, setTipo] = useState("SUBSTITUICAO_SIMPLES");
   const [destinatarioId, setDestinatarioId] = useState("");
   const [buscaSubstituto, setBuscaSubstituto] = useState("");
@@ -354,6 +362,7 @@ export default function Permutas({ user }) {
   const enviadas = useMemo(() => permutas.filter((item) => item.solicitante_id === usuarioId), [permutas, usuarioId]);
   const recebidas = useMemo(() => permutas.filter((item) => item.destinatario_id === usuarioId), [permutas, usuarioId]);
   const substitutosFiltrados = useMemo(() => filtrarPoliciaisSubstitutos(policiais, { usuarioId, busca: buscaSubstituto }), [policiais, usuarioId, buscaSubstituto]);
+  const substitutosEdicaoFiltrados = useMemo(() => filtrarPoliciaisSubstitutos(policiais, { usuarioId, busca: buscaSubstitutoEdicao }), [policiais, usuarioId, buscaSubstitutoEdicao]);
   const policiaisCalendarioFiltrados = useMemo(() => filtrarPoliciaisPorBusca(policiaisCalendario, { busca: buscaPolicialCalendario }), [policiaisCalendario, buscaPolicialCalendario]);
   const idsMiniCalendarios = useMemo(() => obterIdsMiniCalendariosAbertos(permutas, miniCalendariosAbertos, {
     usuarioId, podeConsultarGeral,
@@ -543,6 +552,62 @@ export default function Permutas({ user }) {
       setErro(error.message || "Não foi possível enviar a permuta.");
     } finally {
       setEnviando(false);
+    }
+  }
+
+  function abrirEdicaoPermuta(item) {
+    const servicoOriginal = (item.manifestacoes || []).find((manifestacao) => manifestacao.policial_id === item.solicitante_id);
+    if (item.solicitante_id !== usuarioId || !["AGUARDANDO_CONFIRMACAO", "AGUARDANDO_ANALISE"].includes(item.status) || !servicoOriginal) return;
+    limparMensagens();
+    setFormAberto(false);
+    setEdicao({
+      permuta_id: item.id,
+      atualizada_em: item.atualizada_em,
+      destinatario_id: item.destinatario_id,
+      motivo: item.motivo || "",
+      servico: {
+        data: String(servicoOriginal.data_servico || "").slice(0, 10),
+        turno: servicoOriginal.turno || "",
+        horario_inicio: String(servicoOriginal.horario_inicio || "").slice(0, 5),
+        horario_fim: String(servicoOriginal.horario_fim || "").slice(0, 5),
+        descricao: servicoOriginal.descricao || "",
+      },
+    });
+    setBuscaSubstitutoEdicao(formatarIdentificacaoPolicial(item.destinatario));
+    setListaSubstitutosEdicaoAberta(false);
+  }
+
+  async function salvarEdicaoPermuta(evento) {
+    evento.preventDefault();
+    if (!edicao || !usuarioId) return;
+    limparMensagens();
+    if (!edicao.destinatario_id || edicao.destinatario_id === usuarioId) {
+      setErro("Selecione outro policial como substituto.");
+      return;
+    }
+    if (!filtrarPoliciaisSubstitutos(policiais, { usuarioId }).some((policial) => policial.id === edicao.destinatario_id)) {
+      setErro("Selecione um policial em atividade elegível.");
+      return;
+    }
+    const motivo = edicao.motivo.trim();
+    if (!motivo || Array.from(motivo).length > LIMITE_MOTIVO_PERMUTA) {
+      setErro("Informe o motivo da permuta com até 500 caracteres.");
+      return;
+    }
+    const erroServico = validarServico(edicao.servico);
+    if (erroServico) { setErro(erroServico); return; }
+    setEnviandoEdicao(true);
+    try {
+      await editarPermuta({ ...edicao, motivo, servico: edicao.servico });
+      setEdicao(null);
+      setListaSubstitutosEdicaoAberta(false);
+      setSucesso("Solicitação atualizada. As confirmações anteriores foram invalidadas e o destinatário precisa confirmar novamente.");
+      setAtualizacaoMiniCalendarios((atual) => atual + 1);
+      await carregar();
+    } catch (error) {
+      setErro(error.message || "Não foi possível editar a permuta.");
+    } finally {
+      setEnviandoEdicao(false);
     }
   }
 
@@ -740,8 +805,23 @@ export default function Permutas({ user }) {
             </div>
             <p className="mt-1 text-xs text-slate-500">Solicitada em {dataHoraBrasileira(item.criada_em)}</p>
           </div>
-          {direcao !== "administrativa" && <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{direcao === "enviada" ? "Enviada por você" : "Recebida"}</span>}
+          <div className="flex flex-wrap items-center gap-2">
+            {item.solicitante_id === usuarioId && ["AGUARDANDO_CONFIRMACAO", "AGUARDANDO_ANALISE"].includes(item.status) && <button type="button" onClick={() => edicao?.permuta_id === item.id ? setEdicao(null) : abrirEdicaoPermuta(item)} className="rounded-lg border border-blue-200 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50">{edicao?.permuta_id === item.id ? "Fechar edição" : "Editar solicitação"}</button>}
+            {direcao !== "administrativa" && <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{direcao === "enviada" ? "Enviada por você" : "Recebida"}</span>}
+          </div>
         </div>
+
+        {edicao?.permuta_id === item.id && <form onSubmit={salvarEdicaoPermuta} className="space-y-4 rounded-xl border border-blue-200 bg-blue-50/40 p-3">
+          <div><h4 className="text-sm font-bold text-slate-800">Editar solicitação</h4><p className="mt-1 text-xs text-slate-600">Salvar as alterações invalida a confirmação do destinatário; em troca recíproca, o novo destinatário informará seu próprio serviço ao confirmar.</p></div>
+          <div className="relative grid gap-1 text-xs font-semibold text-slate-600">
+            <label htmlFor={`buscar-substituto-edicao-${item.id}`}>Policial substituto</label>
+            <input id={`buscar-substituto-edicao-${item.id}`} type="search" role="combobox" aria-autocomplete="list" aria-expanded={listaSubstitutosEdicaoAberta} autoComplete="off" value={buscaSubstitutoEdicao} onFocus={() => setListaSubstitutosEdicaoAberta(true)} onKeyDown={(evento) => { if (evento.key === "Escape") setListaSubstitutosEdicaoAberta(false); }} onChange={(evento) => { setBuscaSubstitutoEdicao(evento.target.value); setEdicao((atual) => ({ ...atual, destinatario_id: "" })); setListaSubstitutosEdicaoAberta(true); }} placeholder="Buscar por posto, numeral ou nome de guerra" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal" />
+            {listaSubstitutosEdicaoAberta && <div role="listbox" className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">{substitutosEdicaoFiltrados.length ? substitutosEdicaoFiltrados.map((policial) => <button key={policial.id} type="button" role="option" aria-selected={edicao.destinatario_id === policial.id} onClick={() => { setEdicao((atual) => ({ ...atual, destinatario_id: policial.id })); setBuscaSubstitutoEdicao(formatarIdentificacaoPolicial(policial)); setListaSubstitutosEdicaoAberta(false); }} className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm font-normal text-slate-800 last:border-0 hover:bg-blue-50">{formatarIdentificacaoPolicial(policial)}</button>) : <p className="px-3 py-3 font-normal">Nenhum policial elegível encontrado.</p>}</div>}
+          </div>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">Motivo da permuta/substituição<textarea required maxLength={LIMITE_MOTIVO_PERMUTA} value={edicao.motivo} onChange={(evento) => setEdicao((atual) => ({ ...atual, motivo: Array.from(evento.target.value).slice(0, LIMITE_MOTIVO_PERMUTA).join("") }))} className="min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal" /></label>
+          <CampoServico valor={edicao.servico} atualizar={(atualizar) => setEdicao((atual) => ({ ...atual, servico: typeof atualizar === "function" ? atualizar(atual.servico) : atualizar }))} idPrefixo={`editar-permuta-${item.id}`} />
+          <div className="flex flex-col-reverse gap-2 border-t border-blue-100 pt-3 sm:flex-row sm:justify-end"><button type="button" disabled={enviandoEdicao} onClick={() => setEdicao(null)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Cancelar</button><button type="submit" disabled={enviandoEdicao || !edicao.destinatario_id} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{enviandoEdicao ? "Salvando..." : "Salvar e solicitar confirmação"}</button></div>
+        </form>}
 
         <div className="grid gap-3 sm:grid-cols-2">
           {participantes.map((participante) => {
@@ -805,6 +885,7 @@ export default function Permutas({ user }) {
                   <p className="text-sm font-semibold text-slate-800">{EVENTO_HISTORICO[evento.tipo_evento] || evento.tipo_evento}</p>
                   <p className="text-xs text-slate-500">{evento.ator ? identificacaoPolicial(evento.ator) : nomesPorId.get(evento.ator_id) || `Responsável registrado (${evento.ator_id})`} · {dataHoraBrasileira(evento.ocorrido_em)}</p>
                   {(evento.estado_anterior || evento.estado_novo) && <p className="mt-1 text-xs text-slate-600">{STATUS[evento.estado_anterior]?.label || evento.estado_anterior || "Início"} → {STATUS[evento.estado_novo]?.label || evento.estado_novo}</p>}
+                  {evento.detalhes_alteracao && <div className="mt-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600"><p><strong>Antes:</strong> {resumoAlteracaoPermuta(evento.detalhes_alteracao.antes, nomesPorId)}</p><p className="mt-1"><strong>Depois:</strong> {resumoAlteracaoPermuta(evento.detalhes_alteracao.depois, nomesPorId)}</p></div>}
                   {evento.justificativa && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{evento.justificativa}</p>}
                   {mensagensDecisaoExibiveis(evento, item).map(([rotulo, mensagem]) => <p key={rotulo} className="mt-2 whitespace-pre-wrap rounded-md bg-indigo-50 p-2 text-sm text-indigo-950"><span className="font-semibold">{rotulo}:</span> {mensagem}</p>)}
                   {evento.servicos_conferidos && <p className="mt-1 text-xs font-medium text-emerald-700">Serviços conferidos pelo responsável.</p>}

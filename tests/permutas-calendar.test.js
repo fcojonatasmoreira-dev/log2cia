@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   criarEventosCalendario,
   criarEventosCalendarioCompleto,
+  filtrarPermutasDeferidas,
   criarEventosDispensasCalendario,
   calcularIndicadoresCalendario,
   filtrarServicosDeferidosPassados,
@@ -158,6 +159,31 @@ test("calendário adiciona somente dispensas deferidas sem confundi-las com even
   assert.deepEqual(calcularIndicadoresCalendario([], { policialId: A }), {
     foiSubstituido: 0, substituiu: 0, simples: 0, reciprocas: 0, solicitacoes: 0,
   });
+});
+
+test("mini calendário considera todas as permutas deferidas, inclusive futuras, com a classificação dos dois participantes", () => {
+  const itens = [
+    permuta("futura-simples", "DEFERIDA", "SUBSTITUICAO_SIMPLES", [servico("f1", A, B, "2026-11-29")]),
+    permuta("futura-reciproca", "DEFERIDA", "TROCA_RECIPROCA", [
+      servico("r1", A, B, "2026-11-29"),
+      servico("r2", B, A, "2026-12-02"),
+    ]),
+    permuta("pendente", "AGUARDANDO_ANALISE", "SUBSTITUICAO_SIMPLES", [servico("p1", A, B, "2026-11-29")]),
+    permuta("cancelada", "CANCELADA", "SUBSTITUICAO_SIMPLES", [servico("c1", A, B, "2026-11-29")]),
+  ];
+  const deferidas = filtrarPermutasDeferidas(itens);
+  const substituido = criarEventosCalendario(deferidas, { policialId: A, dataInicio: "2026-11-01", dataFim: "2026-12-31" });
+  const substituto = criarEventosCalendario(deferidas, { policialId: B, dataInicio: "2026-11-01", dataFim: "2026-12-31" });
+  assert.deepEqual(substituido.map(({ permuta: p, manifestacao, chaveParticipacao }) => [p.id, manifestacao.data_servico, chaveParticipacao]).sort(), [
+    ["futura-reciproca", "2026-11-29", "foi_substituido"],
+    ["futura-simples", "2026-11-29", "foi_substituido"],
+    ["futura-reciproca", "2026-12-02", "substituiu"],
+  ].sort());
+  assert.deepEqual(substituto.map(({ permuta: p, manifestacao, chaveParticipacao }) => [p.id, manifestacao.data_servico, chaveParticipacao]).sort(), [
+    ["futura-reciproca", "2026-11-29", "substituiu"],
+    ["futura-simples", "2026-11-29", "substituiu"],
+    ["futura-reciproca", "2026-12-02", "foi_substituido"],
+  ].sort());
 });
 
 test("filtro de participação no calendário não altera a data original do serviço", () => {

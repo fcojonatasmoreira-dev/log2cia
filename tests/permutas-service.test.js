@@ -5,6 +5,7 @@ import {
   confirmarPermuta,
   criarPermuta,
   decidirPermuta,
+  editarPermuta,
   listarCalendariosMini,
   listarPermutas,
 } from "../src/services/permutasService.js";
@@ -23,6 +24,7 @@ test("serviço frontend envia os payloads que o handler e as RPCs esperam", asyn
   const motivo = "Necessidade de atendimento familiar";
   try {
     await criarPermuta({ tipo: "SUBSTITUICAO_SIMPLES", destinatario_id: "destinatario", motivo, servico });
+    await editarPermuta({ permuta_id: "permuta", atualizada_em: "2026-11-24T15:00:00Z", destinatario_id: "destinatario-novo", motivo, servico });
     await confirmarPermuta("permuta", servico);
     await decidirPermuta("permuta", true, true, {
       mensagem_escalante: "Mensagem P1",
@@ -35,6 +37,7 @@ test("serviço frontend envia os payloads que o handler e as RPCs esperam", asyn
   }
   assert.deepEqual(chamadas.map(({ url, options, body }) => ({ url, method: options.method, credentials: options.credentials, body })), [
     { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "criar", tipo: "SUBSTITUICAO_SIMPLES", destinatario_id: "destinatario", motivo, servico } },
+    { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "editar", permuta_id: "permuta", atualizada_em: "2026-11-24T15:00:00Z", destinatario_id: "destinatario-novo", motivo, servico } },
     { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "confirmar", permuta_id: "permuta", servico } },
     { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "decidir", permuta_id: "permuta", deferir: true, servicos_conferidos: true, mensagem_escalante: "Mensagem P1", mensagem_policial_1: "Mensagem P1 da permuta", mensagem_policial_2: "Mensagem P2 da permuta" } },
     { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "cancelar", permuta_id: "permuta", justificativa: "Motivo administrativo" } },

@@ -74,11 +74,21 @@ psql_db "$banco" < "$raiz/supabase/manual/20261123_permutas_concordancia_solicit
 psql_db "$banco" < "$raiz/tests/postgres/assert-permutas-auto-confirm.sql"
 psql_db "$banco" < "$raiz/supabase/manual/20261124_permutas_mensagens_decisao.sql"
 psql_db "$banco" < "$raiz/tests/postgres/assert-permutas-mensagens.sql"
+psql_db "$banco" -c "insert into public.permutas_servico (id,tipo,status,solicitante_id,destinatario_id,motivo) values ('80000000-0000-4000-8000-000000000001','SUBSTITUICAO_SIMPLES','AGUARDANDO_ANALISE','10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','Pendência preexistente');"
 psql_db "$banco" < "$raiz/supabase/manual/20261124_notificacoes_permutas.sql"
 psql_db "$banco" < "$raiz/tests/postgres/assert-notificacoes-permutas.sql"
+psql_db "$banco" < "$raiz/supabase/manual/20261124_permutas_notificacoes_reconciliacao.sql"
+psql_db "$banco" < "$raiz/tests/postgres/assert-notificacoes-reconciliacao.sql"
+psql_db "$banco" < "$raiz/supabase/manual/20261124_permutas_edicao_solicitante.sql"
+psql_db "$banco" < "$raiz/tests/postgres/assert-permutas-edicao.sql"
+psql_db "$banco" < "$raiz/supabase/manual/20261124_presenca_master.sql"
+psql_db "$banco" < "$raiz/tests/postgres/assert-presenca-master.sql"
 esperar_falha_comando "$banco" "set role anon; select * from public.permutas_servico" 'permission denied'
 esperar_falha_comando "$banco" "set role authenticated; select public.permutas_servico_criar_v1('SUBSTITUICAO_SIMPLES','10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','2027-06-01','A','08:00','09:00','Sem acesso','Sem motivo')" 'permission denied'
 esperar_falha_comando "$banco" "set role authenticated; select public.permutas_servico_decidir_v2('33333333-3333-4333-8333-333333333333','10000000-0000-4000-8000-000000000003',true,true,null,null,null)" 'permission denied'
+esperar_falha_comando "$banco" "set role authenticated; select public.permutas_servico_editar_v1('33333333-3333-4333-8333-333333333333','10000000-0000-4000-8000-000000000001','2026-11-24T15:00:00Z','10000000-0000-4000-8000-000000000002','Motivo','2027-06-01','A','08:00','16:00','Serviço')" 'permission denied'
+esperar_falha_comando "$banco" "set role anon; select public.permutas_notificacoes_reconciliar_v1('10000000-0000-4000-8000-000000000003')" 'permission denied'
+esperar_falha_comando "$banco" "set role authenticated; select public.presenca_registrar_v1('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000003')" 'permission denied'
 esperar_falha_comando "$banco" "set role service_role; select public.permutas_servico_bloquear_policial_v1(array['10000000-0000-4000-8000-000000000001'::uuid])" 'permission denied'
 printf 'Isolamento direto confirmado: anon/authenticated não leem tabelas nem executam RPCs; service_role não executa helpers internos.\n'
 

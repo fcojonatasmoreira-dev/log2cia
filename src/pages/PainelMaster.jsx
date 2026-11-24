@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Shield,
-  AlertCircle,
-  Users,
   UserPlus,
   FileText,
   KeyRound,
@@ -13,6 +11,8 @@ import {
   Check,
 } from "lucide-react";
 import { listarGestaoCredenciais, resetarCredencial } from "../services/credenciaisService";
+import { listarPresencas } from "../services/presencaService";
+import { filtrarPresencas } from "../utils/presenca";
 
 export default function PainelMaster() {
   const navigate = useNavigate();
@@ -36,6 +36,14 @@ export default function PainelMaster() {
   const [resetandoUsuario, setResetandoUsuario] = useState("");
   const [senhaTemporaria, setSenhaTemporaria] = useState("");
   const [feedbackCopiaSenha, setFeedbackCopiaSenha] = useState("");
+  const [presencas, setPresencas] = useState([]);
+  const [totalOnline, setTotalOnline] = useState(0);
+  const [carregandoPresencas, setCarregandoPresencas] = useState(true);
+  const [erroPresencas, setErroPresencas] = useState("");
+  const [buscaPresenca, setBuscaPresenca] = useState("");
+  const [filtroSituacaoPresenca, setFiltroSituacaoPresenca] = useState("");
+  const [filtroPerfilPresenca, setFiltroPerfilPresenca] = useState("");
+  const [filtroUnidadePresenca, setFiltroUnidadePresenca] = useState("");
 
   const fecharModalSenha = () => {
     setSenhaTemporaria("");
@@ -66,7 +74,26 @@ export default function PainelMaster() {
     }
   };
 
+  const carregarPresencas = useCallback(async (mostrarCarregamento = false) => {
+    if (mostrarCarregamento) setCarregandoPresencas(true);
+    try {
+      const resultado = await listarPresencas();
+      setPresencas(resultado.usuarios);
+      setTotalOnline(resultado.total_online);
+      setErroPresencas("");
+    } catch (error) {
+      setErroPresencas(error.message || "Não foi possível carregar as presenças.");
+    } finally {
+      if (mostrarCarregamento) setCarregandoPresencas(false);
+    }
+  }, []);
+
   useEffect(() => { carregarUsuarios(); }, []);
+  useEffect(() => {
+    void carregarPresencas();
+    const intervalo = window.setInterval(() => void carregarPresencas(), 30_000);
+    return () => window.clearInterval(intervalo);
+  }, [carregarPresencas]);
 
   const usuariosFiltrados = useMemo(() => {
     const termo = buscaUsuarios.trim().toLocaleLowerCase("pt-BR");
@@ -76,6 +103,15 @@ export default function PainelMaster() {
         .toLocaleLowerCase("pt-BR").includes(termo),
     );
   }, [buscaUsuarios, usuarios]);
+
+  const perfisPresenca = useMemo(() => [...new Set(presencas.map((item) => item.perfil).filter(Boolean))].sort(), [presencas]);
+  const unidadesPresenca = useMemo(() => [...new Set(presencas.map((item) => item.unidade).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), [presencas]);
+  const presencasFiltradas = useMemo(() => {
+    return filtrarPresencas(presencas, {
+      busca: buscaPresenca, situacao: filtroSituacaoPresenca,
+      perfil: filtroPerfilPresenca, unidade: filtroUnidadePresenca,
+    });
+  }, [presencas, buscaPresenca, filtroSituacaoPresenca, filtroPerfilPresenca, filtroUnidadePresenca]);
 
   const handleResetCredencial = async (usuario) => {
     const nome = usuario.nome_guerra || usuario.nome_completo || usuario.matricula;
@@ -192,6 +228,25 @@ export default function PainelMaster() {
         </button>
         </div>
       </div>
+
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><h2 className="text-lg font-bold text-slate-800">Presença de usuários</h2><p className="text-xs text-slate-500">Sinal autenticado por aba; online significa uma sessão com sinal recebido nos últimos dois minutos.</p></div>
+          <div className="flex items-center gap-2"><span className="rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-800">{totalOnline} online</span><button type="button" onClick={() => void carregarPresencas(true)} disabled={carregandoPresencas} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${carregandoPresencas ? "animate-spin" : ""}`} />Atualizar</button></div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">Nome, numeral ou matrícula<input type="search" value={buscaPresenca} onChange={(evento) => setBuscaPresenca(evento.target.value)} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal" placeholder="Pesquisar usuário" /></label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">Presença<select value={filtroSituacaoPresenca} onChange={(evento) => setFiltroSituacaoPresenca(evento.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="">Online e offline</option><option value="ONLINE">Online</option><option value="OFFLINE">Offline</option></select></label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">Perfil<select value={filtroPerfilPresenca} onChange={(evento) => setFiltroPerfilPresenca(evento.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="">Todos os perfis</option>{perfisPresenca.map((perfil) => <option key={perfil} value={perfil}>{perfil}</option>)}</select></label>
+          {unidadesPresenca.length > 0 && <label className="grid gap-1 text-xs font-semibold text-slate-600">Unidade<select value={filtroUnidadePresenca} onChange={(evento) => setFiltroUnidadePresenca(evento.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="">Todas as unidades</option>{unidadesPresenca.map((unidade) => <option key={unidade} value={unidade}>{unidade}</option>)}</select></label>}
+        </div>
+        {erroPresencas && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{erroPresencas}</p>}
+        {carregandoPresencas && !presencas.length ? <p className="p-4 text-center text-sm text-slate-500">Carregando presença...</p>
+          : presencasFiltradas.length ? <div className="grid gap-2 md:grid-cols-2">{presencasFiltradas.map((item) => <article key={item.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0"><p className="truncate text-sm font-bold text-slate-800">{item.posto_graduacao} · {item.numeral} · {item.nome}</p><p className="mt-0.5 text-xs text-slate-500">Perfil: {item.perfil}{item.unidade ? ` · Unidade: ${item.unidade}` : ""}</p><p className="mt-0.5 text-[11px] text-slate-500">Último sinal da sessão: {item.ultima_atividade ? new Date(item.ultima_atividade).toLocaleString("pt-BR") : "Sem sinal registrado"}</p></div>
+            <span className={`w-fit rounded-full px-2.5 py-1 text-[10px] font-bold ${item.situacao === "ONLINE" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{item.situacao === "ONLINE" ? "ONLINE" : "OFFLINE"}</span>
+          </article>)}</div> : <p className="p-4 text-center text-sm text-slate-500">Nenhum usuário corresponde aos filtros.</p>}
+      </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

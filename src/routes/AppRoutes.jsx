@@ -158,7 +158,7 @@ export default function AppRoutes() {
             {/* Rota para alteração de senha acessível pelo menu lateral */}
             <Route path="alterar-senha" element={<AlterarSenhaObrigatoria />} />
 
-            {usuario.role === "master" && (
+            {(usuario.role === "master" || usuario.is_master === true) && (
               <Route path="painel-master" element={<PainelMaster />} />
             )}
             {(usuario.is_master === true || ["master", "p1"].includes(String(usuario.role || "").trim().toLowerCase())) && (

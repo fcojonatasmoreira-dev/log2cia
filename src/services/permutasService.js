@@ -48,6 +48,10 @@ export function criarPermuta({ tipo, destinatario_id, motivo, servico }) {
   return request({ method: "POST", body: JSON.stringify({ acao: "criar", tipo, destinatario_id, motivo, servico }) });
 }
 
+export function editarPermuta({ permuta_id, atualizada_em, destinatario_id, motivo, servico }) {
+  return request({ method: "POST", body: JSON.stringify({ acao: "editar", permuta_id, atualizada_em, destinatario_id, motivo, servico }) });
+}
+
 export function confirmarPermuta(permuta_id, servico) {
   return request({ method: "POST", body: JSON.stringify({ acao: "confirmar", permuta_id, servico }) });
 }

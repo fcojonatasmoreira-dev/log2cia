@@ -16,7 +16,7 @@ function podeAcessar(usuario) {
 
 function statusDoErro(error) {
   if (["22P02", "22023"].includes(error?.code)) return 400;
-  if (["42P01", "PGRST205"].includes(error?.code)) return 503;
+  if (["42P01", "42883", "PGRST202", "PGRST205"].includes(error?.code)) return 503;
   return 500;
 }
 
@@ -34,6 +34,13 @@ function apresentar(notificacao) {
 }
 
 async function listar(db, usuario, res) {
+  const role = String(usuario.role || "").trim().toLowerCase();
+  if (role === "oficial" || role === "master" || usuario.is_master === true) {
+    const { error } = await db.rpc("permutas_notificacoes_reconciliar_v1", {
+      p_destinatario_id: usuario.id,
+    });
+    if (error) throw error;
+  }
   const [resultado, contagem] = await Promise.all([
     db.from("notificacoes_internas")
       .select("id,permuta_id,tipo,mensagem_disponivel,criado_em,lida_em")
@@ -88,7 +95,7 @@ export default async function handler(req, res) {
     const status = statusDoErro(error);
     if (status === 500) console.error("Erro na API de notificações:", error?.code || "erro interno");
     return respostaErro(res, status, status === 503
-      ? "A migration manual da central de notificações ainda não foi aplicada."
+      ? "A migration manual da central ou da reconciliação de notificações ainda não foi aplicada."
       : status === 500 ? "Não foi possível carregar as notificações." : error?.message || "Dados de notificação inválidos.");
   }
 }

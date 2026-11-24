@@ -88,6 +88,10 @@ export function criarEventosCalendario(permutas, filtros = {}) {
     || a.permuta.id.localeCompare(b.permuta.id));
 }
 
+export function filtrarPermutasDeferidas(permutas) {
+  return (permutas || []).filter((permuta) => permuta.status === "DEFERIDA");
+}
+
 export function criarEventosDispensasCalendario(dispensas, filtros = {}) {
   if ((filtros.status && filtros.status !== "DEFERIDA") || filtros.tipo || filtros.participacao) return [];
   return (dispensas || []).filter((dispensa) => {

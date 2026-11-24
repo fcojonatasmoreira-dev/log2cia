@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car, CalendarDays, MapPinned, CalendarCheck, ArrowLeftRight } from "lucide-react";
 import NotificacoesMenu from "./NotificacoesMenu";
+import { novaInstanciaPresenca, registrarPresenca } from "../../services/presencaService";
 
 export default function AppLayout({ onLogout }) {
   const navigate = useNavigate();
@@ -9,6 +10,7 @@ export default function AppLayout({ onLogout }) {
 
   const [usuario, setUsuario] = useState(null);
   const [sidebarAberta, setSidebarAberta] = useState(false);
+  const [instanciaPresenca] = useState(() => novaInstanciaPresenca());
 
   const carregarUsuario = () => {
     try {
@@ -32,6 +34,25 @@ export default function AppLayout({ onLogout }) {
       window.removeEventListener("usuarioAtualizado", carregarUsuario);
     };
   }, []);
+
+  useEffect(() => {
+    if (!usuario?.id) return undefined;
+    let ativo = true;
+    const heartbeat = () => {
+      if (ativo) void registrarPresenca(instanciaPresenca).catch(() => {});
+    };
+    heartbeat();
+    const intervalo = window.setInterval(heartbeat, 60_000);
+    const aoRetornar = () => { if (document.visibilityState === "visible") heartbeat(); };
+    document.addEventListener("visibilitychange", aoRetornar);
+    window.addEventListener("focus", heartbeat);
+    return () => {
+      ativo = false;
+      window.clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", aoRetornar);
+      window.removeEventListener("focus", heartbeat);
+    };
+  }, [usuario?.id, instanciaPresenca]);
 
   const handleSairDoSistema = async () => {
     if (window.confirm("Deseja realmente encerrar a sessão?")) {

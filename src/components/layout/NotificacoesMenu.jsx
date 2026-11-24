@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, CheckCheck, LoaderCircle } from "lucide-react";
 import { listarNotificacoes, marcarNotificacaoLida, marcarTodasNotificacoesLidas } from "../../services/notificacoesService";
 
 const INTERVALO_ATUALIZACAO_MS = 60_000;
+const INTERVALO_FECHAMENTO_MS = 5_000;
 
 function dataHora(valor) {
   const data = new Date(valor);
@@ -18,6 +19,23 @@ export default function NotificacoesMenu() {
   const [carregando, setCarregando] = useState(true);
   const [operacao, setOperacao] = useState(false);
   const [erro, setErro] = useState("");
+  const timerFechamento = useRef(null);
+
+  const limparTimerFechamento = () => {
+    if (timerFechamento.current) window.clearTimeout(timerFechamento.current);
+    timerFechamento.current = null;
+  };
+
+  const reiniciarTimerFechamento = () => {
+    limparTimerFechamento();
+    timerFechamento.current = window.setTimeout(() => setAberta(false), INTERVALO_FECHAMENTO_MS);
+  };
+
+  useEffect(() => {
+    if (aberta) reiniciarTimerFechamento();
+    else limparTimerFechamento();
+    return limparTimerFechamento;
+  }, [aberta]);
 
   useEffect(() => {
     let ativo = true;
@@ -50,6 +68,8 @@ export default function NotificacoesMenu() {
   }, []);
 
   const abrirPermuta = async (item) => {
+    limparTimerFechamento();
+    setAberta(false);
     setOperacao(true);
     try {
       if (!item.lida_em) {
@@ -58,7 +78,6 @@ export default function NotificacoesMenu() {
           ? { ...notificacao, lida_em: new Date().toISOString() } : notificacao));
         setNaoLidas((quantidade) => Math.max(0, quantidade - 1));
       }
-      setAberta(false);
       navegar(`/permutas?permuta_id=${encodeURIComponent(item.permuta_id)}`);
     } catch (error) {
       setErro(error.message || "Não foi possível atualizar a notificação.");
@@ -97,7 +116,7 @@ export default function NotificacoesMenu() {
         <span>Notificações</span>
         {naoLidas > 0 && <span className="min-w-5 rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] leading-4 text-white">{naoLidas > 99 ? "99+" : naoLidas}</span>}
       </button>
-      {aberta && <section role="dialog" aria-label="Central de notificações" className="absolute right-0 z-50 mt-2 max-h-[75vh] w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-800 shadow-xl">
+      {aberta && <section role="dialog" aria-label="Central de notificações" onPointerDown={reiniciarTimerFechamento} onPointerMove={reiniciarTimerFechamento} onKeyDown={reiniciarTimerFechamento} onWheel={reiniciarTimerFechamento} onScroll={reiniciarTimerFechamento} className="absolute right-0 z-50 mt-2 max-h-[75vh] w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-800 shadow-xl">
         <header className="flex items-center justify-between gap-2 border-b border-slate-100 p-3">
           <div><h3 className="text-sm font-bold">Notificações</h3><p className="text-[11px] text-slate-500">{naoLidas} não lida(s)</p></div>
           <button type="button" disabled={!naoLidas || operacao} onClick={marcarTodas} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50">

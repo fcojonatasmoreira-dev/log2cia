@@ -45,6 +45,7 @@ async function executar({ role, body, actorId = ATOR_ID, permutaInfo = {}, desti
       if (url.pathname.endsWith("permutas_servico_criar_v1")) return Response.json(PERMUTA_ID);
       const status = url.pathname.endsWith("decidir_v2")
         ? (JSON.parse(init.body).p_deferir ? "DEFERIDA" : "INDEFERIDA")
+        : url.pathname.endsWith("editar_v1") ? "AGUARDANDO_CONFIRMACAO"
         : url.pathname.endsWith("confirmar_v1") ? "AGUARDANDO_ANALISE" : "CANCELADA";
       return Response.json(status);
     }
@@ -206,6 +207,7 @@ test("P1 consulta geral, mas não pode deferir, indeferir nem cancelar", async (
 test("todas as operações protegidas exigem sessão válida antes de acessar o banco", async () => {
   for (const body of [
     { acao: "criar", tipo: "SUBSTITUICAO_SIMPLES", destinatario_id: OUTRO_ID, servico: {} },
+    { acao: "editar", permuta_id: PERMUTA_ID, destinatario_id: OUTRO_ID, servico: {} },
     { acao: "confirmar", permuta_id: PERMUTA_ID },
     { acao: "decidir", permuta_id: PERMUTA_ID, deferir: true },
     { acao: "cancelar", permuta_id: PERMUTA_ID },
@@ -254,6 +256,36 @@ test("criação mapeia data, turno, horário e descrição para a assinatura SQL
     p_fim: servico.horario_fim, p_descricao: servico.descricao, p_motivo: motivo,
   });
   assert.deepEqual(resultado.body.confirmacoes_pendentes, [OUTRO_ID], "somente o destinatário permanece pendente");
+});
+
+test("edição usa identidade autenticada, valida participante e encaminha campos à RPC", async () => {
+  const servico = { data: "2027-01-03", turno: " C ", horario_inicio: "20:00", horario_fim: "04:00", descricao: " Patrulhamento atualizado " };
+  const atualizadaEm = "2026-11-24T15:00:00.000Z";
+  const resultado = await executar({ role: "policial", body: {
+    acao: "editar", permuta_id: PERMUTA_ID, atualizada_em: atualizadaEm, solicitante_id: TERCEIRO_ID, ator_id: TERCEIRO_ID,
+    policial_id: TERCEIRO_ID, destinatario_id: OUTRO_ID, motivo: " Motivo revisado ", servico,
+  } });
+  assert.equal(resultado.status, 200);
+  assert.equal(resultado.body.status, "AGUARDANDO_CONFIRMACAO");
+  const chamada = resultado.chamadas.find((item) => item.path.endsWith("permutas_servico_editar_v1"));
+  assert.deepEqual(chamada.body, {
+    p_permuta_id: PERMUTA_ID, p_ator_id: ATOR_ID, p_versao_esperada: atualizadaEm, p_destinatario_id: OUTRO_ID,
+    p_motivo: "Motivo revisado", p_data: servico.data, p_turno: "C",
+    p_inicio: servico.horario_inicio, p_fim: servico.horario_fim, p_descricao: "Patrulhamento atualizado",
+  });
+});
+
+test("edição bloqueia destinatário inelegível e campos inválidos antes da RPC", async () => {
+  const base = { role: "policial", body: {
+    acao: "editar", permuta_id: PERMUTA_ID, atualizada_em: "2026-11-24T15:00:00.000Z", destinatario_id: OUTRO_ID,
+    motivo: "Motivo", servico: { data: "2027-01-03", turno: "A", horario_inicio: "08:00", horario_fim: "16:00", descricao: "Serviço" },
+  } };
+  const oficial = await executar({ ...base, destinatarioInfo: { id: OUTRO_ID, status: "EM ATIVIDADE", posto_graduacao: "Major" } });
+  assert.equal(oficial.status, 400);
+  assert.equal(oficial.chamadas.some((item) => item.path.endsWith("permutas_servico_editar_v1")), false);
+  const invalido = await executar({ role: "policial", body: { ...base.body, motivo: "  " } });
+  assert.equal(invalido.status, 400);
+  assert.equal(invalido.chamadas.some((item) => item.path.endsWith("permutas_servico_editar_v1")), false);
 });
 
 test("criação exige motivo obrigatório com limite de 500 caracteres Unicode antes da RPC", async () => {
