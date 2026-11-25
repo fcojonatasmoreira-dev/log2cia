@@ -11,7 +11,7 @@ function resposta() {
   return { statusCode: 200, status(valor) { this.statusCode = valor; return this; }, setHeader() {}, json(body) { this.body = body; return this; } };
 }
 
-async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = true, notificacao = null } = {}) {
+async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = true, notificacao = null, notificacoes = null, erroReconciliacao = null } = {}) {
   const anterior = {
     fetch: globalThis.fetch,
     segredo: process.env.SESSION_SECRET,
@@ -29,12 +29,15 @@ async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = tr
     if (url.pathname === "/rest/v1/policiais") {
       return Response.json({ id: USUARIO_ID, role: perfil, auth_version: 0, credencial_provisionada: true, primeiro_acesso: false });
     }
-    if (url.pathname === "/rest/v1/rpc/permutas_notificacoes_reconciliar_v1") return Response.json(1);
+    if (url.pathname === "/rest/v1/rpc/permutas_notificacoes_reconciliar_v1") {
+      if (erroReconciliacao) return Response.json(erroReconciliacao, { status: 400 });
+      return Response.json(1);
+    }
     if (url.pathname === "/rest/v1/notificacoes_internas" && method === "HEAD") {
       return new Response(null, { status: 200, headers: { "content-range": "*/3" } });
     }
     if (url.pathname === "/rest/v1/notificacoes_internas" && method === "GET") {
-      return Response.json([notificacao || {
+      return Response.json(notificacoes || [notificacao || {
         id: NOTIFICACAO_ID, destinatario_id: "nao-deve-ser-retornado", permuta_id: PERMUTA_ID,
         tipo: "PERMUTA_DEFERIDA", mensagem_disponivel: true, criado_em: "2026-11-24T12:00:00Z", lida_em: null,
       }]);
@@ -162,4 +165,26 @@ test("somente P1 e Master recebem destino direto do Controle de Escala", async (
   assert.equal(policial.body.notificacoes[0].abrir_controle_escala, undefined);
   const master = await executar({ perfil: "master" });
   assert.equal(master.body.notificacoes[0].abrir_controle_escala, true);
+});
+
+test("permutas, Banco de Horas e Controle de Escala aparecem juntos na mesma resposta", async () => {
+  const resultado = await executar({ notificacoes: [
+    { id: "20000000-0000-4000-8000-000000000011", permuta_id: PERMUTA_ID, tipo: "PERMUTA_DEFERIDA", mensagem_disponivel: false, criado_em: "2026-11-24T12:00:00Z", lida_em: null },
+    { id: "20000000-0000-4000-8000-000000000012", permuta_id: null, banco_horas_solicitacao_id: "40000000-0000-4000-8000-000000000001", tipo: "BANCO_HORAS_NOVA", mensagem_disponivel: false, criado_em: "2026-11-24T12:01:00Z", lida_em: null },
+    { id: "20000000-0000-4000-8000-000000000013", permuta_id: PERMUTA_ID, escala_id: "50000000-0000-4000-8000-000000000001", tipo: "PERMUTA_ESCALA_APLICADA", mensagem_disponivel: false, criado_em: "2026-11-24T12:02:00Z", lida_em: null },
+  ] });
+  assert.equal(resultado.status, 200);
+  assert.equal(resultado.body.notificacoes.length, 3);
+  assert.deepEqual(resultado.body.notificacoes.map((item) => item.tipo), ["Permuta deferida", "Nova solicitação no Banco de Horas", "Serviço aplicado à escala"]);
+  assert.equal(resultado.body.notificacoes[2].abrir_controle_escala, true);
+  assert.equal(resultado.body.nao_lidas, 3);
+});
+
+test("erro de inferência do índice parcial informa a incompatibilidade da reconciliação", async () => {
+  const resultado = await executar({ perfil: "oficial", erroReconciliacao: {
+    code: "42P10", message: "there is no unique or exclusion constraint matching the ON CONFLICT specification",
+  } });
+  assert.equal(resultado.status, 503);
+  assert.match(resultado.body.error, /índice parcial do Controle de Escala/);
+  assert.equal(resultado.chamadas.some((item) => item.url.pathname === "/rest/v1/notificacoes_internas"), false);
 });

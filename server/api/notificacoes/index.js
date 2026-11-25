@@ -22,8 +22,18 @@ function podeAcessar(usuario) {
 
 function statusDoErro(error) {
   if (["22P02", "22023"].includes(error?.code)) return 400;
-  if (["42P01", "42703", "42883", "PGRST202", "PGRST205"].includes(error?.code)) return 503;
+  if (error?.code === "42P10") return 503;
+  if (["42P01", "42703", "42883", "PGRST202", "PGRST204", "PGRST205"].includes(error?.code)) return 503;
   return 500;
+}
+
+function mensagemDoErro(error, status) {
+  if (error?.code === "42P10") return "A reconciliação das notificações não corresponde ao índice parcial do Controle de Escala. Aplique a migration corretiva antes de tentar novamente.";
+  if (["42703", "PGRST204"].includes(error?.code)) return "A estrutura de notificações está incompatível com o código publicado. Confira as migrations de Banco de Horas e Controle de Escala.";
+  if (["42P01", "PGRST205"].includes(error?.code)) return "A tabela necessária à central de notificações não foi encontrada. Confira as migrations aplicadas.";
+  if (["42883", "PGRST202"].includes(error?.code)) return "A função de reconciliação de notificações não foi encontrada. Confira as migrations aplicadas.";
+  if (status === 500) return "Não foi possível carregar as notificações.";
+  return error?.message || "Dados de notificação inválidos.";
 }
 
 function apresentar(notificacao, usuario) {
@@ -140,9 +150,7 @@ export default async function handler(req, res) {
     return respostaErro(res, 405, "Método não permitido.");
   } catch (error) {
     const status = statusDoErro(error);
-    if (status === 500) console.error("Erro na API de notificações:", error?.code || "erro interno");
-    return respostaErro(res, status, status === 503
-      ? "A migration manual da central ou da reconciliação de notificações ainda não foi aplicada."
-      : status === 500 ? "Não foi possível carregar as notificações." : error?.message || "Dados de notificação inválidos.");
+    if (status === 500 || error?.code === "42P10") console.error("Erro na API de notificações:", error?.code || "erro interno");
+    return respostaErro(res, status, mensagemDoErro(error, status));
   }
 }

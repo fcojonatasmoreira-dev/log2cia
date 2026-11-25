@@ -15,6 +15,7 @@ import {
 import { administrarConta, listarGestaoCredenciais, resetarCredencial } from "../services/credenciaisService";
 import { listarPresencas } from "../services/presencaService";
 import { filtrarPresencas } from "../utils/presenca";
+import { filtrarUsuariosMaster, situacaoCredencialUsuario } from "../utils/painelMaster";
 
 const ROLES_GESTAO = ["master", "p4", "armeiro", "oficial", "p1", "p1_escalante_servico_ordinario", "policial", "permanente", "permanente da guarda"];
 
@@ -37,6 +38,10 @@ export default function PainelMaster({ user }) {
   const [carregandoUsuarios, setCarregandoUsuarios] = useState(true);
   const [erroUsuarios, setErroUsuarios] = useState("");
   const [buscaUsuarios, setBuscaUsuarios] = useState("");
+  const [filtroPerfilUsuario, setFiltroPerfilUsuario] = useState("");
+  const [filtroContaUsuario, setFiltroContaUsuario] = useState("");
+  const [filtroCredencialUsuario, setFiltroCredencialUsuario] = useState("");
+  const [usuarioGerenciado, setUsuarioGerenciado] = useState("");
   const [resetandoUsuario, setResetandoUsuario] = useState("");
   const [senhaTemporaria, setSenhaTemporaria] = useState("");
   const [feedbackCopiaSenha, setFeedbackCopiaSenha] = useState("");
@@ -93,22 +98,25 @@ export default function PainelMaster({ user }) {
     }
   }, []);
 
-  useEffect(() => { carregarUsuarios(); }, []);
   useEffect(() => {
-    void carregarPresencas();
-    const intervalo = window.setInterval(() => void carregarPresencas(), 30_000);
-    return () => window.clearInterval(intervalo);
+    const agendamento = window.setTimeout(() => { void carregarUsuarios(); }, 0);
+    return () => window.clearTimeout(agendamento);
+  }, []);
+  useEffect(() => {
+    const agendamento = window.setTimeout(() => { void carregarPresencas(true); }, 0);
+    return () => window.clearTimeout(agendamento);
   }, [carregarPresencas]);
 
   const usuariosFiltrados = useMemo(() => {
-    const termo = buscaUsuarios.trim().toLocaleLowerCase("pt-BR");
-    if (!termo) return usuarios;
-    return usuarios.filter((usuario) =>
-      `${usuario.nome_completo || ""} ${usuario.nome_guerra || ""} ${usuario.matricula || ""}`
-        .toLocaleLowerCase("pt-BR").includes(termo),
-    );
-  }, [buscaUsuarios, usuarios]);
+    return filtrarUsuariosMaster(usuarios, {
+      busca: buscaUsuarios,
+      perfil: filtroPerfilUsuario,
+      conta: filtroContaUsuario,
+      credencial: filtroCredencialUsuario,
+    });
+  }, [buscaUsuarios, filtroPerfilUsuario, filtroContaUsuario, filtroCredencialUsuario, usuarios]);
 
+  const perfisUsuario = useMemo(() => [...new Set(usuarios.map((usuario) => usuario.role).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), [usuarios]);
   const perfisPresenca = useMemo(() => [...new Set(presencas.map((item) => item.perfil).filter(Boolean))].sort(), [presencas]);
   const unidadesPresenca = useMemo(() => [...new Set(presencas.map((item) => item.unidade).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), [presencas]);
   const presencasFiltradas = useMemo(() => {
@@ -126,7 +134,7 @@ export default function PainelMaster({ user }) {
     try {
       const resultado = await resetarCredencial(usuario);
       setSenhaTemporaria(resultado.senhaTemporaria || "");
-      await carregarUsuarios();
+      await Promise.all([carregarUsuarios(), carregarPresencas(true)]);
     } catch (error) {
       window.alert(error.message);
     } finally {
@@ -151,13 +159,27 @@ export default function PainelMaster({ user }) {
     setAcaoConta(chave);
     try {
       await administrarConta(usuario, tipo, role);
-      await carregarUsuarios();
+      await Promise.all([carregarUsuarios(), carregarPresencas(true)]);
     } catch (error) {
       window.alert(error.message || "Não foi possível administrar a conta.");
     } finally {
       setAcaoConta("");
     }
   };
+
+  const limparFiltrosUsuarios = () => {
+    setBuscaUsuarios("");
+    setFiltroPerfilUsuario("");
+    setFiltroContaUsuario("");
+    setFiltroCredencialUsuario("");
+  };
+
+  const rotuloCredencial = (usuario) => ({
+    nao_provisionada: "Não provisionada",
+    sem_senha: "Sem senha",
+    primeiro_acesso: "Primeiro acesso pendente",
+    ativa: "Ativa",
+  })[situacaoCredencialUsuario(usuario)];
 
   // Lista de postos que NÃO possuem numeral (Subtenente pra cima)
   const postosSemNumeral = [
@@ -211,6 +233,7 @@ export default function PainelMaster({ user }) {
       if (!response.ok) throw new Error(resultado.error || "Não foi possível cadastrar o operador.");
 
       setSenhaTemporaria(resultado.senhaTemporaria || "");
+      await Promise.all([carregarUsuarios(), carregarPresencas(true)]);
       setNomeCompleto("");
       setNomeGuerra("");
       setMatricula("");
@@ -274,7 +297,10 @@ export default function PainelMaster({ user }) {
         {carregandoPresencas && !presencas.length ? <p className="p-4 text-center text-sm text-slate-500">Carregando presença...</p>
           : presencasFiltradas.length ? <div className="grid gap-2 md:grid-cols-2">{presencasFiltradas.map((item) => <article key={item.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0"><p className="truncate text-sm font-bold text-slate-800">{item.posto_graduacao} · {item.numeral} · {item.nome}</p><p className="mt-0.5 text-xs text-slate-500">Perfil: {item.perfil}{item.unidade ? ` · Unidade: ${item.unidade}` : ""}</p><p className="mt-0.5 text-[11px] text-slate-500">Último sinal da sessão: {item.ultima_atividade ? new Date(item.ultima_atividade).toLocaleString("pt-BR") : "Sem sinal registrado"}</p></div>
-            <span className={`w-fit rounded-full px-2.5 py-1 text-[10px] font-bold ${item.situacao === "ONLINE" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{item.situacao === "ONLINE" ? "ONLINE" : "OFFLINE"}</span>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <span className={`w-fit rounded-full px-2.5 py-1 text-[10px] font-bold ${item.situacao === "ONLINE" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{item.situacao === "ONLINE" ? "ONLINE" : "OFFLINE"}</span>
+              <button type="button" onClick={() => void handleAdministrarConta({ id: item.id, origem: "policiais", nome_guerra: item.nome }, "encerrar_sessoes")} disabled={Boolean(acaoConta)} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"><LogOut className="h-3.5 w-3.5" />Encerrar sessões</button>
+            </div>
           </article>)}</div> : <p className="p-4 text-center text-sm text-slate-500">Nenhum usuário corresponde aos filtros.</p>}
       </section>
 
@@ -302,43 +328,56 @@ export default function PainelMaster({ user }) {
           </div>)}
         </div>}
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <label className="relative block w-full sm:max-w-sm">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="relative block">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={buscaUsuarios} onChange={(event) => setBuscaUsuarios(event.target.value)} placeholder="Buscar por nome ou matrícula" className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm" />
+            <input type="search" value={buscaUsuarios} onChange={(event) => setBuscaUsuarios(event.target.value)} placeholder="Nome, numeral ou matrícula" className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm" />
           </label>
-          <span className="text-xs text-slate-500">Credenciais cadastradas: {resumoCredenciais?.credenciaisCadastradas ?? "—"}</span>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">Perfil<select value={filtroPerfilUsuario} onChange={(event) => setFiltroPerfilUsuario(event.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="">Todos os perfis</option>{perfisUsuario.map((perfil) => <option key={perfil} value={perfil}>{perfil}</option>)}</select></label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">Estado da conta<select value={filtroContaUsuario} onChange={(event) => setFiltroContaUsuario(event.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="">Ativas e suspensas</option><option value="ativa">Ativa</option><option value="suspensa">Suspensa</option></select></label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600">Situação da credencial<select value={filtroCredencialUsuario} onChange={(event) => setFiltroCredencialUsuario(event.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="">Todas as credenciais</option><option value="nao_provisionada">Não provisionada</option><option value="sem_senha">Sem senha</option><option value="primeiro_acesso">Primeiro acesso pendente</option><option value="ativa">Ativa</option></select></label>
         </div>
+        <div className="flex flex-wrap items-center justify-between gap-2"><button type="button" onClick={limparFiltrosUsuarios} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700">Limpar filtros</button><span className="text-xs text-slate-500">{usuariosFiltrados.length} de {usuarios.length} usuários · Credenciais cadastradas: {resumoCredenciais?.credenciaisCadastradas ?? "—"}</span></div>
 
         {!carregandoUsuarios && !erroUsuarios && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">{historicoDisponivel ? "O histórico é registrado a partir da ativação desta trilha. Ausência de registro não significa que o usuário nunca acessou ou alterou a senha." : "Histórico de acessos e alterações não está disponível. Ausência de registro não significa que o usuário nunca acessou ou alterou a senha."}</p>}
         {erroUsuarios && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-xs text-rose-700">{erroUsuarios}</p>}
-        {carregandoUsuarios ? <p className="py-5 text-center text-sm text-slate-500">Carregando usuários...</p> : !erroUsuarios && <div className="overflow-x-auto rounded-xl border border-slate-100">
-          <table className="w-full min-w-[1050px] text-left text-xs">
-            <thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr>
-              <th className="p-3">Usuário</th><th className="p-3">Origem</th><th className="p-3">Perfil</th><th className="p-3">Status cadastral</th><th className="p-3">Conta</th><th className="p-3">Credencial</th><th className="p-3">Primeiro acesso</th><th className="p-3">Último login</th><th className="p-3">Última alteração de senha</th><th className="p-3">Ação</th>
-            </tr></thead>
-            <tbody className="divide-y divide-slate-100">{usuariosFiltrados.map((usuario) => {
-              const chave = `${usuario.origem}:${usuario.id}`;
-              const data = (valor) => valor ? new Date(valor).toLocaleString("pt-BR") : "Sem registro disponível";
-              return <tr key={chave}>
-                <td className="p-3"><span className="font-semibold text-slate-800">{usuario.nome_guerra || usuario.nome_completo || "—"}</span><span className="block text-slate-500">{usuario.nome_completo || ""} · {usuario.matricula || "Sem matrícula"}</span></td>
-                <td className="p-3">{usuario.origem === "policiais" ? "Efetivo" : "DRSO externo"}</td>
-                <td className="p-3">{usuario.origem === "policiais" ? <select aria-label={`Perfil de ${usuario.nome_guerra || usuario.nome_completo}`} value={usuario.role} disabled={Boolean(acaoConta)} onChange={(evento) => void handleAdministrarConta(usuario, "alterar_perfil", evento.target.value)} className="rounded-md border border-slate-200 bg-white px-2 py-1"><option value={usuario.role}>{usuario.role}</option>{ROLES_GESTAO.filter((perfil) => perfil !== usuario.role).map((perfil) => <option key={perfil} value={perfil}>{perfil}</option>)}</select> : usuario.role}</td>
-                <td className="p-3">{usuario.status || "Não informado"}</td>
-                <td className="p-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${usuario.contaSuspensa ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"}`}>{usuario.contaSuspensa ? "Suspensa" : "Ativa"}</span></td>
-                <td className="p-3">{usuario.temSenha ? "Cadastrada" : "Sem senha"}</td>
-                <td className="p-3">{usuario.primeiroAcesso ? "Pendente" : "Concluído"}</td>
-                <td className="p-3">{historicoDisponivel ? data(usuario.ultimoLogin) : "Histórico indisponível"}</td>
-                <td className="p-3">{historicoDisponivel ? data(usuario.ultimaAlteracaoSenha) : "Histórico indisponível"}</td>
-                <td className="p-3"><div className="flex flex-wrap gap-1.5">
-                  <button type="button" onClick={() => void handleAdministrarConta(usuario, "encerrar_sessoes")} disabled={Boolean(acaoConta)} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1.5 font-semibold text-slate-700 disabled:opacity-50"><LogOut className="h-3.5 w-3.5" />Encerrar sessões</button>
-                  <button type="button" onClick={() => void handleAdministrarConta(usuario, usuario.contaSuspensa ? "reativar" : "suspender")} disabled={Boolean(acaoConta) || (usuario.origem === "policiais" && usuario.id === user?.id && !usuario.contaSuspensa)} className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1.5 font-semibold disabled:opacity-50 ${usuario.contaSuspensa ? "border-emerald-200 text-emerald-800" : "border-rose-200 text-rose-800"}`}><ShieldOff className="h-3.5 w-3.5" />{usuario.contaSuspensa ? "Reativar" : "Suspender"}</button>
-                  <button type="button" onClick={() => void handleResetCredencial(usuario)} disabled={resetandoUsuario === chave || Boolean(acaoConta)} className="inline-flex items-center gap-1 rounded-lg border border-amber-200 px-2 py-1.5 font-semibold text-amber-800 disabled:opacity-50"><KeyRound className="h-3.5 w-3.5" />{resetandoUsuario === chave ? "Gerando..." : "Redefinir"}</button>
-                </div></td>
-              </tr>;
-            })}</tbody>
-          </table>
-          {!usuariosFiltrados.length && <p className="p-5 text-center text-sm text-slate-500">Nenhum usuário encontrado.</p>}
+        {carregandoUsuarios ? <p className="py-5 text-center text-sm text-slate-500">Carregando usuários...</p> : !erroUsuarios && <div className="space-y-2">
+          {usuariosFiltrados.map((usuario) => {
+            const chave = `${usuario.origem}:${usuario.id}`;
+            const aberto = usuarioGerenciado === chave;
+            const data = (valor) => valor ? new Date(valor).toLocaleString("pt-BR") : "Sem registro disponível";
+            return <article key={chave} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-800">{usuario.nome_guerra || usuario.nome_completo || "—"}</p>
+                  <p className="text-xs text-slate-500">{usuario.posto_graduacao || "Posto não informado"}{usuario.numeral ? ` · ${usuario.numeral}` : ""} · {usuario.nome_completo || ""}{usuario.matricula ? ` · Matrícula ${usuario.matricula}` : ""}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold">
+                    <span className="rounded-full bg-blue-50 px-2 py-1 text-blue-800">{usuario.role}</span>
+                    <span className={`rounded-full px-2 py-1 ${usuario.contaSuspensa ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"}`}>Conta {usuario.contaSuspensa ? "suspensa" : "ativa"}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">{rotuloCredencial(usuario)}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">Cadastro {usuario.status || "não informado"}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">{usuario.origem === "policiais" ? "Efetivo" : "DRSO externo"}</span>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setUsuarioGerenciado(aberto ? "" : chave)} aria-expanded={aberto} className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-50">{aberto ? "Fechar detalhes" : "Gerenciar"}</button>
+              </div>
+              {aberto && <div className="mt-4 border-t border-slate-100 pt-4">
+                <dl className="grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                  <div><dt className="font-semibold text-slate-500">Primeiro acesso</dt><dd className="mt-1 text-slate-800">{usuario.primeiroAcesso ? "Pendente" : "Concluído"}</dd></div>
+                  <div><dt className="font-semibold text-slate-500">Último login</dt><dd className="mt-1 text-slate-800">{historicoDisponivel ? data(usuario.ultimoLogin) : "Histórico indisponível"}</dd></div>
+                  <div><dt className="font-semibold text-slate-500">Última alteração de senha</dt><dd className="mt-1 text-slate-800">{historicoDisponivel ? data(usuario.ultimaAlteracaoSenha) : "Histórico indisponível"}</dd></div>
+                  <div><dt className="font-semibold text-slate-500">Credencial</dt><dd className="mt-1 text-slate-800">{usuario.temSenha ? "Senha cadastrada; valor não exibido" : "Sem senha cadastrada"}</dd></div>
+                </dl>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {usuario.origem === "policiais" && <label className="grid gap-1 text-xs font-semibold text-slate-600">Perfil<select aria-label={`Perfil de ${usuario.nome_guerra || usuario.nome_completo}`} value={usuario.role} disabled={Boolean(acaoConta)} onChange={(evento) => void handleAdministrarConta(usuario, "alterar_perfil", evento.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2"><option value={usuario.role}>{usuario.role}</option>{ROLES_GESTAO.filter((perfil) => perfil !== usuario.role).map((perfil) => <option key={perfil} value={perfil}>{perfil}</option>)}</select></label>}
+                  <button type="button" onClick={() => void handleAdministrarConta(usuario, "encerrar_sessoes")} disabled={Boolean(acaoConta)} className="mt-auto inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"><LogOut className="h-3.5 w-3.5" />Encerrar sessões</button>
+                  <button type="button" onClick={() => void handleAdministrarConta(usuario, usuario.contaSuspensa ? "reativar" : "suspender")} disabled={Boolean(acaoConta) || (usuario.origem === "policiais" && usuario.id === user?.id && !usuario.contaSuspensa)} className={`mt-auto inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50 ${usuario.contaSuspensa ? "border-emerald-200 text-emerald-800" : "border-rose-200 text-rose-800"}`}><ShieldOff className="h-3.5 w-3.5" />{usuario.contaSuspensa ? "Reativar conta" : "Suspender conta"}</button>
+                  <button type="button" onClick={() => void handleResetCredencial(usuario)} disabled={resetandoUsuario === chave || Boolean(acaoConta)} className="mt-auto inline-flex items-center gap-1 rounded-lg border border-amber-200 px-3 py-2 text-xs font-semibold text-amber-800 disabled:opacity-50"><KeyRound className="h-3.5 w-3.5" />{resetandoUsuario === chave ? "Gerando..." : "Redefinir senha temporária"}</button>
+                </div>
+              </div>}
+            </article>;
+          })}
+          {!usuariosFiltrados.length && <p className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">Nenhum usuário encontrado.</p>}
         </div>}
       </section>
 

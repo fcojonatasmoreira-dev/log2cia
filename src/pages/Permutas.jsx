@@ -5,6 +5,7 @@ import { atualizarServicoEscala, cancelarPermuta, confirmarPermuta, criarPermuta
 import { listarDispensasDeferidasCalendario } from "../services/bancoHorasService";
 import { getPoliciaisPermutas, getPoliciaisPermutasCalendario } from "../services/policiaisService";
 import { calcularIndicadoresCalendario, criarEventosCalendarioCompleto, dataLocalHoje, deslocarData, deslocarReferenciaCalendario, filtrarPermutasDeferidas, obterDiasCalendario } from "../utils/permutasCalendar";
+import { agruparServicosControleEscala, obterPeriodoControleEscala, separarServicosControleEscala } from "../utils/permutasEscala";
 import { filtrarPoliciaisPorBusca, filtrarPoliciaisSubstitutos, formatarIdentificacaoPolicial } from "../utils/hierarquiaPolicial";
 import { alternarEstadoLinhaPermuta, atualizarStatusPermuta, obterIdsMiniCalendariosAbertos, podeAtualizarControleEscala as podeOperarControleEscala, podeCancelarPermuta, podeConsultarCalendario, podeConsultarCalendarioProprio, podeDecidirPermuta } from "../utils/permutasUi";
 
@@ -283,12 +284,16 @@ export default function Permutas({ user }) {
   const [miniCalendariosAbertos, setMiniCalendariosAbertos] = useState({});
   const [servicosEscala, setServicosEscala] = useState([]);
   const [indicadoresEscala, setIndicadoresEscala] = useState({ pendentes: 0, aplicados: 0, revisao: 0, total: 0 });
-  const [filtrosEscala, setFiltrosEscala] = useState({ data: "", data_inicio: "", data_fim: "", situacao: "", policial_id: "", tipo: "", turno: "", permuta_id: "" });
+  const [periodoEscala, setPeriodoEscala] = useState("amanha");
+  const [dataInicioEscala, setDataInicioEscala] = useState("");
+  const [dataFimEscala, setDataFimEscala] = useState("");
   const [carregandoEscala, setCarregandoEscala] = useState(false);
   const [erroEscala, setErroEscala] = useState("");
   const [atualizacaoEscala, setAtualizacaoEscala] = useState(0);
   const [escalasExpandidas, setEscalasExpandidas] = useState({});
   const versaoControleEscala = useRef(0);
+  const intervaloEscala = useMemo(() => obterPeriodoControleEscala(periodoEscala, dataLocalHoje(), dataInicioEscala, dataFimEscala), [periodoEscala, dataInicioEscala, dataFimEscala]);
+  const listasEscala = useMemo(() => separarServicosControleEscala(servicosEscala, intervaloEscala), [servicosEscala, intervaloEscala]);
 
   const versaoConsultaLista = useRef(0);
 
@@ -379,7 +384,7 @@ export default function Permutas({ user }) {
     const temporizador = window.setTimeout(() => {
       setCarregandoEscala(true);
       setErroEscala("");
-      listarControleEscala({ ...filtrosEscala, permuta_id: filtrosEscala.permuta_id || (controleEscalaSolicitado ? permutaDestinoId : "") })
+      listarControleEscala({ permuta_id: controleEscalaSolicitado ? permutaDestinoId : "" })
         .then((resultado) => {
           if (ativo && versao === versaoControleEscala.current) {
             setServicosEscala(resultado.servicos || []);
@@ -390,7 +395,7 @@ export default function Permutas({ user }) {
         .finally(() => { if (ativo && versao === versaoControleEscala.current) setCarregandoEscala(false); });
     }, 250);
     return () => { ativo = false; window.clearTimeout(temporizador); };
-  }, [podeConsultarGeral, visaoGeral, filtrosEscala, atualizacaoEscala, controleEscalaSolicitado, permutaDestinoId]);
+  }, [podeConsultarGeral, visaoGeral, atualizacaoEscala, controleEscalaSolicitado, permutaDestinoId]);
 
   const enviadas = useMemo(() => permutas.filter((item) => item.solicitante_id === usuarioId), [permutas, usuarioId]);
   const recebidas = useMemo(() => permutas.filter((item) => item.destinatario_id === usuarioId), [permutas, usuarioId]);
@@ -1015,6 +1020,37 @@ export default function Permutas({ user }) {
     }
   }
 
+  function renderListaEscala(itens, textoVazio) {
+    const grupos = agruparServicosControleEscala(itens);
+    if (!grupos.length) return <div className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">{textoVazio}</div>;
+    return <div className="space-y-4">{grupos.map((grupo) => <section key={grupo.data} className="space-y-2">
+      <h3 className="sticky top-0 z-10 rounded-lg bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700">{dataBrasileira(grupo.data)}</h3>
+      <div className="space-y-2">{grupo.servicos.map((item) => {
+        const estadoEscala = item.encerrada_em ? "Encerrada sem aplicação" : item.situacao === "PENDENTE_NA_ESCALA" ? "Pendente na escala" : item.situacao === "APLICADA_NA_ESCALA" ? "Aplicada à escala" : item.revisao_concluida_em ? "Revisão concluída" : "Revisão necessária";
+        const reciproca = item.permuta.tipo === "TROCA_RECIPROCA";
+        const cancelada = item.permuta.status === "CANCELADA";
+        return <article key={item.id} className={`rounded-xl border bg-white p-3 shadow-sm ${item.permuta_id === permutaDestinoId ? "ring-2 ring-blue-500" : ""} ${item.situacao === "REVISAO_NECESSARIA" ? "border-rose-200" : item.situacao === "PENDENTE_NA_ESCALA" ? "border-amber-300 bg-amber-50/40" : "border-slate-200"}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button type="button" onClick={() => setEscalasExpandidas((atual) => ({ ...atual, [item.id]: !atual[item.id] }))} aria-expanded={Boolean(escalasExpandidas[item.id])} className="min-w-0 flex-1 text-left">
+              <span className="block font-bold text-slate-900">{item.manifestacao.turno} · {horarioBrasileiro(item.manifestacao.horario_inicio)}–{horarioBrasileiro(item.manifestacao.horario_fim)} {reciproca ? "· Troca recíproca" : "· Substituição simples"}</span>
+              <span className="mt-1 block text-sm text-slate-700">{formatarIdentificacaoPolicial(item.substituto)} substitui {formatarIdentificacaoPolicial(item.policial)}</span>
+              <span className="mt-1 block text-xs text-slate-600">Permuta {item.permuta.status} · {estadoEscala}{cancelada ? " · cancelada; revisão histórica" : ""}</span>
+              {item.responsavel && <span className="mt-1 block text-xs text-slate-500">Última atualização: {formatarIdentificacaoPolicial(item.responsavel)} · {dataHoraBrasileira(item.atualizada_em)}</span>}
+            </button>
+            {podeAtualizarControleEscala && item.situacao === "PENDENTE_NA_ESCALA" && item.permuta.status === "DEFERIDA" && <button type="button" onClick={() => executarOperacaoEscala(item, "APLICAR")} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Marcar como aplicada</button>}
+            {podeAtualizarControleEscala && item.situacao === "APLICADA_NA_ESCALA" && item.permuta.status === "DEFERIDA" && <button type="button" onClick={() => executarOperacaoEscala(item, "REABRIR")} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50">Reabrir</button>}
+            {podeAtualizarControleEscala && item.situacao === "REVISAO_NECESSARIA" && !item.revisao_concluida_em && <button type="button" onClick={() => executarOperacaoEscala(item, "CONCLUIR_REVISAO")} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Concluir revisão</button>}
+          </div>
+          {escalasExpandidas[item.id] && <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+            <p className="text-sm text-slate-700">Serviço informado: {item.manifestacao.descricao} · {horarioBrasileiro(item.manifestacao.horario_inicio)} às {horarioBrasileiro(item.manifestacao.horario_fim)}{item.manifestacao.horario_fim <= item.manifestacao.horario_inicio ? " (dia seguinte)" : ""}</p>
+            {reciproca && <p className="text-xs font-semibold text-violet-800">O outro serviço da troca recíproca é acompanhado em registro independente.</p>}
+            <ol className="space-y-1">{item.historico.map((evento) => <li key={evento.id} className="text-xs text-slate-600">{evento.acao.replaceAll("_", " ")} · {evento.ator ? formatarIdentificacaoPolicial(evento.ator) : "Registro do sistema"} · {dataHoraBrasileira(evento.ocorrido_em)} · {evento.situacao_anterior || "—"} → {evento.situacao_nova}</li>)}</ol>
+          </div>}
+        </article>;
+      })}</div>
+    </section>)}</div>;
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1138,40 +1174,44 @@ export default function Permutas({ user }) {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[["Pendentes", indicadoresEscala.pendentes, "border-amber-200 bg-amber-50 text-amber-900"], ["Aplicados", indicadoresEscala.aplicados, "border-blue-200 bg-blue-50 text-blue-900"], ["Revisão necessária", indicadoresEscala.revisao, "border-rose-200 bg-rose-50 text-rose-900"], ["Serviços acompanhados", indicadoresEscala.total, "border-slate-200 bg-white text-slate-900"]].map(([label, valor, estilo]) => <div key={label} className={`rounded-xl border p-3 ${estilo}`}><p className="text-xl font-bold">{valor}</p><p className="text-xs font-semibold">{label}</p></div>)}
           </div>
-          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-4">
-            <label className="grid gap-1 text-xs font-semibold text-slate-600">Data específica<input type="date" value={filtrosEscala.data} onChange={(e) => setFiltrosEscala((f) => ({ ...f, data: e.target.value, data_inicio: "", data_fim: "" }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal" /></label>
-            <label className="grid gap-1 text-xs font-semibold text-slate-600">De<input type="date" value={filtrosEscala.data_inicio} onChange={(e) => setFiltrosEscala((f) => ({ ...f, data: "", data_inicio: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal" /></label>
-            <label className="grid gap-1 text-xs font-semibold text-slate-600">Até<input type="date" value={filtrosEscala.data_fim} onChange={(e) => setFiltrosEscala((f) => ({ ...f, data: "", data_fim: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal" /></label>
-            <label className="grid gap-1 text-xs font-semibold text-slate-600">Situação na escala<select value={filtrosEscala.situacao} onChange={(e) => setFiltrosEscala((f) => ({ ...f, situacao: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"><option value="">Todas</option><option value="PENDENTE_NA_ESCALA">Apenas pendentes</option><option value="APLICADA_NA_ESCALA">Apenas aplicadas</option><option value="REVISAO_NECESSARIA">Revisão necessária</option></select></label>
-            <label className="grid gap-1 text-xs font-semibold text-slate-600">Policial envolvido<select value={filtrosEscala.policial_id} onChange={(e) => setFiltrosEscala((f) => ({ ...f, policial_id: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"><option value="">Todos</option>{policiaisCalendario.map((p) => <option key={p.id} value={p.id}>{formatarIdentificacaoPolicial(p)}</option>)}</select></label>
-            <label className="grid gap-1 text-xs font-semibold text-slate-600">Tipo<select value={filtrosEscala.tipo} onChange={(e) => setFiltrosEscala((f) => ({ ...f, tipo: e.target.value }))} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"><option value="">Todos</option><option value="SUBSTITUICAO_SIMPLES">Substituição simples</option><option value="TROCA_RECIPROCA">Troca recíproca</option></select></label>
-            <label className="grid gap-1 text-xs font-semibold text-slate-600">Turno<input value={filtrosEscala.turno} onChange={(e) => setFiltrosEscala((f) => ({ ...f, turno: e.target.value }))} maxLength={80} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal" placeholder="Ex.: A" /></label>
-            <button type="button" onClick={() => setFiltrosEscala({ data: "", data_inicio: "", data_fim: "", situacao: "", policial_id: "", tipo: "", turno: "", permuta_id: "" })} className="self-end rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Limpar filtros</button>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div><h2 className="text-sm font-bold text-slate-800">Serviços {intervaloEscala.inicio === intervaloEscala.fim ? `de ${dataBrasileira(intervaloEscala.inicio)}` : intervaloEscala.inicio ? `${dataBrasileira(intervaloEscala.inicio)} a ${dataBrasileira(intervaloEscala.fim)}` : "do período"}</h2><p className="mt-1 text-xs text-slate-500">O período rápido começa amanhã, conforme a data local. Pendências fora dele continuam disponíveis abaixo.</p></div>
+              <button type="button" onClick={() => setAtualizacaoEscala((atual) => atual + 1)} disabled={carregandoEscala} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${carregandoEscala ? "animate-spin" : ""}`} />Atualizar</button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Período do Controle de Escala">
+              {[["amanha", "Amanhã"], ["3_dias", "Próximos 3 dias"], ["7_dias", "Próximos 7 dias"], ["personalizado", "Período personalizado"]].map(([valor, label]) => <button key={valor} type="button" onClick={() => setPeriodoEscala(valor)} aria-pressed={periodoEscala === valor} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${periodoEscala === valor ? "border-slate-800 bg-slate-800 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-50"}`}>{label}</button>)}
+            </div>
+            {periodoEscala === "personalizado" && <div className="mt-3 grid gap-2 sm:max-w-xl sm:grid-cols-2">
+              <label className="grid gap-1 text-xs font-semibold text-slate-600">De<input type="date" value={dataInicioEscala} onChange={(evento) => setDataInicioEscala(evento.target.value)} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal" /></label>
+              <label className="grid gap-1 text-xs font-semibold text-slate-600">Até<input type="date" value={dataFimEscala} onChange={(evento) => setDataFimEscala(evento.target.value)} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal" /></label>
+            </div>}
           </div>
+          {intervaloEscala.erro && periodoEscala === "personalizado" && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{intervaloEscala.erro}</div>}
           {erroEscala && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{erroEscala}</div>}
-          {carregandoEscala ? <div className="rounded-xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-500">Carregando serviços acompanhados…</div> : servicosEscala.length ? <div className="space-y-2">{servicosEscala.map((item) => {
-            const estadoEscala = item.encerrada_em ? "Encerrada sem aplicação" : item.situacao === "PENDENTE_NA_ESCALA" ? "Pendente na escala" : item.situacao === "APLICADA_NA_ESCALA" ? "Aplicada à escala" : item.revisao_concluida_em ? "Revisão concluída" : "Revisão necessária";
-            const recíproca = item.permuta.tipo === "TROCA_RECIPROCA";
-            const cancelada = item.permuta.status === "CANCELADA";
-            return <article key={item.id} className={`rounded-xl border bg-white p-3 shadow-sm ${item.permuta_id === permutaDestinoId ? "ring-2 ring-blue-500" : ""} ${item.situacao === "REVISAO_NECESSARIA" ? "border-rose-200" : item.situacao === "PENDENTE_NA_ESCALA" ? "border-amber-200" : "border-slate-200"}`}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <button type="button" onClick={() => setEscalasExpandidas((atual) => ({ ...atual, [item.id]: !atual[item.id] }))} aria-expanded={Boolean(escalasExpandidas[item.id])} className="min-w-0 flex-1 text-left">
-                  <span className="block font-bold text-slate-900">{dataBrasileira(item.manifestacao.data_servico)} · {item.manifestacao.turno} · {horarioBrasileiro(item.manifestacao.horario_inicio)}–{horarioBrasileiro(item.manifestacao.horario_fim)} {recíproca ? "· Troca recíproca" : "· Substituição simples"}</span>
-                  <span className="mt-1 block text-sm text-slate-700">{formatarIdentificacaoPolicial(item.substituto)} substitui {formatarIdentificacaoPolicial(item.policial)}</span>
-                  <span className="mt-1 block text-xs text-slate-600">Permuta {item.permuta.status} · {estadoEscala}{cancelada ? " · cancelada; revisão histórica" : ""}</span>
-                  {item.responsavel && <span className="mt-1 block text-xs text-slate-500">Última atualização: {formatarIdentificacaoPolicial(item.responsavel)} · {dataHoraBrasileira(item.atualizada_em)}</span>}
-                </button>
-                {podeAtualizarControleEscala && item.situacao === "PENDENTE_NA_ESCALA" && item.permuta.status === "DEFERIDA" && <button type="button" onClick={() => executarOperacaoEscala(item, "APLICAR")} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Marcar aplicada</button>}
-                {podeAtualizarControleEscala && item.situacao === "APLICADA_NA_ESCALA" && item.permuta.status === "DEFERIDA" && <button type="button" onClick={() => executarOperacaoEscala(item, "REABRIR")} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50">Reabrir</button>}
-                {podeAtualizarControleEscala && item.situacao === "REVISAO_NECESSARIA" && !item.revisao_concluida_em && <button type="button" onClick={() => executarOperacaoEscala(item, "CONCLUIR_REVISAO")} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Concluir revisão</button>}
-              </div>
-              {escalasExpandidas[item.id] && <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
-                <p className="text-sm text-slate-700">Serviço informado: {item.manifestacao.descricao} · {horarioBrasileiro(item.manifestacao.horario_inicio)} às {horarioBrasileiro(item.manifestacao.horario_fim)}{item.manifestacao.horario_fim <= item.manifestacao.horario_inicio ? " (dia seguinte)" : ""}</p>
-                {recíproca && <p className="text-xs font-semibold text-violet-800">O outro serviço da troca recíproca é acompanhado em registro independente.</p>}
-                <ol className="space-y-1">{item.historico.map((evento) => <li key={evento.id} className="text-xs text-slate-600">{evento.acao.replaceAll("_", " ")} · {evento.ator ? formatarIdentificacaoPolicial(evento.ator) : "Registro do sistema"} · {dataHoraBrasileira(evento.ocorrido_em)} · {evento.situacao_anterior || "—"} → {evento.situacao_nova}</li>)}</ol>
-              </div>}
-            </article>;
-          })}</div> : <div className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Nenhum serviço encontrado para os filtros selecionados.</div>}
+          {carregandoEscala ? <div className="rounded-xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-500">Carregando serviços acompanhados…</div> : <div className="space-y-6">
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold text-slate-900">Pendentes de atualização no período</h2><span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900">{listasEscala.pendentesPeriodo.length}</span></div>
+              {renderListaEscala(listasEscala.pendentesPeriodo, periodoEscala === "personalizado" && intervaloEscala.erro ? "Informe um período válido para listar os serviços pendentes." : "Nenhum serviço pendente de atualização neste período.")}
+            </section>
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold text-slate-900">Serviços já aplicados</h2><span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-900">{listasEscala.aplicados.length}</span></div>
+              {renderListaEscala(listasEscala.aplicados, "Nenhum serviço aplicado registrado.")}
+            </section>
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold text-slate-900">Pendências fora do período e revisões</h2><span className="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-900">{listasEscala.anterioresERevisoes.length}</span></div>
+              <p className="text-xs text-slate-500">Inclui pendências anteriores ou fora do intervalo e revisões necessárias, inclusive revisões já concluídas.</p>
+              {renderListaEscala(listasEscala.anterioresERevisoes, "Nenhuma pendência fora do período ou revisão registrada.")}
+            </section>
+            {listasEscala.encerrados.length > 0 && <section className="space-y-3">
+              <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold text-slate-900">Histórico encerrado</h2><span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700">{listasEscala.encerrados.length}</span></div>
+              {renderListaEscala(listasEscala.encerrados, "Nenhum serviço encerrado.")}
+            </section>}
+            {listasEscala.outros.length > 0 && <section className="space-y-3">
+              <h2 className="text-lg font-bold text-slate-900">Outros registros</h2>
+              {renderListaEscala(listasEscala.outros, "Nenhum outro registro.")}
+            </section>}
+          </div>}
         </section>
       ) : carregando ? <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">Carregando {podeConsultarGeral ? "solicitações" : "suas permutas"}...</div> : visaoGeral === "calendario" ? (
         <section className="space-y-4">

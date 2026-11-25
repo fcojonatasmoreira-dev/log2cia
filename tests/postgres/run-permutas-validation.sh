@@ -90,6 +90,9 @@ psql_db "$banco" < "$raiz/supabase/manual/20261124_master_administracao_contas.s
 psql_db "$banco" < "$raiz/supabase/manual/20261124_notificacoes_banco_horas.sql"
 psql_db "$banco" < "$raiz/tests/postgres/assert-admin-bank.sql"
 psql_db "$banco" < "$raiz/supabase/manual/20261125_permutas_controle_escala.sql"
+esperar_falha_comando "$banco" "set role service_role; select public.permutas_notificacoes_reconciliar_v1('10000000-0000-4000-8000-000000000003')" 'no unique or exclusion constraint matching the ON CONFLICT specification'
+psql_db "$banco" < "$raiz/supabase/manual/20261125_permutas_notificacoes_reconciliacao_indice_parcial.sql"
+psql_db "$banco" < "$raiz/tests/postgres/assert-notificacoes-reconciliacao-indice-parcial.sql"
 psql_db "$banco" < "$raiz/tests/postgres/assert-permutas-controle-escala.sql"
 esperar_falha_comando "$banco" "set role anon; select * from public.permutas_servico" 'permission denied'
 esperar_falha_comando "$banco" "set role authenticated; select public.permutas_servico_criar_v1('SUBSTITUICAO_SIMPLES','10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','2027-06-01','A','08:00','09:00','Sem acesso','Sem motivo')" 'permission denied'
