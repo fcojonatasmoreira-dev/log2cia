@@ -6,6 +6,7 @@ import { criarSessao } from "../server/api/auth/_session.js";
 const ATOR_ID = "11111111-1111-4111-8111-111111111111";
 const OUTRO_ID = "22222222-2222-4222-8222-222222222222";
 const TERCEIRO_ID = "44444444-4444-4444-8444-444444444444";
+const QUARTO_ID = "66666666-6666-4666-8666-666666666666";
 const PERMUTA_ID = "33333333-3333-4333-8333-333333333333";
 
 function resposta() {
@@ -73,7 +74,7 @@ async function executar({ role, body, actorId = ATOR_ID, permutaInfo = {}, desti
   }
 }
 
-async function executarListagem({ role = "oficial", query = {}, calendarioGrande = false, actorId = ATOR_ID } = {}) {
+async function executarListagem({ role = "oficial", query = {}, calendarioGrande = false, actorId = ATOR_ID, controleEscalaFixture = false } = {}) {
   const anterior = {
     fetch: globalThis.fetch,
     sessionSecret: process.env.SESSION_SECRET,
@@ -127,6 +128,43 @@ async function executarListagem({ role = "oficial", query = {}, calendarioGrande
     }
     if (url.pathname === "/rest/v1/policiais" && url.searchParams.get("select") === "*") {
       return Response.json({ id: actorId, auth_version: 0, role, credencial_provisionada: true, primeiro_acesso: false });
+    }
+    if (controleEscalaFixture) {
+      const permutaSimplesId = "55555555-5555-4555-8555-555555555555";
+      const escalas = [
+        { id: "70000000-0000-4000-8000-000000000001", permuta_id: PERMUTA_ID, manifestacao_id: "manifestacao-1", situacao: "PENDENTE_NA_ESCALA", atualizada_em: "2026-11-21T13:00:00Z", responsavel_id: null },
+        { id: "70000000-0000-4000-8000-000000000002", permuta_id: PERMUTA_ID, manifestacao_id: "manifestacao-2", situacao: "APLICADA_NA_ESCALA", atualizada_em: "2026-11-22T13:00:00Z", responsavel_id: TERCEIRO_ID },
+        { id: "70000000-0000-4000-8000-000000000003", permuta_id: permutaSimplesId, manifestacao_id: "manifestacao-3", situacao: "PENDENTE_NA_ESCALA", atualizada_em: "2026-11-23T13:00:00Z", responsavel_id: null },
+      ];
+      if (url.pathname === "/rest/v1/permutas_servico_escala") return Response.json(escalas);
+      if (url.pathname === "/rest/v1/permutas_servico_manifestacoes") return Response.json([
+        { id: "manifestacao-1", permuta_id: PERMUTA_ID, policial_id: ATOR_ID, substituto_id: OUTRO_ID, data_servico: "2026-11-25", turno: "A", horario_inicio: "08:00", horario_fim: "16:00", descricao: "Serviço original do solicitante" },
+        { id: "manifestacao-2", permuta_id: PERMUTA_ID, policial_id: OUTRO_ID, substituto_id: ATOR_ID, data_servico: "2026-11-28", turno: "B", horario_inicio: "18:00", horario_fim: "06:00", descricao: "Serviço original do destinatário" },
+        { id: "manifestacao-3", permuta_id: permutaSimplesId, policial_id: ATOR_ID, substituto_id: OUTRO_ID, data_servico: "2026-11-29", turno: "C", horario_inicio: "12:00", horario_fim: "20:00", descricao: "Substituição simples" },
+      ]);
+      if (url.pathname === "/rest/v1/permutas_servico_escala_historico") return Response.json([
+        { id: 1, escala_id: escalas[1].id, permuta_id: PERMUTA_ID, ator_id: QUARTO_ID, acao: "APLICADA", situacao_anterior: "PENDENTE_NA_ESCALA", situacao_nova: "APLICADA_NA_ESCALA", ocorrido_em: "2026-11-22T13:00:00Z" },
+      ]);
+      if (url.pathname === "/rest/v1/permutas_servico") return Response.json([
+        { id: PERMUTA_ID, tipo: "TROCA_RECIPROCA", status: "DEFERIDA", solicitante_id: ATOR_ID, destinatario_id: OUTRO_ID },
+        { id: permutaSimplesId, tipo: "SUBSTITUICAO_SIMPLES", status: "DEFERIDA", solicitante_id: ATOR_ID, destinatario_id: OUTRO_ID },
+      ]);
+      if (url.pathname === "/rest/v1/permutas_servico_confirmacoes") return Response.json([
+        { permuta_id: PERMUTA_ID, policial_id: ATOR_ID, confirmada_em: "2026-11-20T10:00:00Z" },
+        { permuta_id: PERMUTA_ID, policial_id: OUTRO_ID, confirmada_em: "2026-11-20T11:00:00Z" },
+        { permuta_id: permutaSimplesId, policial_id: ATOR_ID, confirmada_em: "2026-11-21T10:00:00Z" },
+        { permuta_id: permutaSimplesId, policial_id: OUTRO_ID, confirmada_em: "2026-11-21T11:00:00Z" },
+      ]);
+      if (url.pathname === "/rest/v1/permutas_servico_historico") return Response.json([
+        { id: 11, permuta_id: PERMUTA_ID, ator_id: TERCEIRO_ID, tipo_evento: "DEFERIDA", estado_novo: "DEFERIDA", ocorrido_em: "2026-11-20T12:00:00Z", mensagem_escalante: "Conferir escala do dia 25.", mensagem_policial_1: "Mensagem privada do solicitante", mensagem_policial_2: "Mensagem privada do destinatário" },
+        { id: 12, permuta_id: permutaSimplesId, ator_id: TERCEIRO_ID, tipo_evento: "DEFERIDA", estado_novo: "DEFERIDA", ocorrido_em: "2026-11-21T12:00:00Z", mensagem_escalante: null, mensagem_policial_1: "Mensagem simples privada", mensagem_policial_2: null },
+      ]);
+      if (url.pathname === "/rest/v1/policiais") return Response.json([
+        { id: ATOR_ID, nome_completo: "Nome A", nome_guerra: "ALFA", posto_graduacao: "Soldado", numeral: "11" },
+        { id: OUTRO_ID, nome_completo: "Nome B", nome_guerra: "BRAVO", posto_graduacao: "Cabo", numeral: "22" },
+        { id: TERCEIRO_ID, nome_completo: "Nome C", nome_guerra: "CHARLIE", posto_graduacao: "Tenente", numeral: "33" },
+        { id: QUARTO_ID, nome_completo: "Nome D", nome_guerra: "DELTA", posto_graduacao: "Sargento", numeral: "44" },
+      ]);
     }
     if (url.pathname === "/rest/v1/permutas_servico") {
       return Response.json([{
@@ -669,6 +707,40 @@ test("P1, Oficial e Master consultam o Controle; policial comum recebe 403", asy
   }
   const comum = await executarListagem({ role: "policial", query: { controle_escala: "1" } });
   assert.equal(comum.status, 403);
+  assert.equal(comum.chamadas.some((url) => !url.pathname.endsWith("/policiais")), false);
+});
+
+test("Controle de Escala associa corretamente os serviços e protege mensagens por perfil", async () => {
+  const p1 = await executarListagem({ role: "p1", actorId: ATOR_ID, query: { controle_escala: "1" }, controleEscalaFixture: true });
+  assert.equal(p1.status, 200);
+  assert.equal(p1.body.servicos.length, 3);
+
+  const servicosReciprocos = p1.body.servicos.filter((item) => item.permuta.tipo === "TROCA_RECIPROCA");
+  assert.equal(servicosReciprocos.length, 2);
+  assert.deepEqual(servicosReciprocos.map((item) => [item.manifestacao.data_servico, item.policial.nome_guerra, item.substituto.nome_guerra]), [
+    ["2026-11-25", "ALFA", "BRAVO"],
+    ["2026-11-28", "BRAVO", "ALFA"],
+  ]);
+  const primeiraReciproca = servicosReciprocos[0];
+  assert.equal(primeiraReciproca.permuta.confirmacoes.length, 2);
+  assert.equal(primeiraReciproca.permuta.historico_decisao[0].mensagem_escalante, "Conferir escala do dia 25.");
+  assert.equal(p1.body.servicos.find((item) => item.id === "70000000-0000-4000-8000-000000000002").historico[0].ator.nome_guerra, "DELTA");
+  assert.equal(Object.hasOwn(primeiraReciproca.permuta.historico_decisao[0], "mensagem_policial_1"), false);
+  assert.equal(Object.hasOwn(primeiraReciproca.permuta.historico_decisao[0], "mensagem_policial_2"), false);
+  assert.equal(JSON.stringify(p1.body).includes("Mensagem privada do"), false);
+
+  const simples = p1.body.servicos.find((item) => item.permuta.tipo === "SUBSTITUICAO_SIMPLES");
+  assert.equal(simples.manifestacao.data_servico, "2026-11-29");
+  assert.equal(simples.permuta.historico_decisao[0].mensagem_escalante, null);
+  assert.equal(Object.hasOwn(simples.permuta.historico_decisao[0], "mensagem_policial_1"), false);
+
+  for (const role of ["oficial", "master"]) {
+    const admin = await executarListagem({ role, query: { controle_escala: "1" }, controleEscalaFixture: true });
+    const decisao = admin.body.servicos.find((item) => item.permuta.tipo === "TROCA_RECIPROCA").permuta.historico_decisao[0];
+    assert.equal(decisao.mensagem_escalante, "Conferir escala do dia 25.");
+    assert.equal(decisao.mensagem_policial_1, "Mensagem privada do solicitante");
+    assert.equal(decisao.mensagem_policial_2, "Mensagem privada do destinatário");
+  }
 });
 
 test("Oficial consulta o Controle de Escala sem poder alterar marcações", async () => {

@@ -81,6 +81,18 @@ async function buscarPorIdsPaginados(db, tabela, colunaId, ids, selecao = "*") {
   return registros;
 }
 
+async function buscarDecisoesPermutaPaginadas(db, idsPermutas) {
+  const registros = [];
+  for (let inicio = 0; inicio < idsPermutas.length; inicio += TAMANHO_LOTE_IDS) {
+    const lote = idsPermutas.slice(inicio, inicio + TAMANHO_LOTE_IDS);
+    registros.push(...await buscarTodasPaginas((de, ate) => db.from("permutas_servico_historico")
+      .select("id,permuta_id,ator_id,tipo_evento,estado_novo,ocorrido_em,mensagem_escalante,mensagem_policial_1,mensagem_policial_2")
+      .in("permuta_id", lote).in("tipo_evento", ["DEFERIDA", "INDEFERIDA"])
+      .order("ocorrido_em").order("id").range(de, ate)));
+  }
+  return registros;
+}
+
 async function buscarPoliciaisRelacionados(db, idsPoliciais) {
   const registros = [];
   for (let inicio = 0; inicio < idsPoliciais.length; inicio += TAMANHO_LOTE_IDS) {
@@ -166,7 +178,8 @@ async function listarCalendariosMini(db, usuario, res, query = {}) {
 }
 
 async function listarControleEscala(db, usuario, res, query = {}) {
-  if (!permissoesPermuta(usuario).consultar_geral) return respostaErro(res, 403, "Seu perfil não pode consultar o Controle de Escala.");
+  const permissoes = permissoesPermuta(usuario);
+  if (!permissoes.consultar_geral) return respostaErro(res, 403, "Seu perfil não pode consultar o Controle de Escala.");
   const inicio = texto(query.data_inicio);
   const fim = texto(query.data_fim);
   const data = texto(query.data);
@@ -198,17 +211,23 @@ async function listarControleEscala(db, usuario, res, query = {}) {
     buscarPorIdsPaginados(db, "permutas_servico_escala_historico", "escala_id", escalaIds),
   ]);
   const permutaIds = [...new Set((escalas || []).map((item) => item.permuta_id))];
-  const [permutasResult, policiais] = await Promise.all([
-    buscarPorIdsPaginados(db, "permutas_servico", "id", permutaIds, "id,tipo,status,solicitante_id,destinatario_id").then((data) => ({ data, error: null })),
-    buscarPoliciaisRelacionados(db, [...new Set([
-      ...(manifestacoes || []).flatMap((item) => [item.policial_id, item.substituto_id]),
-      ...escalas.map((item) => item.responsavel_id),
-      ...(historicoResult.data || []).map((item) => item.ator_id),
-    ].filter(Boolean))]),
+  const [permutasData, confirmacoes, decisoes] = await Promise.all([
+    buscarPorIdsPaginados(db, "permutas_servico", "id", permutaIds, "id,tipo,status,solicitante_id,destinatario_id"),
+    buscarPorIdsPaginados(db, "permutas_servico_confirmacoes", "permuta_id", permutaIds, "permuta_id,policial_id,confirmada_em"),
+    buscarDecisoesPermutaPaginadas(db, permutaIds),
   ]);
-  if (permutasResult.error) throw permutasResult.error;
   const manifestacaoPorId = new Map(manifestacoes.map((item) => [item.id, item]));
-  const permutaPorId = new Map((permutasResult.data || []).map((item) => [item.id, item]));
+  const permutaPorId = new Map(permutasData.map((item) => [item.id, item]));
+  const confirmacoesPorPermuta = new Map();
+  for (const item of confirmacoes) confirmacoesPorPermuta.set(item.permuta_id, [...(confirmacoesPorPermuta.get(item.permuta_id) || []), item]);
+  const decisoesPorPermuta = new Map();
+  for (const item of decisoes) decisoesPorPermuta.set(item.permuta_id, [...(decisoesPorPermuta.get(item.permuta_id) || []), item]);
+  const policiais = await buscarPoliciaisRelacionados(db, [...new Set([
+    ...(manifestacoes || []).flatMap((item) => [item.policial_id, item.substituto_id]),
+    ...escalas.map((item) => item.responsavel_id),
+    ...historicoResult.map((item) => item.ator_id),
+    ...decisoes.map((item) => item.ator_id),
+  ].filter(Boolean))]);
   const policialPorId = new Map(policiais.map((item) => [item.id, item]));
   const historicoPorEscala = new Map();
   for (const item of historicoResult) historicoPorEscala.set(item.escala_id, [...(historicoPorEscala.get(item.escala_id) || []), { ...item, ator: policialPorId.get(item.ator_id) || null }]);
@@ -216,11 +235,29 @@ async function listarControleEscala(db, usuario, res, query = {}) {
     const manifestacao = manifestacaoPorId.get(item.manifestacao_id);
     const permuta = permutaPorId.get(item.permuta_id);
     if (!manifestacao || !permuta) return [];
-    return [{ ...item, manifestacao, permuta,
+    return [{ ...item, manifestacao,
       policial: policialPorId.get(manifestacao.policial_id) || null,
       substituto: policialPorId.get(manifestacao.substituto_id) || null,
       responsavel: policialPorId.get(item.responsavel_id) || null,
       historico: historicoPorEscala.get(item.id) || [],
+      permuta: {
+        ...permuta,
+        solicitante: policialPorId.get(permuta.solicitante_id) || null,
+        destinatario: policialPorId.get(permuta.destinatario_id) || null,
+        confirmacoes: confirmacoesPorPermuta.get(permuta.id) || [],
+        historico_decisao: (decisoesPorPermuta.get(permuta.id) || []).map((evento) => ({
+          id: evento.id,
+          tipo_evento: evento.tipo_evento,
+          estado_novo: evento.estado_novo,
+          ocorrido_em: evento.ocorrido_em,
+          ator: policialPorId.get(evento.ator_id) || null,
+          mensagem_escalante: evento.mensagem_escalante || null,
+          ...(permissoes.decidir ? {
+            mensagem_policial_1: evento.mensagem_policial_1 || null,
+            mensagem_policial_2: evento.mensagem_policial_2 || null,
+          } : {}),
+        })),
+      },
     }];
   });
   if (dataInicio) servicos = servicos.filter((item) => item.manifestacao.data_servico >= dataInicio && item.manifestacao.data_servico <= dataFim);

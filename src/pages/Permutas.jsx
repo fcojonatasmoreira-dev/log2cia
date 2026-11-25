@@ -1028,23 +1028,76 @@ export default function Permutas({ user }) {
       <div className="space-y-2">{grupo.servicos.map((item) => {
         const estadoEscala = item.encerrada_em ? "Encerrada sem aplicação" : item.situacao === "PENDENTE_NA_ESCALA" ? "Pendente na escala" : item.situacao === "APLICADA_NA_ESCALA" ? "Aplicada à escala" : item.revisao_concluida_em ? "Revisão concluída" : "Revisão necessária";
         const reciproca = item.permuta.tipo === "TROCA_RECIPROCA";
-        const cancelada = item.permuta.status === "CANCELADA";
+        const decisoes = item.permuta.historico_decisao || [];
+        const mensagensEscalante = decisoes.filter((evento) => evento.mensagem_escalante);
+        const confirmacoes = new Map((item.permuta.confirmacoes || []).map((confirmacao) => [confirmacao.policial_id, confirmacao]));
+        const participantes = [item.permuta.solicitante, item.permuta.destinatario].filter(Boolean);
         return <article key={item.id} className={`rounded-xl border bg-white p-3 shadow-sm ${item.permuta_id === permutaDestinoId ? "ring-2 ring-blue-500" : ""} ${item.situacao === "REVISAO_NECESSARIA" ? "border-rose-200" : item.situacao === "PENDENTE_NA_ESCALA" ? "border-amber-300 bg-amber-50/40" : "border-slate-200"}`}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <button type="button" onClick={() => setEscalasExpandidas((atual) => ({ ...atual, [item.id]: !atual[item.id] }))} aria-expanded={Boolean(escalasExpandidas[item.id])} className="min-w-0 flex-1 text-left">
-              <span className="block font-bold text-slate-900">{item.manifestacao.turno} · {horarioBrasileiro(item.manifestacao.horario_inicio)}–{horarioBrasileiro(item.manifestacao.horario_fim)} {reciproca ? "· Troca recíproca" : "· Substituição simples"}</span>
-              <span className="mt-1 block text-sm text-slate-700">{formatarIdentificacaoPolicial(item.substituto)} substitui {formatarIdentificacaoPolicial(item.policial)}</span>
-              <span className="mt-1 block text-xs text-slate-600">Permuta {item.permuta.status} · {estadoEscala}{cancelada ? " · cancelada; revisão histórica" : ""}</span>
-              {item.responsavel && <span className="mt-1 block text-xs text-slate-500">Última atualização: {formatarIdentificacaoPolicial(item.responsavel)} · {dataHoraBrasileira(item.atualizada_em)}</span>}
-            </button>
-            {podeAtualizarControleEscala && item.situacao === "PENDENTE_NA_ESCALA" && item.permuta.status === "DEFERIDA" && <button type="button" onClick={() => executarOperacaoEscala(item, "APLICAR")} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Marcar como aplicada</button>}
-            {podeAtualizarControleEscala && item.situacao === "APLICADA_NA_ESCALA" && item.permuta.status === "DEFERIDA" && <button type="button" onClick={() => executarOperacaoEscala(item, "REABRIR")} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50">Reabrir</button>}
-            {podeAtualizarControleEscala && item.situacao === "REVISAO_NECESSARIA" && !item.revisao_concluida_em && <button type="button" onClick={() => executarOperacaoEscala(item, "CONCLUIR_REVISAO")} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Concluir revisão</button>}
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="min-w-0 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Data do serviço · {dataBrasileira(item.manifestacao.data_servico)}</p>
+                  <p className="mt-1 text-lg font-extrabold text-slate-900">Turno {item.manifestacao.turno} · {horarioBrasileiro(item.manifestacao.horario_inicio)}–{horarioBrasileiro(item.manifestacao.horario_fim)}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-700">Tipo: {reciproca ? "Troca recíproca" : "Substituição simples"}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${item.situacao === "REVISAO_NECESSARIA" ? "bg-rose-100 text-rose-800" : item.situacao === "PENDENTE_NA_ESCALA" ? "bg-amber-100 text-amber-900" : "bg-blue-100 text-blue-800"}`}>Situação operacional: {estadoEscala}</span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
+                  <p className="text-[11px] font-extrabold uppercase tracking-wide text-orange-800">Retirar da escala</p>
+                  <p className="mt-1 text-sm font-bold text-orange-950">{formatarIdentificacaoPolicial(item.policial)}</p>
+                  <p className="mt-1 text-xs text-orange-800">Policial titular deste serviço</p>
+                </div>
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                  <p className="text-[11px] font-extrabold uppercase tracking-wide text-blue-800">Colocar na escala</p>
+                  <p className="mt-1 text-sm font-bold text-blue-950">{formatarIdentificacaoPolicial(item.substituto)}</p>
+                  <p className="mt-1 text-xs text-blue-800">Policial substituto deste serviço</p>
+                </div>
+              </div>
+              {mensagensEscalante.map((evento) => <blockquote key={evento.id} className="rounded-lg border-l-4 border-violet-500 bg-violet-50 px-3 py-2 text-sm text-violet-950">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-violet-800">Mensagem do Oficial ao escalante</p>
+                <p className="mt-1 whitespace-pre-wrap">{evento.mensagem_escalante}</p>
+              </blockquote>)}
+            </div>
+            <div className="flex flex-col flex-wrap gap-2 sm:flex-row md:min-w-48 md:flex-col">
+              {podeAtualizarControleEscala && item.situacao === "PENDENTE_NA_ESCALA" && item.permuta.status === "DEFERIDA" && <button type="button" onClick={() => executarOperacaoEscala(item, "APLICAR")} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Marcar como aplicada</button>}
+              {podeAtualizarControleEscala && item.situacao === "APLICADA_NA_ESCALA" && item.permuta.status === "DEFERIDA" && <button type="button" onClick={() => executarOperacaoEscala(item, "REABRIR")} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50">Reabrir</button>}
+              {podeAtualizarControleEscala && item.situacao === "REVISAO_NECESSARIA" && !item.revisao_concluida_em && <button type="button" onClick={() => executarOperacaoEscala(item, "CONCLUIR_REVISAO")} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Concluir revisão</button>}
+              <button type="button" onClick={() => setEscalasExpandidas((atual) => ({ ...atual, [item.id]: !atual[item.id] }))} aria-expanded={Boolean(escalasExpandidas[item.id])} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">{escalasExpandidas[item.id] ? "Ocultar detalhes" : "Ver detalhes"}</button>
+            </div>
           </div>
-          {escalasExpandidas[item.id] && <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
-            <p className="text-sm text-slate-700">Serviço informado: {item.manifestacao.descricao} · {horarioBrasileiro(item.manifestacao.horario_inicio)} às {horarioBrasileiro(item.manifestacao.horario_fim)}{item.manifestacao.horario_fim <= item.manifestacao.horario_inicio ? " (dia seguinte)" : ""}</p>
-            {reciproca && <p className="text-xs font-semibold text-violet-800">O outro serviço da troca recíproca é acompanhado em registro independente.</p>}
-            <ol className="space-y-1">{item.historico.map((evento) => <li key={evento.id} className="text-xs text-slate-600">{evento.acao.replaceAll("_", " ")} · {evento.ator ? formatarIdentificacaoPolicial(evento.ator) : "Registro do sistema"} · {dataHoraBrasileira(evento.ocorrido_em)} · {evento.situacao_anterior || "—"} → {evento.situacao_nova}</li>)}</ol>
+          {escalasExpandidas[item.id] && <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
+            <div className="grid gap-3 lg:grid-cols-2">
+              <section className="rounded-lg bg-slate-50 p-3">
+                <h4 className="text-xs font-bold uppercase tracking-wide text-slate-600">Descrição do serviço</h4>
+                <p className="mt-1 text-sm text-slate-800">{item.manifestacao.descricao}</p>
+                <p className="mt-1 text-xs text-slate-600">{dataBrasileira(item.manifestacao.data_servico)} · Turno {item.manifestacao.turno} · {horarioBrasileiro(item.manifestacao.horario_inicio)} às {horarioBrasileiro(item.manifestacao.horario_fim)}{item.manifestacao.horario_fim <= item.manifestacao.horario_inicio ? " (dia seguinte)" : ""}</p>
+              </section>
+              <section className="rounded-lg bg-slate-50 p-3">
+                <h4 className="text-xs font-bold uppercase tracking-wide text-slate-600">Confirmações dos participantes</h4>
+                <ul className="mt-2 space-y-2">{participantes.map((participante) => {
+                  const confirmacao = confirmacoes.get(participante.id);
+                  return <li key={participante.id} className="text-sm text-slate-800"><span className="font-semibold">{formatarIdentificacaoPolicial(participante)}</span><span className="block text-xs text-slate-600">{confirmacao ? `Confirmou em ${dataHoraBrasileira(confirmacao.confirmada_em)}` : "Confirmação não registrada"}</span></li>;
+                })}</ul>
+              </section>
+              <section className="rounded-lg bg-slate-50 p-3">
+                <h4 className="text-xs font-bold uppercase tracking-wide text-slate-600">Situação administrativa</h4>
+                <p className="mt-1 text-sm font-semibold text-slate-800">{item.permuta.status.replaceAll("_", " ")}</p>
+                {item.responsavel && <p className="mt-1 text-xs text-slate-600">Última atualização operacional por {formatarIdentificacaoPolicial(item.responsavel)} · {dataHoraBrasileira(item.atualizada_em)}</p>}
+                {decisoes.map((evento) => <div key={evento.id} className="mt-2 border-t border-slate-200 pt-2 text-xs text-slate-700">
+                  <p>{evento.tipo_evento === "DEFERIDA" ? "Deferida" : "Indeferida"} por {evento.ator ? formatarIdentificacaoPolicial(evento.ator) : "responsável administrativo"} · {dataHoraBrasileira(evento.ocorrido_em)}</p>
+                  {evento.mensagem_escalante && <p className="mt-1"><span className="font-semibold">Mensagem ao escalante:</span> {evento.mensagem_escalante}</p>}
+                  {evento.mensagem_policial_1 && <p className="mt-1"><span className="font-semibold">Mensagem ao solicitante:</span> {evento.mensagem_policial_1}</p>}
+                  {evento.mensagem_policial_2 && <p className="mt-1"><span className="font-semibold">Mensagem ao destinatário:</span> {evento.mensagem_policial_2}</p>}
+                </div>)}
+              </section>
+              <section className="rounded-lg bg-slate-50 p-3">
+                <h4 className="text-xs font-bold uppercase tracking-wide text-slate-600">Histórico operacional</h4>
+                {item.historico.length ? <ol className="mt-2 space-y-2">{item.historico.map((evento) => <li key={evento.id} className="text-xs text-slate-700">{evento.acao.replaceAll("_", " ")} · {evento.ator ? formatarIdentificacaoPolicial(evento.ator) : "Registro do sistema"} · {dataHoraBrasileira(evento.ocorrido_em)} · {evento.situacao_anterior || "—"} → {evento.situacao_nova}</li>)}</ol> : <p className="mt-2 text-xs text-slate-500">Nenhuma atualização operacional registrada.</p>}
+              </section>
+            </div>
+            {reciproca && <p className="text-xs font-semibold text-violet-800">O outro serviço da troca recíproca aparece em outro cartão, com seus próprios policiais e data.</p>}
           </div>}
         </article>;
       })}</div>
