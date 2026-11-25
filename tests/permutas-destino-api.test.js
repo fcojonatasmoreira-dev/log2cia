@@ -31,7 +31,7 @@ async function consultar(role) {
       return Response.json(PERMUTA);
     }
     if (url.pathname === "/rest/v1/permutas_servico") return Response.json([PERMUTA]);
-    if (["/rest/v1/permutas_servico_manifestacoes", "/rest/v1/permutas_servico_confirmacoes", "/rest/v1/permutas_servico_historico", "/rest/v1/policiais"].includes(url.pathname)) return Response.json([]);
+    if (["/rest/v1/permutas_servico_manifestacoes", "/rest/v1/permutas_servico_confirmacoes", "/rest/v1/permutas_servico_historico", "/rest/v1/permutas_servico_escala", "/rest/v1/permutas_servico_escala_historico", "/rest/v1/policiais"].includes(url.pathname)) return Response.json([]);
     return Response.json({ message: `Chamada inesperada ${url.pathname}` }, { status: 404 });
   };
   const req = {

@@ -97,7 +97,11 @@ técnica e recebe o `ator_id` validado no backend.
 `run-permutas-validation.sh` aplica a fixture `fixture-permutas-schema.sql`, a
 migration manual de Permutas e as assertions de `assert-permutas.sql` em um
 banco novo. Também testa concorrência com duas conexões e rollback da migration
-em outro banco vazio. O script exige uma imagem `postgres:17.6` em container
+em outro banco vazio. Também aplica as migrations incrementais de motivo,
+concordância, mensagens, notificações, edição, presença, cancelamento do
+solicitante, Banco de Horas e Controle de Escala com suas assertions, incluindo
+transições operacionais, cancelamento, revisão, notificações repetíveis,
+isolamento e rollback de ações. O script exige uma imagem `postgres:17.6` em container
 com `--network=none`, sem portas publicadas; executa tudo por `podman exec` e
 recusa bancos com nomes já existentes.
 

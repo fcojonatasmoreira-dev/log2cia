@@ -24,6 +24,10 @@ export default async function handler(req, res) {
       if (!body || typeof body !== "object" || Array.isArray(body) || "senha" in body || "primeiro_acesso" in body) {
         return respostaErro(res, 400, "Dados de atualização inválidos.");
       }
+      if (ehMaster && Object.prototype.hasOwnProperty.call(body, "role")
+        && typeof body.role === "string" && body.role.trim().toLowerCase() !== roleAlvo) {
+        return respostaErro(res, 409, "Alterações de perfil devem ser feitas pela gestão de usuários do Painel Master.");
+      }
       if (Object.prototype.hasOwnProperty.call(body, "drso_escalante") && typeof body.drso_escalante !== "boolean") return respostaErro(res, 400, "Dados de atualização inválidos.");
       for (const campo of CAMPOS) {
         if (["drso_escalante"].includes(campo) || !Object.prototype.hasOwnProperty.call(body, campo)) continue;
@@ -33,7 +37,7 @@ export default async function handler(req, res) {
       const dados = {};
       for (const campo of CAMPOS) {
         if (Object.prototype.hasOwnProperty.call(body, campo)) {
-          if (campo === "role" && !ehMaster) continue;
+          if (campo === "role") continue;
           if (campo === "drso_escalante" && !ehMaster) continue;
           dados[campo] = typeof body[campo] === "string" ? body[campo].trim() : body[campo];
         }

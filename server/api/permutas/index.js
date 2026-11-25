@@ -72,6 +72,15 @@ async function buscarRelacionadosPaginados(db, tabela, idsPermutas, colunaOrdem)
   return registros;
 }
 
+async function buscarPorIdsPaginados(db, tabela, colunaId, ids, selecao = "*") {
+  const registros = [];
+  for (let inicio = 0; inicio < ids.length; inicio += TAMANHO_LOTE_IDS) {
+    const lote = ids.slice(inicio, inicio + TAMANHO_LOTE_IDS);
+    registros.push(...await buscarTodasPaginas((de, ate) => db.from(tabela).select(selecao).in(colunaId, lote).range(de, ate)));
+  }
+  return registros;
+}
+
 async function buscarPoliciaisRelacionados(db, idsPoliciais) {
   const registros = [];
   for (let inicio = 0; inicio < idsPoliciais.length; inicio += TAMANHO_LOTE_IDS) {
@@ -154,6 +163,81 @@ async function listarCalendariosMini(db, usuario, res, query = {}) {
       permuta.manifestacoes.some((item) => item.policial_id === policial_id || item.substituto_id === policial_id)),
   }));
   return res.status(200).json({ calendarios });
+}
+
+async function listarControleEscala(db, usuario, res, query = {}) {
+  if (!permissoesPermuta(usuario).consultar_geral) return respostaErro(res, 403, "Seu perfil não pode consultar o Controle de Escala.");
+  const inicio = texto(query.data_inicio);
+  const fim = texto(query.data_fim);
+  const data = texto(query.data);
+  const situacao = texto(query.situacao);
+  const tipo = texto(query.tipo);
+  const policialId = texto(query.policial_id);
+  const turno = texto(query.turno);
+  const permutaId = texto(query.permuta_id);
+  if (Boolean(inicio) !== Boolean(fim) || (data && (inicio || fim))) return respostaErro(res, 400, "Informe uma data ou um intervalo completo.");
+  const dataInicio = data || inicio;
+  const dataFim = data || fim;
+  if (dataInicio && (!dataIsoValida(dataInicio) || !dataIsoValida(dataFim) || dataInicio > dataFim
+    || (Date.parse(`${dataFim}T00:00:00Z`) - Date.parse(`${dataInicio}T00:00:00Z`)) / 86400000 > 44)) {
+    return respostaErro(res, 400, "Período inválido. O intervalo máximo é de 45 dias.");
+  }
+  if (situacao && !["PENDENTE_NA_ESCALA", "APLICADA_NA_ESCALA", "REVISAO_NECESSARIA"].includes(situacao)) return respostaErro(res, 400, "Situação operacional inválida.");
+  if (tipo && !["SUBSTITUICAO_SIMPLES", "TROCA_RECIPROCA"].includes(tipo)) return respostaErro(res, 400, "Tipo de permuta inválido.");
+  if (policialId && !UUID_VALIDO.test(policialId)) return respostaErro(res, 400, "Filtro de policial inválido.");
+  if (permutaId && !UUID_VALIDO.test(permutaId)) return respostaErro(res, 400, "Identificador da permuta inválido.");
+  const escalas = await buscarTodasPaginas((de, ate) => {
+    let consulta = db.from("permutas_servico_escala").select("*").order("atualizada_em", { ascending: false }).order("id").range(de, ate);
+    if (situacao) consulta = consulta.eq("situacao", situacao);
+    return consulta;
+  });
+  const escalaIds = escalas.map((item) => item.id);
+  if (!escalaIds.length) return res.status(200).json({ servicos: [], indicadores: { pendentes: 0, aplicados: 0, revisao: 0, total: 0 } });
+  const [manifestacoes, historicoResult] = await Promise.all([
+    buscarPorIdsPaginados(db, "permutas_servico_manifestacoes", "id", escalas.map((item) => item.manifestacao_id)),
+    buscarPorIdsPaginados(db, "permutas_servico_escala_historico", "escala_id", escalaIds),
+  ]);
+  const permutaIds = [...new Set((escalas || []).map((item) => item.permuta_id))];
+  const [permutasResult, policiais] = await Promise.all([
+    buscarPorIdsPaginados(db, "permutas_servico", "id", permutaIds, "id,tipo,status,solicitante_id,destinatario_id").then((data) => ({ data, error: null })),
+    buscarPoliciaisRelacionados(db, [...new Set([
+      ...(manifestacoes || []).flatMap((item) => [item.policial_id, item.substituto_id]),
+      ...escalas.map((item) => item.responsavel_id),
+      ...(historicoResult.data || []).map((item) => item.ator_id),
+    ].filter(Boolean))]),
+  ]);
+  if (permutasResult.error) throw permutasResult.error;
+  const manifestacaoPorId = new Map(manifestacoes.map((item) => [item.id, item]));
+  const permutaPorId = new Map((permutasResult.data || []).map((item) => [item.id, item]));
+  const policialPorId = new Map(policiais.map((item) => [item.id, item]));
+  const historicoPorEscala = new Map();
+  for (const item of historicoResult) historicoPorEscala.set(item.escala_id, [...(historicoPorEscala.get(item.escala_id) || []), { ...item, ator: policialPorId.get(item.ator_id) || null }]);
+  let servicos = escalas.flatMap((item) => {
+    const manifestacao = manifestacaoPorId.get(item.manifestacao_id);
+    const permuta = permutaPorId.get(item.permuta_id);
+    if (!manifestacao || !permuta) return [];
+    return [{ ...item, manifestacao, permuta,
+      policial: policialPorId.get(manifestacao.policial_id) || null,
+      substituto: policialPorId.get(manifestacao.substituto_id) || null,
+      responsavel: policialPorId.get(item.responsavel_id) || null,
+      historico: historicoPorEscala.get(item.id) || [],
+    }];
+  });
+  if (dataInicio) servicos = servicos.filter((item) => item.manifestacao.data_servico >= dataInicio && item.manifestacao.data_servico <= dataFim);
+  if (policialId) servicos = servicos.filter((item) => [item.manifestacao.policial_id, item.manifestacao.substituto_id].includes(policialId));
+  if (tipo) servicos = servicos.filter((item) => item.permuta.tipo === tipo);
+  if (turno) servicos = servicos.filter((item) => item.manifestacao.turno === turno);
+  if (permutaId) servicos = servicos.filter((item) => item.permuta_id === permutaId);
+  // Pendências encerradas de permutas canceladas não entram nos indicadores normais;
+  // revisões continuam visíveis até o P1 concluir a conferência.
+  const ativos = servicos.filter((item) => !item.encerrada_em);
+  const indicadores = {
+    pendentes: ativos.filter((item) => item.situacao === "PENDENTE_NA_ESCALA" && item.permuta.status === "DEFERIDA").length,
+    aplicados: ativos.filter((item) => item.situacao === "APLICADA_NA_ESCALA" && item.permuta.status === "DEFERIDA").length,
+    revisao: servicos.filter((item) => item.situacao === "REVISAO_NECESSARIA" && !item.revisao_concluida_em).length,
+    total: servicos.length,
+  };
+  return res.status(200).json({ servicos, indicadores });
 }
 
 async function listar(db, usuario, res, query = {}) {
@@ -243,6 +327,8 @@ async function listar(db, usuario, res, query = {}) {
   let manifestacoesData;
   let confirmacoesData;
   let historicoData;
+  let escalaData = [];
+  let escalaHistoricoData = [];
   if (calendarioIndividual) {
     [manifestacoesData, confirmacoesData, historicoData] = await Promise.all([
       buscarRelacionadosPaginados(db, "permutas_servico_manifestacoes", ids, "criada_em"),
@@ -262,6 +348,10 @@ async function listar(db, usuario, res, query = {}) {
     confirmacoesData = confirmacoesResult.data;
     historicoData = historicoResult.data;
   }
+  [escalaData, escalaHistoricoData] = await Promise.all([
+    buscarRelacionadosPaginados(db, "permutas_servico_escala", ids, "atualizada_em"),
+    buscarRelacionadosPaginados(db, "permutas_servico_escala_historico", ids, "ocorrido_em"),
+  ]);
   const agrupar = (itens) => {
     const mapa = new Map();
     for (const item of itens || []) mapa.set(item.permuta_id, [...(mapa.get(item.permuta_id) || []), item]);
@@ -273,14 +363,22 @@ async function listar(db, usuario, res, query = {}) {
   const idsPoliciais = [...new Set([
     ...permutas.flatMap((item) => [item.solicitante_id, item.destinatario_id]),
     ...(historicoData || []).map((evento) => evento.ator_id),
+    ...escalaData.map((item) => item.responsavel_id),
+    ...escalaHistoricoData.map((evento) => evento.ator_id),
   ].filter((id) => UUID_VALIDO.test(String(id || ""))))];
   const policiais = await buscarPoliciaisRelacionados(db, idsPoliciais);
   const policialPorId = new Map(policiais.map((item) => [item.id, item]));
+  const escalaHistorico = agrupar(escalaHistoricoData);
   const resultado = permutas.map((item) => ({
     ...item,
     solicitante: policialPorId.get(item.solicitante_id) || null,
     destinatario: policialPorId.get(item.destinatario_id) || null,
     manifestacoes: manifestacoes.get(item.id) || [],
+    controle_escala: escalaData.filter((escala) => escala.permuta_id === item.id).map((escala) => ({
+      ...escala,
+      responsavel: policialPorId.get(escala.responsavel_id) || null,
+      historico: (escalaHistorico.get(escala.id) || []).map((evento) => ({ ...evento, ator: policialPorId.get(evento.ator_id) || null })),
+    })),
     confirmacoes: confirmacoes.get(item.id) || [],
     historico: (historico.get(item.id) || []).map((evento) =>
       sanitizarEventoHistorico(evento, item, usuario, permissoes, policialPorId)),
@@ -291,6 +389,20 @@ async function listar(db, usuario, res, query = {}) {
 async function executarAcao(db, usuario, body, res) {
   const acao = texto(body?.acao);
   const permissoes = permissoesPermuta(usuario);
+  if (acao === "controle_escala") {
+    const role = String(usuario.role || "").trim().toLowerCase();
+    const master = role === "master" || usuario.is_master === true;
+    const p1 = ["p1", "p1_escalante_servico_ordinario"].includes(role);
+    if (!master && !p1) return respostaErro(res, 403, "Somente P1 ou Master pode atualizar o Controle de Escala.");
+    const escalaId = texto(body.escala_id);
+    const operacao = texto(body.operacao);
+    if (!UUID_VALIDO.test(escalaId) || !["APLICAR", "REABRIR", "CONCLUIR_REVISAO"].includes(operacao)) return respostaErro(res, 400, "Ação do Controle de Escala inválida.");
+    const { data, error } = await db.rpc("permutas_servico_escala_atualizar_v1", {
+      p_escala_id: escalaId, p_ator_id: usuario.id, p_acao: operacao,
+    });
+    if (error) throw error;
+    return res.status(200).json({ id: escalaId, situacao: data });
+  }
   if (acao === "criar") {
     if (!permissoes.criar) return respostaErro(res, 403, "Seu perfil não pode criar permutas.");
     const destinatarioId = texto(body.destinatario_id);
@@ -411,9 +523,21 @@ async function executarAcao(db, usuario, body, res) {
   }
 
   if (acao === "cancelar") {
-    if (!permissoes.cancelar_deferida) return respostaErro(res, 403, "Somente Oficial ou Master pode cancelar uma permuta deferida.");
     const justificativa = texto(body.justificativa);
-    if (!justificativa || justificativa.length > 3000) return respostaErro(res, 400, "Informe justificativa de cancelamento de até 3000 caracteres.");
+    if (justificativa.length > 3000) return respostaErro(res, 400, "O motivo pode ter até 3000 caracteres.");
+    const { data: permuta, error: erroPermuta } = await db.from("permutas_servico")
+      .select("id,solicitante_id,status").eq("id", permutaId).maybeSingle();
+    if (erroPermuta) throw erroPermuta;
+    if (!permuta) return respostaErro(res, 404, "Permuta não encontrada.");
+    const cancelamentoSolicitante = usuario.id === permuta.solicitante_id
+      && ["AGUARDANDO_CONFIRMACAO", "AGUARDANDO_ANALISE"].includes(permuta.status);
+    const cancelamentoAdministrativo = permissoes.cancelar_deferida && permuta.status === "DEFERIDA";
+    if (!cancelamentoSolicitante && !cancelamentoAdministrativo) {
+      return respostaErro(res, 403, "Você não pode cancelar esta permuta ou situação.");
+    }
+    if (cancelamentoAdministrativo && !justificativa) {
+      return respostaErro(res, 400, "Informe justificativa de cancelamento de até 3000 caracteres.");
+    }
     const { data, error } = await db.rpc("permutas_servico_cancelar_v1", {
       p_permuta_id: permutaId, p_ator_id: usuario.id, p_justificativa: justificativa,
     });
@@ -430,6 +554,7 @@ export default async function handler(req, res) {
     if (!permissoesPermuta(usuario).criar) return respostaErro(res, 403, "Seu perfil não tem acesso ao módulo de Permutas.");
     const db = supabaseAdmin();
     if (req.method === "GET") {
+      if (req.query?.controle_escala === "1") return await listarControleEscala(db, usuario, res, req.query);
       if (req.query?.calendario === "mini") return await listarCalendariosMini(db, usuario, res, req.query);
       return await listar(db, usuario, res, req.query);
     }

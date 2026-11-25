@@ -7,8 +7,9 @@ const FONTES = {
   drso_policiais_externos: { tabela: "drso_policiais_externos", nome: "drso_policiais_externos" },
 };
 const ehMaster = (usuario) => normalizarRole(usuario) === "master" || usuario?.is_master === true;
-const camposPoliciais = "id,nome_completo,nome_guerra,matricula,posto_graduacao,role,status,senha,primeiro_acesso,credencial_provisionada,auth_version";
-const camposDrso = "id,nome_completo,nome_guerra,matricula,posto_graduacao,tipo,unidade_origem,ativo,senha,primeiro_acesso,credencial_provisionada,auth_version";
+const ROLES_VALIDOS = ["master", "p4", "armeiro", "oficial", "p1", "p1_escalante_servico_ordinario", "policial", "permanente", "permanente da guarda"];
+const camposPoliciais = "id,nome_completo,nome_guerra,matricula,posto_graduacao,role,status,conta_suspensa,senha,primeiro_acesso,credencial_provisionada,auth_version";
+const camposDrso = "id,nome_completo,nome_guerra,matricula,posto_graduacao,tipo,unidade_origem,ativo,conta_suspensa,senha,primeiro_acesso,credencial_provisionada,auth_version";
 
 export default async function handler(req, res) {
   try {
@@ -18,7 +19,10 @@ export default async function handler(req, res) {
 
     const db = supabaseAdmin();
     if (req.method === "GET") return await listarCredenciais(db, res);
-    if (req.method === "POST") return await resetarCredencial(db, req, res, usuario);
+    if (req.method === "POST") {
+      if (req.body?.acao === "administrar_conta") return await administrarConta(db, req, res, usuario);
+      return await resetarCredencial(db, req, res, usuario);
+    }
     res.setHeader("Allow", "GET, POST");
     return respostaErro(res, 405, "Método não permitido.");
   } catch (error) {
@@ -65,6 +69,7 @@ async function listarCredenciais(db, res) {
       status: row.origem === "drso_policiais_externos"
         ? (row.ativo === false ? "INATIVO" : "ATIVO")
         : (row.status || "Não informado"),
+      contaSuspensa: row.conta_suspensa === true,
       temSenha,
       credencialProvisionada: row.credencial_provisionada !== false,
       primeiroAcesso: row.primeiro_acesso === true,
@@ -103,4 +108,39 @@ async function resetarCredencial(db, req, res, usuario) {
   if (!atualizado) return respostaErro(res, 409, "As credenciais foram alteradas. Atualize a lista e tente novamente.");
 
   return res.status(200).json({ ok: true, senhaTemporaria });
+}
+
+async function administrarConta(db, req, res, usuario) {
+  const origem = req.body?.origem;
+  const id = typeof req.body?.id === "string" ? req.body.id.trim() : "";
+  const acao = req.body?.tipo;
+  const role = typeof req.body?.role === "string" ? req.body.role.trim().toLowerCase() : null;
+  if (!FONTES[origem] || !id || id.length > 100
+    || !["encerrar_sessoes", "suspender", "reativar", "alterar_perfil"].includes(acao)
+    || (acao === "alterar_perfil" && !ROLES_VALIDOS.includes(role))) {
+    return respostaErro(res, 400, "Ação ou conta inválida.");
+  }
+  if (origem === "drso_policiais_externos" && acao === "alterar_perfil") {
+    return respostaErro(res, 400, "Contas DRSO externas não possuem perfil RBAC do efetivo.");
+  }
+  const { data, error } = await db.rpc("master_administrar_conta_v1", {
+    p_ator_id: usuario.id,
+    p_origem: origem,
+    p_usuario_id: id,
+    p_acao: acao,
+    p_novo_role: role,
+  });
+  if (error) {
+    if (["42501", "23514"].includes(error.code)) return respostaErro(res, 409, error.message || "A ação não é permitida para esta conta.");
+    if (error.code === "P0002") return respostaErro(res, 404, "Conta não encontrada.");
+    if (["22023", "22P02"].includes(error.code)) return respostaErro(res, 400, "Ação ou perfil inválido.");
+    throw error;
+  }
+  return res.status(200).json({ conta: {
+    id: data?.id,
+    origem: data?.origem,
+    acao: data?.acao,
+    role: data?.role,
+    conta_suspensa: data?.conta_suspensa === true,
+  } });
 }

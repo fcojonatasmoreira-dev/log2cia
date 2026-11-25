@@ -17,7 +17,7 @@ function resposta() {
   };
 }
 
-async function executar({ role, body, actorId = ATOR_ID, permutaInfo = {}, destinatarioInfo, sessaoValida = true }) {
+async function executar({ role, body, actorId = ATOR_ID, permutaInfo = {}, destinatarioInfo, sessaoValida = true, contaSuspensa = false }) {
   const anterior = {
     fetch: globalThis.fetch,
     sessionSecret: process.env.SESSION_SECRET,
@@ -36,13 +36,14 @@ async function executar({ role, body, actorId = ATOR_ID, permutaInfo = {}, desti
       if (url.searchParams.get("select") === "id,status,posto_graduacao") {
         return Response.json(destinatarioInfo || { id: OUTRO_ID, status: "EM ATIVIDADE", posto_graduacao: "Soldado" });
       }
-      return Response.json({ id: actorId, auth_version: 0, role, credencial_provisionada: true, primeiro_acesso: false });
+      return Response.json({ id: actorId, auth_version: 0, role, conta_suspensa: contaSuspensa, credencial_provisionada: true, primeiro_acesso: false });
     }
     if (url.pathname === "/rest/v1/permutas_servico") {
       return Response.json({ id: PERMUTA_ID, tipo: "SUBSTITUICAO_SIMPLES", solicitante_id: OUTRO_ID, destinatario_id: ATOR_ID, status: "AGUARDANDO_CONFIRMACAO", ...permutaInfo });
     }
     if (url.pathname.startsWith("/rest/v1/rpc/")) {
       if (url.pathname.endsWith("permutas_servico_criar_v1")) return Response.json(PERMUTA_ID);
+      if (url.pathname.endsWith("permutas_servico_escala_atualizar_v1")) return Response.json("APLICADA_NA_ESCALA");
       const status = url.pathname.endsWith("decidir_v2")
         ? (JSON.parse(init.body).p_deferir ? "DEFERIDA" : "INDEFERIDA")
         : url.pathname.endsWith("editar_v1") ? "AGUARDANDO_CONFIRMACAO"
@@ -120,6 +121,7 @@ async function executarListagem({ role = "oficial", query = {}, calendarioGrande
         return Response.json(manifestsGrandes.filter((item) => ids.includes(item.permuta_id)));
       }
       if (["/rest/v1/permutas_servico_confirmacoes", "/rest/v1/permutas_servico_historico"].includes(url.pathname)) return Response.json([]);
+      if (["/rest/v1/permutas_servico_escala", "/rest/v1/permutas_servico_escala_historico"].includes(url.pathname)) return Response.json([]);
       if (url.pathname === "/rest/v1/policiais") return Response.json([]);
       return Response.json({ message: `Requisição inesperada: ${url.pathname}` }, { status: 404 });
     }
@@ -150,6 +152,8 @@ async function executarListagem({ role = "oficial", query = {}, calendarioGrande
         mensagem_policial_2: "Mensagem ao destinatário",
       }]);
     }
+    if (["/rest/v1/permutas_servico_escala", "/rest/v1/permutas_servico_escala_historico"].includes(url.pathname)) return Response.json([]);
+    if (["/rest/v1/permutas_servico_escala", "/rest/v1/permutas_servico_escala_historico"].includes(url.pathname)) return Response.json([]);
     if (url.pathname === "/rest/v1/policiais") {
       return Response.json([
         { id: ATOR_ID, nome_completo: "Nome A", nome_guerra: "ALFA", posto_graduacao: "Soldado", numeral: "11" },
@@ -216,6 +220,16 @@ test("todas as operações protegidas exigem sessão válida antes de acessar o 
     assert.equal(resultado.status, 401);
     assert.deepEqual(resultado.chamadas, []);
   }
+});
+
+test("conta suspensa perde acesso a APIs autenticadas antes de executar a operação", async () => {
+  const resultado = await executar({
+    role: "policial",
+    contaSuspensa: true,
+    body: { acao: "cancelar", permuta_id: PERMUTA_ID },
+  });
+  assert.equal(resultado.status, 401);
+  assert.equal(resultado.chamadas.some((item) => item.path.endsWith("permutas_servico_cancelar_v1")), false);
 });
 
 test("cada policial envolvido pode registrar somente a própria confirmação", async () => {
@@ -405,6 +419,7 @@ test("indeferimento aceita mensagem parcial, mas limita cada mensagem", async ()
 test("cancelamento administrativo exige justificativa não vazia", async () => {
   const resultado = await executar({
     role: "oficial",
+    permutaInfo: { status: "DEFERIDA" },
     body: { acao: "cancelar", permuta_id: PERMUTA_ID, justificativa: " " },
   });
   assert.equal(resultado.status, 400);
@@ -414,12 +429,42 @@ test("cancelamento administrativo exige justificativa não vazia", async () => {
 test("Master pode cancelar permuta deferida e o endpoint envia sua identidade real", async () => {
   const resultado = await executar({
     role: "master",
+    permutaInfo: { status: "DEFERIDA" },
     body: { acao: "cancelar", permuta_id: PERMUTA_ID, justificativa: "Necessidade administrativa", ator_id: "forjado" },
   });
   assert.equal(resultado.status, 200);
   assert.equal(resultado.body.status, "CANCELADA");
   const chamada = resultado.chamadas.find((item) => item.path.endsWith("permutas_servico_cancelar_v1"));
   assert.equal(chamada.body.p_ator_id, ATOR_ID);
+});
+
+test("solicitante autenticado pode cancelar pendência com motivo opcional", async () => {
+  const resultado = await executar({
+    role: "policial",
+    permutaInfo: { solicitante_id: ATOR_ID, status: "AGUARDANDO_ANALISE" },
+    body: { acao: "cancelar", permuta_id: PERMUTA_ID, justificativa: "  " },
+  });
+  assert.equal(resultado.status, 200);
+  const chamada = resultado.chamadas.find((item) => item.path.endsWith("permutas_servico_cancelar_v1"));
+  assert.equal(chamada.body.p_ator_id, ATOR_ID);
+  assert.equal(chamada.body.p_justificativa, "");
+});
+
+test("solicitante não cancela permuta já decidida nem pedido de terceiro", async () => {
+  const deferida = await executar({
+    role: "policial",
+    permutaInfo: { solicitante_id: ATOR_ID, status: "DEFERIDA" },
+    body: { acao: "cancelar", permuta_id: PERMUTA_ID },
+  });
+  assert.equal(deferida.status, 403);
+  assert.equal(deferida.chamadas.some((item) => item.path.endsWith("permutas_servico_cancelar_v1")), false);
+  const deTerceiro = await executar({
+    role: "policial",
+    permutaInfo: { solicitante_id: OUTRO_ID, status: "AGUARDANDO_CONFIRMACAO" },
+    body: { acao: "cancelar", permuta_id: PERMUTA_ID },
+  });
+  assert.equal(deTerceiro.status, 403);
+  assert.equal(deTerceiro.chamadas.some((item) => item.path.endsWith("permutas_servico_cancelar_v1")), false);
 });
 
 test("calendário filtra por período e resolve apenas nomes mínimos dos atores do histórico", async () => {
@@ -607,4 +652,27 @@ test("filtro de calendário rejeita datas inválidas antes da consulta de permut
   const resultado = await executarListagem({ role: "p1", query: { data_inicio: "2026-02-30", data_fim: "2026-03-05" } });
   assert.equal(resultado.status, 400);
   assert.equal(resultado.chamadas.some((url) => url.pathname.endsWith("permutas_servico")), false);
+});
+
+test("Controle de Escala deriva o responsável da sessão e encaminha a operação à RPC", async () => {
+  const resultado = await executar({ role: "p1", body: { acao: "controle_escala", escala_id: PERMUTA_ID, operacao: "APLICAR", ator_id: OUTRO_ID } });
+  assert.equal(resultado.status, 200);
+  const chamada = resultado.chamadas.find((item) => item.path.endsWith("permutas_servico_escala_atualizar_v1"));
+  assert.deepEqual(chamada.body, { p_escala_id: PERMUTA_ID, p_ator_id: ATOR_ID, p_acao: "APLICAR" });
+});
+
+test("P1, Oficial e Master consultam o Controle; policial comum recebe 403", async () => {
+  for (const role of ["p1", "oficial", "master"]) {
+    const resultado = await executarListagem({ role, query: { controle_escala: "1" } });
+    assert.equal(resultado.status, 200, role);
+    assert.deepEqual(resultado.body.servicos, []);
+  }
+  const comum = await executarListagem({ role: "policial", query: { controle_escala: "1" } });
+  assert.equal(comum.status, 403);
+});
+
+test("Oficial consulta o Controle de Escala sem poder alterar marcações", async () => {
+  const resultado = await executar({ role: "oficial", body: { acao: "controle_escala", escala_id: PERMUTA_ID, operacao: "APLICAR" } });
+  assert.equal(resultado.status, 403);
+  assert.equal(resultado.chamadas.some((item) => item.path.endsWith("permutas_servico_escala_atualizar_v1")), false);
 });

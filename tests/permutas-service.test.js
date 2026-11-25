@@ -6,6 +6,8 @@ import {
   criarPermuta,
   decidirPermuta,
   editarPermuta,
+  atualizarServicoEscala,
+  listarControleEscala,
   listarCalendariosMini,
   listarPermutas,
 } from "../src/services/permutasService.js";
@@ -42,6 +44,29 @@ test("serviço frontend envia os payloads que o handler e as RPCs esperam", asyn
     { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "decidir", permuta_id: "permuta", deferir: true, servicos_conferidos: true, mensagem_escalante: "Mensagem P1", mensagem_policial_1: "Mensagem P1 da permuta", mensagem_policial_2: "Mensagem P2 da permuta" } },
     { url: "/api/permutas", method: "POST", credentials: "include", body: { acao: "cancelar", permuta_id: "permuta", justificativa: "Motivo administrativo" } },
   ]);
+});
+
+test("serviço do Controle de Escala usa a API protegida com filtros e ações explícitas", async () => {
+  const anterior = globalThis.fetch;
+  const chamadas = [];
+  globalThis.fetch = async (url, options = {}) => {
+    chamadas.push({ url, options, body: options.body ? JSON.parse(options.body) : null });
+    return Response.json({ servicos: [], indicadores: {} });
+  };
+  try {
+    await listarControleEscala({ data_inicio: "2026-11-01", data_fim: "2026-11-30", situacao: "PENDENTE_NA_ESCALA", tipo: "TROCA_RECIPROCA", policial_id: "policial", turno: "A" });
+    await atualizarServicoEscala("escala-id", "APLICAR");
+  } finally {
+    globalThis.fetch = anterior;
+  }
+  const consulta = new URL(chamadas[0].url, "http://localhost");
+  assert.equal(consulta.pathname, "/api/permutas");
+  assert.equal(consulta.searchParams.get("controle_escala"), "1");
+  assert.equal(consulta.searchParams.get("data_inicio"), "2026-11-01");
+  assert.equal(consulta.searchParams.get("data_fim"), "2026-11-30");
+  assert.equal(consulta.searchParams.get("situacao"), "PENDENTE_NA_ESCALA");
+  assert.deepEqual(chamadas[1].body, { acao: "controle_escala", escala_id: "escala-id", operacao: "APLICAR" });
+  assert.equal(chamadas[1].options.credentials, "include");
 });
 
 test("listagem da tela policial solicita apenas as permutas do usuário autenticado", async () => {

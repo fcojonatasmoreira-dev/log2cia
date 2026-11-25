@@ -83,6 +83,14 @@ psql_db "$banco" < "$raiz/supabase/manual/20261124_permutas_edicao_solicitante.s
 psql_db "$banco" < "$raiz/tests/postgres/assert-permutas-edicao.sql"
 psql_db "$banco" < "$raiz/supabase/manual/20261124_presenca_master.sql"
 psql_db "$banco" < "$raiz/tests/postgres/assert-presenca-master.sql"
+psql_db "$banco" < "$raiz/supabase/manual/20261124_permutas_cancelamento_solicitante.sql"
+psql_db "$banco" < "$raiz/tests/postgres/assert-permutas-cancelamento-solicitante.sql"
+psql_db "$banco" < "$raiz/tests/postgres/fixture-admin-bank.sql"
+psql_db "$banco" < "$raiz/supabase/manual/20261124_master_administracao_contas.sql"
+psql_db "$banco" < "$raiz/supabase/manual/20261124_notificacoes_banco_horas.sql"
+psql_db "$banco" < "$raiz/tests/postgres/assert-admin-bank.sql"
+psql_db "$banco" < "$raiz/supabase/manual/20261125_permutas_controle_escala.sql"
+psql_db "$banco" < "$raiz/tests/postgres/assert-permutas-controle-escala.sql"
 esperar_falha_comando "$banco" "set role anon; select * from public.permutas_servico" 'permission denied'
 esperar_falha_comando "$banco" "set role authenticated; select public.permutas_servico_criar_v1('SUBSTITUICAO_SIMPLES','10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','2027-06-01','A','08:00','09:00','Sem acesso','Sem motivo')" 'permission denied'
 esperar_falha_comando "$banco" "set role authenticated; select public.permutas_servico_decidir_v2('33333333-3333-4333-8333-333333333333','10000000-0000-4000-8000-000000000003',true,true,null,null,null)" 'permission denied'

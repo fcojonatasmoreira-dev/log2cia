@@ -9,12 +9,16 @@ import {
   Search,
   Copy,
   Check,
+  LogOut,
+  ShieldOff,
 } from "lucide-react";
-import { listarGestaoCredenciais, resetarCredencial } from "../services/credenciaisService";
+import { administrarConta, listarGestaoCredenciais, resetarCredencial } from "../services/credenciaisService";
 import { listarPresencas } from "../services/presencaService";
 import { filtrarPresencas } from "../utils/presenca";
 
-export default function PainelMaster() {
+const ROLES_GESTAO = ["master", "p4", "armeiro", "oficial", "p1", "p1_escalante_servico_ordinario", "policial", "permanente", "permanente da guarda"];
+
+export default function PainelMaster({ user }) {
   const navigate = useNavigate();
   const [modalOperador, setModalOperador] = useState(false);
 
@@ -36,6 +40,7 @@ export default function PainelMaster() {
   const [resetandoUsuario, setResetandoUsuario] = useState("");
   const [senhaTemporaria, setSenhaTemporaria] = useState("");
   const [feedbackCopiaSenha, setFeedbackCopiaSenha] = useState("");
+  const [acaoConta, setAcaoConta] = useState("");
   const [presencas, setPresencas] = useState([]);
   const [totalOnline, setTotalOnline] = useState(0);
   const [carregandoPresencas, setCarregandoPresencas] = useState(true);
@@ -126,6 +131,31 @@ export default function PainelMaster() {
       window.alert(error.message);
     } finally {
       setResetandoUsuario("");
+    }
+  };
+
+  const handleAdministrarConta = async (usuario, tipo, role = null) => {
+    const nome = usuario.nome_guerra || usuario.nome_completo || usuario.matricula;
+    const textos = {
+      encerrar_sessoes: `Encerrar todas as sessões de ${nome}? A pessoa precisará entrar novamente em cada dispositivo.`,
+      suspender: `Suspender a conta de ${nome}? As sessões abertas perderão acesso e novos logins serão recusados.`,
+      reativar: `Reativar a conta de ${nome}?`,
+      alterar_perfil: `Alterar o perfil de ${nome} para ${role}? As sessões atuais serão revogadas.`,
+    };
+    if (tipo === "suspender" && usuario.origem === "policiais" && usuario.id === user?.id) {
+      window.alert("O Master não pode suspender a própria conta.");
+      return;
+    }
+    if (!window.confirm(textos[tipo])) return;
+    const chave = `${usuario.origem}:${usuario.id}:${tipo}`;
+    setAcaoConta(chave);
+    try {
+      await administrarConta(usuario, tipo, role);
+      await carregarUsuarios();
+    } catch (error) {
+      window.alert(error.message || "Não foi possível administrar a conta.");
+    } finally {
+      setAcaoConta("");
     }
   };
 
@@ -285,7 +315,7 @@ export default function PainelMaster() {
         {carregandoUsuarios ? <p className="py-5 text-center text-sm text-slate-500">Carregando usuários...</p> : !erroUsuarios && <div className="overflow-x-auto rounded-xl border border-slate-100">
           <table className="w-full min-w-[1050px] text-left text-xs">
             <thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr>
-              <th className="p-3">Usuário</th><th className="p-3">Origem</th><th className="p-3">Perfil</th><th className="p-3">Status cadastral</th><th className="p-3">Credencial</th><th className="p-3">Primeiro acesso</th><th className="p-3">Último login</th><th className="p-3">Última alteração de senha</th><th className="p-3">Ação</th>
+              <th className="p-3">Usuário</th><th className="p-3">Origem</th><th className="p-3">Perfil</th><th className="p-3">Status cadastral</th><th className="p-3">Conta</th><th className="p-3">Credencial</th><th className="p-3">Primeiro acesso</th><th className="p-3">Último login</th><th className="p-3">Última alteração de senha</th><th className="p-3">Ação</th>
             </tr></thead>
             <tbody className="divide-y divide-slate-100">{usuariosFiltrados.map((usuario) => {
               const chave = `${usuario.origem}:${usuario.id}`;
@@ -293,12 +323,18 @@ export default function PainelMaster() {
               return <tr key={chave}>
                 <td className="p-3"><span className="font-semibold text-slate-800">{usuario.nome_guerra || usuario.nome_completo || "—"}</span><span className="block text-slate-500">{usuario.nome_completo || ""} · {usuario.matricula || "Sem matrícula"}</span></td>
                 <td className="p-3">{usuario.origem === "policiais" ? "Efetivo" : "DRSO externo"}</td>
-                <td className="p-3">{usuario.role}</td><td className="p-3">{usuario.status || "Não informado"}</td>
+                <td className="p-3">{usuario.origem === "policiais" ? <select aria-label={`Perfil de ${usuario.nome_guerra || usuario.nome_completo}`} value={usuario.role} disabled={Boolean(acaoConta)} onChange={(evento) => void handleAdministrarConta(usuario, "alterar_perfil", evento.target.value)} className="rounded-md border border-slate-200 bg-white px-2 py-1"><option value={usuario.role}>{usuario.role}</option>{ROLES_GESTAO.filter((perfil) => perfil !== usuario.role).map((perfil) => <option key={perfil} value={perfil}>{perfil}</option>)}</select> : usuario.role}</td>
+                <td className="p-3">{usuario.status || "Não informado"}</td>
+                <td className="p-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${usuario.contaSuspensa ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"}`}>{usuario.contaSuspensa ? "Suspensa" : "Ativa"}</span></td>
                 <td className="p-3">{usuario.temSenha ? "Cadastrada" : "Sem senha"}</td>
                 <td className="p-3">{usuario.primeiroAcesso ? "Pendente" : "Concluído"}</td>
                 <td className="p-3">{historicoDisponivel ? data(usuario.ultimoLogin) : "Histórico indisponível"}</td>
                 <td className="p-3">{historicoDisponivel ? data(usuario.ultimaAlteracaoSenha) : "Histórico indisponível"}</td>
-                <td className="p-3"><button type="button" onClick={() => handleResetCredencial(usuario)} disabled={resetandoUsuario === chave} className="inline-flex items-center gap-1 rounded-lg border border-amber-200 px-2 py-1.5 font-semibold text-amber-800 disabled:opacity-50"><KeyRound className="h-3.5 w-3.5" />{resetandoUsuario === chave ? "Gerando..." : "Redefinir"}</button></td>
+                <td className="p-3"><div className="flex flex-wrap gap-1.5">
+                  <button type="button" onClick={() => void handleAdministrarConta(usuario, "encerrar_sessoes")} disabled={Boolean(acaoConta)} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2 py-1.5 font-semibold text-slate-700 disabled:opacity-50"><LogOut className="h-3.5 w-3.5" />Encerrar sessões</button>
+                  <button type="button" onClick={() => void handleAdministrarConta(usuario, usuario.contaSuspensa ? "reativar" : "suspender")} disabled={Boolean(acaoConta) || (usuario.origem === "policiais" && usuario.id === user?.id && !usuario.contaSuspensa)} className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1.5 font-semibold disabled:opacity-50 ${usuario.contaSuspensa ? "border-emerald-200 text-emerald-800" : "border-rose-200 text-rose-800"}`}><ShieldOff className="h-3.5 w-3.5" />{usuario.contaSuspensa ? "Reativar" : "Suspender"}</button>
+                  <button type="button" onClick={() => void handleResetCredencial(usuario)} disabled={resetandoUsuario === chave || Boolean(acaoConta)} className="inline-flex items-center gap-1 rounded-lg border border-amber-200 px-2 py-1.5 font-semibold text-amber-800 disabled:opacity-50"><KeyRound className="h-3.5 w-3.5" />{resetandoUsuario === chave ? "Gerando..." : "Redefinir"}</button>
+                </div></td>
               </tr>;
             })}</tbody>
           </table>

@@ -35,6 +35,11 @@ export async function usuarioAutenticado(req, res, dependencias = {}) {
     return null;
   }
 
+  if (data.conta_suspensa === true) {
+    respostaErro(res, 401, "Conta suspensa. Entre em contato com a administração.");
+    return null;
+  }
+
   if (data.auth_version !== sessao.ver) {
     respostaErro(res, 401, "Sessão revogada. Entre novamente.");
     return null;
@@ -64,6 +69,7 @@ export async function usuarioAutenticado(req, res, dependencias = {}) {
     ...(typeof data.is_master === "boolean" ? { is_master: data.is_master } : {}),
     unidade: data.unidade,
     status: data.status,
+    conta_suspensa: data.conta_suspensa === true,
     primeiro_acesso: data.primeiro_acesso,
     drso_escalante: data.drso_escalante,
   };

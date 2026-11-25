@@ -43,11 +43,14 @@ export default async function handler(req, res) {
     if (!data) {
       const { data: externo, error: erroExterno } = await db
         .from("drso_policiais_externos")
-        .select("id,nome_completo,nome_guerra,matricula,numeral,posto_graduacao,unidade_origem,tipo,auth_version,ativo,primeiro_acesso,credencial_provisionada")
+        .select("id,nome_completo,nome_guerra,matricula,numeral,posto_graduacao,unidade_origem,tipo,auth_version,ativo,conta_suspensa,primeiro_acesso,credencial_provisionada")
         .eq("id", sessao.sub)
         .eq("ativo", true)
         .maybeSingle();
       if (erroExterno && erroExterno.code !== "42P01") throw erroExterno;
+      if (externo?.conta_suspensa === true) {
+        return res.status(401).json({ error: "Conta suspensa ou sessão revogada." });
+      }
       if (!externo || externo.auth_version !== sessao.ver) {
         return res.status(401).json({ error: "Conta externa não encontrada, desativada ou sessão revogada." });
       }
@@ -69,6 +72,10 @@ export default async function handler(req, res) {
       return res.status(401).json({
         error: "Sessão revogada. Faça login novamente.",
       });
+    }
+
+    if (data.conta_suspensa === true) {
+      return res.status(401).json({ error: "Conta suspensa ou sessão revogada." });
     }
 
     if (data.credencial_provisionada === false) {

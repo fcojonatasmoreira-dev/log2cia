@@ -5,6 +5,7 @@ import criarPolicialHandler from "../server/api/policiais/index.js";
 import credenciaisHandler from "../server/api/credenciais.js";
 import loginHandler from "../server/api/auth/_login.js";
 import drsoHandler from "../server/api/drso/index.js";
+import policialDetalheHandler from "../server/api/policiais/[id].js";
 import { hashSenha } from "../server/api/auth/_password.js";
 
 const ENV = {
@@ -374,4 +375,90 @@ test("consulta de histórico usa RPC indexada e resposta não expõe dados de au
   assert.deepEqual(chamadaRpc.p_usuario_ids, ["u-1"]);
   assert.equal(res.body.usuarios[0].ultimoLogin, "2026-11-15T10:00:00Z");
   assert.equal(JSON.stringify(res.body).includes("scrypt$segredo"), false);
+});
+
+test("Master solicita invalidação de todas as sessões usando sua identidade autenticada", async () => {
+  let rpc;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(typeof input === "string" ? input : input.url);
+    if (url.pathname === "/rest/v1/policiais") return pg([{ id: "master-1", role: "master", auth_version: 0 }]);
+    if (url.pathname === "/rest/v1/rpc/master_administrar_conta_v1") {
+      rpc = JSON.parse(init.body);
+      return pg({ id: "alvo-1", origem: "policiais", acao: "encerrar_sessoes", role: "policial", conta_suspensa: false, auth_version: 8 });
+    }
+    return pg([], 404);
+  };
+  const res = resposta();
+  await credenciaisHandler(requisicao({ method: "POST", body: {
+    acao: "administrar_conta", origem: "policiais", id: "alvo-1",
+    tipo: "encerrar_sessoes", ator_id: "forjado", role: "master",
+  } }), res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(rpc.p_ator_id, "master-1");
+  assert.equal(rpc.p_usuario_id, "alvo-1");
+  assert.equal(rpc.p_acao, "encerrar_sessoes");
+  assert.equal("auth_version" in res.body.conta, false);
+});
+
+test("policial não aciona administração de contas e perfis fora da lista são rejeitados", async () => {
+  let chamadaRpc = false;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(typeof input === "string" ? input : input.url);
+    if (url.pathname === "/rest/v1/policiais") return pg([{ id: "policial-1", role: "policial", auth_version: 0 }]);
+    if (url.pathname.endsWith("master_administrar_conta_v1")) chamadaRpc = true;
+    return pg([], 404);
+  };
+  const negada = resposta();
+  await credenciaisHandler(requisicao({ id: "policial-1", role: "policial", method: "POST", body: {
+    acao: "administrar_conta", origem: "policiais", id: "alvo-1", tipo: "suspender",
+  } }), negada);
+  assert.equal(negada.statusCode, 403);
+  assert.equal(chamadaRpc, false);
+
+  const masterFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = new URL(typeof input === "string" ? input : input.url);
+    if (url.pathname === "/rest/v1/policiais") return pg([{ id: "master-1", role: "master", auth_version: 0 }]);
+    return pg([], 404);
+  };
+  const perfilInvalido = resposta();
+  await credenciaisHandler(requisicao({ method: "POST", body: {
+    acao: "administrar_conta", origem: "policiais", id: "alvo-1", tipo: "alterar_perfil", role: "superadmin",
+  } }), perfilInvalido);
+  assert.equal(perfilInvalido.statusCode, 400);
+  globalThis.fetch = masterFetch;
+});
+
+test("edição legada de policiais não contorna a RPC auditada de alteração de perfil", async () => {
+  let houveAtualizacao = false;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(typeof input === "string" ? input : input.url);
+    const method = (init.method || "GET").toUpperCase();
+    if (url.pathname === "/rest/v1/policiais" && url.searchParams.get("select") === "*") return pg([{ id: "master-1", role: "master", auth_version: 0 }]);
+    if (url.pathname === "/rest/v1/policiais" && url.searchParams.get("id") === "eq.alvo-1") return pg([{ id: "alvo-1", role: "policial", drso_escalante: false }]);
+    if (method === "PATCH") houveAtualizacao = true;
+    return pg([], 404);
+  };
+  const res = resposta();
+  await policialDetalheHandler({
+    ...requisicao({ method: "PATCH", body: { role: "master" } }),
+    query: { id: "alvo-1" },
+  }, res);
+  assert.equal(res.statusCode, 409);
+  assert.equal(houveAtualizacao, false);
+});
+
+test("login de conta suspensa não emite sessão", async () => {
+  globalThis.fetch = async (input) => {
+    const url = new URL(typeof input === "string" ? input : input.url);
+    if (url.pathname === "/rest/v1/policiais") return pg([{
+      id: "suspenso-1", matricula: "11111", senha: "senha-valida",
+      conta_suspensa: true, credencial_provisionada: true, auth_version: 0,
+    }]);
+    return pg([], 404);
+  };
+  const res = resposta();
+  await loginHandler({ method: "POST", headers: {}, body: { matricula: "11111", senha: "senha-valida" } }, res);
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.headers["Set-Cookie"], undefined);
 });

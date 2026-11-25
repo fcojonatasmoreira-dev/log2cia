@@ -159,7 +159,7 @@ export default function AppRoutes() {
             <Route path="alterar-senha" element={<AlterarSenhaObrigatoria />} />
 
             {(usuario.role === "master" || usuario.is_master === true) && (
-              <Route path="painel-master" element={<PainelMaster />} />
+              <Route path="painel-master" element={<PainelMaster user={usuario} />} />
             )}
             {(usuario.is_master === true || ["master", "p1"].includes(String(usuario.role || "").trim().toLowerCase())) && (
               <Route path="gerenciamento-arquivo" element={<GerenciamentoArquivo />} />

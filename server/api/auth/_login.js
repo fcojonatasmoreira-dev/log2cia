@@ -43,6 +43,9 @@ export default async function handler(req, res) {
         .eq("ativo", true)
         .maybeSingle();
       if (erroExterno && erroExterno.code !== "42P01") throw erroExterno;
+      if (externo?.conta_suspensa === true) {
+        return res.status(401).json({ error: "Matrícula ou senha incorreta." });
+      }
       const senhaExternaArmazenada = typeof externo?.senha === "string" ? externo.senha : "";
       const senhaExternaTemValor = senhaExternaArmazenada.trim().length > 0;
       const senhaExternaEhHash = pareceHashSenha(senhaExternaArmazenada);
@@ -82,6 +85,10 @@ export default async function handler(req, res) {
       await registrarEventoCredencial(db, { origem: "drso_policiais_externos", usuarioId: externo.id, evento: "login" }).catch(() => {});
       definirCookie(res, tokenExterno, manterConectado);
       return res.status(200).json({ user: usuarioExterno });
+    }
+
+    if (policial.conta_suspensa === true) {
+      return res.status(401).json({ error: "Matrícula ou senha incorreta." });
     }
 
     const senhaArmazenada =

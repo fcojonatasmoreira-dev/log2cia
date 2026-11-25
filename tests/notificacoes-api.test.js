@@ -11,7 +11,7 @@ function resposta() {
   return { statusCode: 200, status(valor) { this.statusCode = valor; return this; }, setHeader() {}, json(body) { this.body = body; return this; } };
 }
 
-async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = true } = {}) {
+async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = true, notificacao = null } = {}) {
   const anterior = {
     fetch: globalThis.fetch,
     segredo: process.env.SESSION_SECRET,
@@ -34,7 +34,7 @@ async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = tr
       return new Response(null, { status: 200, headers: { "content-range": "*/3" } });
     }
     if (url.pathname === "/rest/v1/notificacoes_internas" && method === "GET") {
-      return Response.json([{
+      return Response.json([notificacao || {
         id: NOTIFICACAO_ID, destinatario_id: "nao-deve-ser-retornado", permuta_id: PERMUTA_ID,
         tipo: "PERMUTA_DEFERIDA", mensagem_disponivel: true, criado_em: "2026-11-24T12:00:00Z", lida_em: null,
       }]);
@@ -42,6 +42,10 @@ async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = tr
     if (url.pathname === "/rest/v1/notificacoes_internas" && method === "PATCH") {
       return Response.json([{ id: NOTIFICACAO_ID }]);
     }
+    if (url.pathname === "/rest/v1/permutas_servico_manifestacoes") {
+      return Response.json([{ permuta_id: PERMUTA_ID, data_servico: "2026-12-01", turno: "A" }]);
+    }
+    if (url.pathname === "/rest/v1/permutas_servico_escala") return Response.json([]);
     return Response.json({ message: `Chamada inesperada ${method} ${url.pathname}` }, { status: 404 });
   };
   const req = {
@@ -70,9 +74,10 @@ test("listagem usa identidade da sessão, contagem exata e descrição sem corpo
     id: NOTIFICACAO_ID,
     permuta_id: PERMUTA_ID,
     tipo: "Permuta deferida",
-    descricao: "Uma permuta foi deferida. O Oficial deixou uma mensagem reservada para você.",
+    descricao: "Uma permuta foi deferida. Serviços: 01/12/2026 · turno A. Atualize a escala no Controle de Escala. O Oficial deixou uma mensagem reservada para você.",
     criado_em: "2026-11-24T12:00:00Z",
     lida_em: null,
+    abrir_controle_escala: true,
   });
   const consultas = resultado.chamadas.filter((item) => item.url.pathname === "/rest/v1/notificacoes_internas");
   assert.equal(consultas.length, 2);
@@ -130,4 +135,31 @@ test("marcação em nome de terceiro e ações inválidas são rejeitadas antes 
   const resultado = await executar({ metodo: "PATCH", body: { acao: "marcar_lida", id: "nao-e-uuid" } });
   assert.equal(resultado.status, 400);
   assert.equal(resultado.chamadas.some((item) => item.method === "PATCH"), false);
+});
+
+test("notificação de Banco de Horas contém somente referência e texto genérico", async () => {
+  const resultado = await executar({ notificacao: {
+    id: NOTIFICACAO_ID, destinatario_id: USUARIO_ID, permuta_id: null,
+    banco_horas_solicitacao_id: "40000000-0000-4000-8000-000000000001",
+    tipo: "BANCO_HORAS_INDEFERIDA", mensagem_disponivel: false,
+    criado_em: "2026-11-24T12:00:00Z", lida_em: null,
+  } });
+  assert.equal(resultado.status, 200);
+  assert.deepEqual(resultado.body.notificacoes[0], {
+    id: NOTIFICACAO_ID,
+    permuta_id: null,
+    banco_horas_solicitacao_id: "40000000-0000-4000-8000-000000000001",
+    tipo: "Solicitação indeferida",
+    descricao: "Sua solicitação do Banco de Horas foi indeferida.",
+    criado_em: "2026-11-24T12:00:00Z",
+    lida_em: null,
+  });
+  assert.equal(JSON.stringify(resultado.body).includes("justificativa"), false);
+});
+
+test("somente P1 e Master recebem destino direto do Controle de Escala", async () => {
+  const policial = await executar({ perfil: "policial" });
+  assert.equal(policial.body.notificacoes[0].abrir_controle_escala, undefined);
+  const master = await executar({ perfil: "master" });
+  assert.equal(master.body.notificacoes[0].abrir_controle_escala, true);
 });

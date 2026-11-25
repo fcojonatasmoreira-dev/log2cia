@@ -99,19 +99,19 @@ export default async function handler(req, res) {
     if (!sessao?.sub) return respostaErro(res, 401, "Sessão inválida ou expirada.");
     const db = supabaseAdmin();
     let { data: usuario, error: erroUsuario } = await db.from("policiais")
-      .select("id,nome_completo,nome_guerra,matricula,posto_graduacao,numeral,role,unidade,status,drso_escalante,auth_version,primeiro_acesso,credencial_provisionada")
+      .select("id,nome_completo,nome_guerra,matricula,posto_graduacao,numeral,role,unidade,status,drso_escalante,auth_version,primeiro_acesso,credencial_provisionada,conta_suspensa")
       .eq("id", sessao.sub).maybeSingle();
     if (erroUsuario) throw erroUsuario;
     let externo = false;
     if (!usuario) {
       const { data: contaExterna, error: erroExterno } = await db.from("drso_policiais_externos")
-        .select("id,nome_completo,nome_guerra,matricula,posto_graduacao,numeral,unidade_origem,tipo,auth_version,ativo,primeiro_acesso,credencial_provisionada")
+        .select("id,nome_completo,nome_guerra,matricula,posto_graduacao,numeral,unidade_origem,tipo,auth_version,ativo,primeiro_acesso,credencial_provisionada,conta_suspensa")
         .eq("id", sessao.sub).eq("ativo", true).maybeSingle();
       if (erroExterno) throw erroExterno;
-      if (!contaExterna || contaExterna.auth_version !== sessao.ver) return respostaErro(res, 401, "Conta externa inválida ou desativada.");
+      if (!contaExterna || contaExterna.conta_suspensa === true || contaExterna.auth_version !== sessao.ver) return respostaErro(res, 401, "Conta externa inválida ou desativada.");
       usuario = { ...contaExterna, role: "drso_externo", tipo_acesso: "drso_externo", unidade: contaExterna.unidade_origem, drso_tipo: contaExterna.tipo };
       externo = true;
-    } else if (usuario.auth_version !== sessao.ver) return respostaErro(res, 401, "Sessão revogada. Entre novamente.");
+    } else if (usuario.conta_suspensa === true || usuario.auth_version !== sessao.ver) return respostaErro(res, 401, "Sessão revogada. Entre novamente.");
     if (usuario.credencial_provisionada === false) {
       return respostaErro(res, 403, "A credencial ainda precisa ser provisionada pelo Master.");
     }

@@ -21,3 +21,10 @@ export function resetarCredencial(usuario) {
     body: JSON.stringify({ id: usuario.id, origem: usuario.origem }),
   });
 }
+
+export function administrarConta(usuario, tipo, role = null) {
+  return request({
+    method: "POST",
+    body: JSON.stringify({ acao: "administrar_conta", id: usuario.id, origem: usuario.origem, tipo, role }),
+  });
+}

@@ -44,6 +44,18 @@ export async function listarCalendariosMini(policialIds, data_inicio, data_fim) 
   return respostas.flatMap((resposta) => resposta.calendarios || []);
 }
 
+export function listarControleEscala(filtros = {}) {
+  const query = new URLSearchParams({ controle_escala: "1" });
+  for (const campo of ["data", "data_inicio", "data_fim", "situacao", "policial_id", "tipo", "turno", "permuta_id"]) {
+    if (filtros[campo]) query.set(campo, filtros[campo]);
+  }
+  return request({}, `${API}?${query}`);
+}
+
+export function atualizarServicoEscala(escala_id, operacao) {
+  return request({ method: "POST", body: JSON.stringify({ acao: "controle_escala", escala_id, operacao }) });
+}
+
 export function criarPermuta({ tipo, destinatario_id, motivo, servico }) {
   return request({ method: "POST", body: JSON.stringify({ acao: "criar", tipo, destinatario_id, motivo, servico }) });
 }
@@ -68,6 +80,6 @@ export function decidirPermuta(permuta_id, deferir, servicos_conferidos, mensage
   });
 }
 
-export function cancelarPermuta(permuta_id, justificativa) {
+export function cancelarPermuta(permuta_id, justificativa = "") {
   return request({ method: "POST", body: JSON.stringify({ acao: "cancelar", permuta_id, justificativa }) });
 }

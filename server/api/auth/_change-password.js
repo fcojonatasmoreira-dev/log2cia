@@ -64,6 +64,7 @@ export default async function handler(req, res) {
       .eq("id", sessao.sub)
       .eq("auth_version", sessao.ver)
       .eq("credencial_provisionada", true)
+      .eq("conta_suspensa", false)
       .select("id");
 
     if (error) throw error;
@@ -82,6 +83,7 @@ export default async function handler(req, res) {
         .eq("id", sessao.sub)
         .eq("auth_version", sessao.ver)
         .eq("credencial_provisionada", true)
+        .eq("conta_suspensa", false)
         .eq("ativo", true)
         .select("id");
       if (erroExterno) throw erroExterno;

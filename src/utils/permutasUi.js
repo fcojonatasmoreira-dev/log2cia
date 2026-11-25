@@ -12,6 +12,11 @@ export function podeConsultarCalendarioProprio(usuario) {
   );
 }
 
+export function podeAtualizarControleEscala(usuario) {
+  const role = String(usuario?.role || "").trim().toLowerCase();
+  return usuario?.is_master === true || ["p1", "p1_escalante_servico_ordinario", "master"].includes(role);
+}
+
 export function obterIdsMiniCalendariosAbertos(permutas, calendariosAbertos, { usuarioId, podeConsultarGeral }) {
   const ids = new Set();
   for (const permuta of permutas || []) {
@@ -33,10 +38,12 @@ export function podeDecidirPermuta(usuario, status) {
   return podeAdministrar && status === "AGUARDANDO_ANALISE";
 }
 
-export function podeCancelarPermuta(usuario, status) {
+export function podeCancelarPermuta(usuario, permuta) {
   const role = String(usuario?.role || "").trim().toLowerCase();
   const podeAdministrar = role === "oficial" || role === "master" || usuario?.is_master === true;
-  return podeAdministrar && status === "DEFERIDA";
+  if (podeAdministrar && permuta?.status === "DEFERIDA") return true;
+  return usuario?.id === permuta?.solicitante_id
+    && ["AGUARDANDO_CONFIRMACAO", "AGUARDANDO_ANALISE"].includes(permuta?.status);
 }
 
 export function atualizarStatusPermuta(permutas, permutaId, status) {

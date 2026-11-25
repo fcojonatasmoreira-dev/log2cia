@@ -67,7 +67,7 @@ export default function NotificacoesMenu() {
     };
   }, []);
 
-  const abrirPermuta = async (item) => {
+  const abrirDestino = async (item) => {
     limparTimerFechamento();
     setAberta(false);
     setOperacao(true);
@@ -78,7 +78,9 @@ export default function NotificacoesMenu() {
           ? { ...notificacao, lida_em: new Date().toISOString() } : notificacao));
         setNaoLidas((quantidade) => Math.max(0, quantidade - 1));
       }
-      navegar(`/permutas?permuta_id=${encodeURIComponent(item.permuta_id)}`);
+      if (item.banco_horas_solicitacao_id) navegar(`/banco-horas?solicitacao_id=${encodeURIComponent(item.banco_horas_solicitacao_id)}`);
+      else if (item.abrir_controle_escala) navegar(`/permutas?visao=controle_escala&permuta_id=${encodeURIComponent(item.permuta_id)}`);
+      else navegar(`/permutas?permuta_id=${encodeURIComponent(item.permuta_id)}`);
     } catch (error) {
       setErro(error.message || "Não foi possível atualizar a notificação.");
     } finally {
@@ -127,7 +129,7 @@ export default function NotificacoesMenu() {
         <div className="max-h-[60vh] overflow-y-auto">
           {carregando && !notificacoes.length ? <p className="flex items-center justify-center gap-2 p-6 text-xs text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" /> Carregando…</p>
             : notificacoes.length ? <ul className="divide-y divide-slate-100">{notificacoes.map((item) => <li key={item.id}>
-              <button type="button" disabled={operacao} onClick={() => void abrirPermuta(item)} className={`block w-full p-3 text-left hover:bg-slate-50 disabled:opacity-60 ${item.lida_em ? "" : "bg-blue-50/60"}`}>
+              <button type="button" disabled={operacao} onClick={() => void abrirDestino(item)} className={`block w-full p-3 text-left hover:bg-slate-50 disabled:opacity-60 ${item.lida_em ? "" : "bg-blue-50/60"}`}>
                 <span className="flex items-start justify-between gap-2"><strong className="text-xs text-slate-800">{item.tipo}</strong>{!item.lida_em && <i aria-label="Não lida" className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-600" />}</span>
                 <span className="mt-1 block text-xs text-slate-600">{item.descricao}</span>
                 <time className="mt-1.5 block text-[10px] text-slate-400">{dataHora(item.criado_em)}</time>

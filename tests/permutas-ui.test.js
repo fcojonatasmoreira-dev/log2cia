@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alternarEstadoLinhaPermuta, atualizarStatusPermuta, obterIdsMiniCalendariosAbertos, podeCancelarPermuta, podeConsultarCalendario, podeConsultarCalendarioProprio, podeDecidirPermuta } from "../src/utils/permutasUi.js";
+import { alternarEstadoLinhaPermuta, atualizarStatusPermuta, obterIdsMiniCalendariosAbertos, podeAtualizarControleEscala, podeCancelarPermuta, podeConsultarCalendario, podeConsultarCalendarioProprio, podeDecidirPermuta } from "../src/utils/permutasUi.js";
 
 test("somente P1, escalante P1, Oficial e Master consultam o calendário geral", () => {
   for (const usuario of [
@@ -65,14 +65,25 @@ test("somente Oficial e Master podem decidir, e apenas enquanto aguardando anál
   }
 });
 
+test("P1 e Master alteram o Controle de Escala; Oficial só consulta", () => {
+  for (const usuario of [{ role: "p1" }, { role: "p1_escalante_servico_ordinario" }, { role: "master" }, { role: "policial", is_master: true }]) {
+    assert.equal(podeAtualizarControleEscala(usuario), true);
+  }
+  for (const usuario of [{ role: "oficial" }, { role: "policial" }, { role: "p4" }, null]) {
+    assert.equal(podeAtualizarControleEscala(usuario), false);
+  }
+});
+
 test("somente Oficial e Master podem cancelar permuta deferida", () => {
   for (const usuario of [{ role: "oficial" }, { role: "master" }, { is_master: true }]) {
-    assert.equal(podeCancelarPermuta(usuario, "DEFERIDA"), true);
-    assert.equal(podeCancelarPermuta(usuario, "AGUARDANDO_ANALISE"), false);
-    assert.equal(podeCancelarPermuta(usuario, "INDEFERIDA"), false);
+    assert.equal(podeCancelarPermuta(usuario, { status: "DEFERIDA" }), true);
+    assert.equal(podeCancelarPermuta(usuario, { status: "AGUARDANDO_ANALISE", solicitante_id: "outro" }), false);
+    assert.equal(podeCancelarPermuta(usuario, { status: "INDEFERIDA" }), false);
   }
-  assert.equal(podeCancelarPermuta({ role: "p1" }, "DEFERIDA"), false);
-  assert.equal(podeCancelarPermuta({ role: "policial" }, "DEFERIDA"), false);
+  assert.equal(podeCancelarPermuta({ role: "p1" }, { status: "DEFERIDA" }), false);
+  assert.equal(podeCancelarPermuta({ role: "policial", id: "P1" }, { status: "AGUARDANDO_ANALISE", solicitante_id: "P1" }), true);
+  assert.equal(podeCancelarPermuta({ role: "policial", id: "P2" }, { status: "AGUARDANDO_ANALISE", solicitante_id: "P1" }), false);
+  assert.equal(podeCancelarPermuta({ role: "policial", id: "P1" }, { status: "DEFERIDA", solicitante_id: "P1" }), false);
 });
 
 test("atualiza imediatamente somente a permuta decidida na lista atual", () => {
