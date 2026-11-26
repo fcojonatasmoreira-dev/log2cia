@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { login } from "../services/sessionService";
 import {
-  Shield,
   KeyRound,
   User,
   Lock,
@@ -55,29 +54,33 @@ export default function Login({ avisoSessao = "" }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-8 shadow-2xl space-y-6">
-        <div className="text-center space-y-2">
-          <div className="inline-flex p-3 bg-blue-600/10 border border-blue-500/20 rounded-2xl text-blue-500 mb-1">
-            <Shield className="w-10 h-10" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">
-            Log2CIA
-          </h1>
-          <p className="text-xs text-slate-400">
-            Sistema de Gestão de Armamento e Efetivo
-          </p>
-        </div>
+    <div className="login-page grid min-h-screen place-items-center p-3 sm:p-6">
+      <main className="login-shell grid w-full max-w-[1456px] overflow-hidden rounded-[1.75rem] shadow-2xl md:items-center md:grid-cols-[0.82fr_1.18fr] lg:grid-cols-[0.92fr_1.08fr]">
+        <aside className="login-brand-image-panel min-w-0" aria-label="Identidade institucional da 2ª CIA">
+          <img
+            className="login-brand-image"
+            src="/images/login-painel-institucional.png"
+            alt="Brasão conceitual 2ª CIA PMCE, Log2CIA e Jeep Commander operacional verde e branca com luzes de emergência"
+          />
+        </aside>
+
+        <section className="login-form-panel min-w-0 p-5 sm:p-8 md:flex md:flex-col md:justify-center md:px-8 lg:px-14 xl:px-16">
+          <div className="login-form-content">
+          <header className="mb-6">
+            <p className="login-eyebrow text-[11px] font-bold uppercase tracking-[0.18em]">Acesso seguro</p>
+            <h2 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">Entrar no sistema</h2>
+            <p className="login-description mt-2 text-sm leading-relaxed">Informe sua matrícula e senha para continuar.</p>
+          </header>
 
         {erro && (
-          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-xl text-xs flex items-center space-x-2">
+          <div className="login-error mb-4 flex items-start gap-2 rounded-xl border p-3 text-sm">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{erro}</span>
           </div>
         )}
 
         {avisoSessao && (
-          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-300 p-3 rounded-xl text-xs flex items-center space-x-2">
+          <div className="login-session-notice mb-4 flex items-start gap-2 rounded-xl border p-3 text-sm">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{avisoSessao}</span>
           </div>
@@ -85,42 +88,44 @@ export default function Login({ avisoSessao = "" }) {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+            <label className="login-label mb-1.5 block text-xs font-bold uppercase tracking-wide">
               Matrícula
             </label>
             <div className="relative">
-              <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <User className="login-input-icon absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2" />
               <input
                 type="text"
                 required
                 placeholder="Ex: 1357281X"
                 value={matricula}
                 onChange={(e) => setMatricula(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                autoComplete="username"
+                className="login-input min-h-12 w-full rounded-xl border py-3 pl-10 pr-4 font-mono text-base outline-none transition focus:ring-2 focus:ring-blue-500 sm:text-sm"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+            <label className="login-label mb-1.5 block text-xs font-bold uppercase tracking-wide">
               Senha
             </label>
             <div className="relative">
-              <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Lock className="login-input-icon absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2" />
               <input
                 type={mostrarSenha ? "text" : "password"}
                 required
                 placeholder="••••••••"
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
-                className="w-full pl-9 pr-11 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoComplete="current-password"
+                className="login-input min-h-12 w-full rounded-xl border py-3 pl-10 pr-12 text-base outline-none transition focus:ring-2 focus:ring-blue-500 sm:text-sm"
               />
               <button
                 type="button"
                 onClick={() => setMostrarSenha((valor) => !valor)}
                 aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
                 title={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                className="login-password-toggle absolute right-1 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-lg transition-colors"
               >
                 {mostrarSenha ? (
                   <EyeOff className="w-4 h-4" />
@@ -131,12 +136,12 @@ export default function Login({ avisoSessao = "" }) {
             </div>
           </div>
 
-          <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none">
+          <label className="login-remember flex min-h-10 cursor-pointer select-none items-center gap-2.5 text-sm">
             <input
               type="checkbox"
               checked={manterConectado}
               onChange={(e) => setManterConectado(e.target.checked)}
-              className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-blue-600 focus:ring-blue-500"
+              className="h-4 w-4 rounded border-slate-400 text-blue-600 focus:ring-blue-500"
             />
             <span>Lembrar de mim</span>
           </label>
@@ -144,13 +149,15 @@ export default function Login({ avisoSessao = "" }) {
           <button
             type="submit"
             disabled={carregando}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors shadow-lg shadow-blue-600/20 text-sm disabled:opacity-50 flex items-center justify-center space-x-2"
+            className="login-submit flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
           >
             <KeyRound className="w-4 h-4" />
-            <span>{carregando ? "Autenticando..." : "Entrar no Sistema"}</span>
+            <span>{carregando ? "Autenticando..." : "Entrar"}</span>
           </button>
         </form>
-      </div>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
 import { getDashboardMetrics } from "../services/dashboardService";
 import { listarNotificacoes } from "../services/notificacoesService";
 import { podeVerAlertasDashboard } from "../utils/dashboardAccess";
+import { saudacaoOficial } from "../utils/dashboardGreeting";
 import ModuleNavigation from "../components/layout/ModuleNavigation";
 
 const formatarNumero = (valor) => new Intl.NumberFormat("pt-BR").format(valor);
@@ -86,6 +87,7 @@ export default function Dashboard() {
   const [atualizadoEm, setAtualizadoEm] = useState(null);
   const requisicao = useRef(0);
   const modoPolicial = usuario?.modo_acesso === "policial";
+  const saudacao = saudacaoOficial(usuario);
   const podeAlertas = podeVerAlertasDashboard(usuario);
 
   const aplicarResultados = useCallback((resultados, idRequisicao) => {
@@ -159,13 +161,15 @@ export default function Dashboard() {
         <button onClick={atualizarManualmente} disabled={carregando} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-70"><RefreshCw className={`h-4 w-4 ${carregando ? "animate-spin" : ""}`} />Atualizar</button>
       </div>
 
+      {saudacao && <div className="flex justify-end"><p className="dashboard-official-greeting rounded-lg border px-3 py-1.5 text-sm font-semibold">{saudacao}</p></div>}
+
       <ModuleNavigation usuario={usuario} />
 
       <section className="rounded-2xl border border-blue-100 bg-white/80 p-4 shadow-[0_8px_25px_#163b7210] sm:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-blue-100 pb-4">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <div className="flex items-center gap-3"><ChartNoAxesColumnIncreasing className="h-7 w-7 text-blue-500" /><h2 className="text-xl font-extrabold tracking-tight text-[#111a40] sm:text-2xl">Resumo Operacional</h2></div>
-            <p className="max-w-3xl border-l border-blue-300 pl-4 text-xs leading-relaxed text-slate-600">{modoPolicial ? "Informações pessoais da sessão atual; os dados administrativos não são exibidos neste modo." : "Visão contextual do sistema. Os indicadores aparecem somente quando há fonte de dados disponível e autorização para o perfil."}</p>
+            {!modoPolicial && <p className="max-w-3xl border-l border-blue-300 pl-4 text-xs leading-relaxed text-slate-600">Visão contextual do sistema. Os indicadores aparecem somente quando há fonte de dados disponível e autorização para o perfil.</p>}
           </div>
           <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs text-slate-600 shadow-sm"><CalendarDays className="h-4 w-4 text-slate-700" />Referência: <strong className="text-slate-900">{dataReferencia}</strong></div>
         </div>

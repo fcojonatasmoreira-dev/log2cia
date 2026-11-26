@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { Key, LogOut, Moon, Shield, Sun } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, Crown, Key, LogOut, Moon, Sun } from "lucide-react";
 import NotificacoesMenu from "./NotificacoesMenu";
 import ModuleNavigation from "./ModuleNavigation";
 import { novaInstanciaPresenca, registrarPresenca } from "../../services/presencaService";
@@ -91,15 +91,12 @@ export default function AppLayout({ onLogout }) {
   return (
     <div className="app-shell min-h-screen bg-[#edf3ff] text-slate-900">
       <header className="relative z-20 border-b border-sky-400/50 bg-[#06152f] text-white shadow-lg">
-        <div className="mx-auto flex min-h-[70px] max-w-[1800px] flex-wrap items-center justify-between gap-x-5 gap-y-3 px-4 py-3 lg:px-7">
+        <div className="mx-auto grid w-full max-w-[1800px] grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2 px-3 py-2 lg:flex lg:min-h-[70px] lg:flex-wrap lg:items-center lg:justify-between lg:gap-x-5 lg:gap-y-3 lg:px-7 lg:py-3">
           <button onClick={() => navegar("/")} className="flex shrink-0 items-center gap-3" aria-label="Ir ao Dashboard">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-700 text-white shadow-[0_0_20px_#1688ff66]"><Shield className="h-6 w-6 fill-blue-500/30" /></span>
-            <span className="text-xl font-extrabold tracking-tight sm:text-2xl">Log2CIA</span>
+            <img src="/images/escudo-2cia-pmce.png" alt="Escudo conceitual da 2ª CIA / PMCE" className="h-12 w-11 shrink-0 object-contain sm:h-14 sm:w-[51px]" />
           </button>
 
-          <div className="hidden h-10 w-px bg-sky-200/50 xl:block" />
-          <div className="flex min-w-0 flex-1 items-center gap-3 xl:min-w-[330px]">
-            <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-400/30 bg-blue-600/25 text-sky-300 sm:flex"><Shield className="h-5 w-5" /></span>
+          <div className="flex min-w-0 items-center gap-2 lg:flex-1 lg:gap-3 xl:min-w-[330px]">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <p className="max-w-[420px] truncate text-sm font-extrabold uppercase leading-tight">{usuario?.nome_completo || usuario?.nome || "Policial / Efetivo"}</p>
@@ -109,23 +106,35 @@ export default function AppLayout({ onLogout }) {
             </div>
           </div>
 
-          <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
-            {usuario?.modo_acesso && (modosDisponiveis.length > 1 ? (
-              <label className="flex items-center gap-2 rounded-xl border border-slate-600 bg-slate-800/80 px-2.5 py-2 text-xs font-semibold text-slate-200">
-                <span className="hidden sm:inline">Modo</span>
-                <select aria-label="Modo de acesso" value={usuario.modo_acesso} disabled={alterandoModo} onChange={handleAlterarModo} className="max-w-32 bg-transparent text-white outline-none disabled:opacity-60">
+          <div className="app-header-actions col-span-2 flex w-full flex-col gap-2 lg:w-auto lg:flex-row lg:flex-wrap lg:items-center lg:justify-end lg:gap-2">
+            <div className="app-header-mode-notifications flex min-w-0 items-center justify-center gap-2 lg:contents">
+              {usuario?.modo_acesso && (modosDisponiveis.length > 1 ? (
+              <>
+              <label className="app-mode-desktop flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-600 bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-200 lg:flex-none lg:px-2.5 lg:py-2">
+                <span className="hidden lg:inline">Modo</span>
+                <select aria-label="Modo de acesso" value={usuario.modo_acesso} disabled={alterandoModo} onChange={handleAlterarModo} className="min-w-0 flex-1 bg-transparent text-white outline-none disabled:opacity-60 lg:flex-none lg:max-w-32">
                   {modosDisponiveis.map((modo) => <option key={modo} value={modo} className="text-slate-900">{modo === "administrativo" ? "Administrativo" : "Policial"}</option>)}
                 </select>
               </label>
-            ) : <span className="rounded-xl border border-slate-600 bg-slate-800/80 px-2.5 py-2 text-xs font-semibold text-slate-300">Modo {usuario.modo_acesso === "administrativo" ? "Administrativo" : "Policial"}</span>)}
+              <label className="app-mode-mobile relative hidden h-10 w-[52px] shrink-0 cursor-pointer items-center justify-center rounded-xl border border-slate-600 bg-slate-800/80 text-slate-100 focus-within:ring-2 focus-within:ring-sky-400" title="Alterar modo de acesso">
+                <span aria-hidden="true" className="pointer-events-none inline-flex items-center gap-1 text-[10px] font-bold"><ArrowLeftRight className="h-3 w-3" />{usuario.modo_acesso === "administrativo" ? "ADM" : "POL"}<ChevronDown className="h-2.5 w-2.5" /></span>
+                <select aria-label="Modo de acesso" value={usuario.modo_acesso} disabled={alterandoModo} onChange={handleAlterarModo} className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait">
+                  {modosDisponiveis.map((modo) => <option key={modo} value={modo}>Modo {modo === "administrativo" ? "Administrativo" : "Policial"}</option>)}
+                </select>
+              </label>
+              </>
+            ) : <><span className="app-mode-desktop rounded-xl border border-slate-600 bg-slate-800/80 px-2.5 py-2 text-xs font-semibold text-slate-300">Modo {usuario.modo_acesso === "administrativo" ? "Administrativo" : "Policial"}</span><span aria-label={`Modo ${usuario.modo_acesso === "administrativo" ? "Administrativo" : "Policial"}`} className="app-mode-mobile-static hidden h-10 shrink-0 items-center gap-1 rounded-xl border border-slate-600 bg-slate-800/80 px-2 text-[10px] font-bold text-slate-100"><ArrowLeftRight className="h-3 w-3" />{usuario.modo_acesso === "administrativo" ? "ADM" : "POL"}</span></>)}
 
             {podeNotificacoes && <NotificacoesMenu />}
-            {masterVisivel && <button onClick={() => navegar("/painel-master")} className="flex items-center gap-2 rounded-xl border border-amber-400/80 bg-amber-500/10 px-3.5 py-2.5 text-xs font-bold text-amber-300 transition hover:bg-amber-400/20"><Shield className="h-4 w-4" /><span>Painel Master</span></button>}
-            <button onClick={() => navegar("/alterar-senha")} className="flex items-center gap-2 rounded-xl border border-slate-600 bg-slate-800/80 px-3.5 py-2.5 text-xs font-bold text-slate-100 transition hover:bg-slate-700"><Key className="h-4 w-4 text-amber-300" /><span>Senha</span></button>
-            <button onClick={sair} className="flex items-center gap-2 rounded-xl border border-rose-500/60 bg-rose-500/10 px-3.5 py-2.5 text-xs font-bold text-rose-300 transition hover:bg-rose-500/20"><LogOut className="h-4 w-4" /><span>Sair</span></button>
+            </div>
+            <div className="app-header-buttons flex flex-wrap items-center justify-center gap-2 lg:contents">
+            {masterVisivel && <button aria-label="Painel Master" title="Painel Master" onClick={() => navegar("/painel-master")} className="flex min-h-10 items-center gap-2 rounded-xl border border-amber-400/80 bg-amber-500/10 px-3.5 py-2.5 text-xs font-bold text-amber-300 transition hover:bg-amber-400/20"><Crown className="h-4 w-4" /><span>Painel Master</span></button>}
+            <button aria-label="Alterar senha" title="Senha" onClick={() => navegar("/alterar-senha")} className="flex min-h-10 items-center gap-2 rounded-xl border border-slate-600 bg-slate-800/80 px-3.5 py-2.5 text-xs font-bold text-slate-100 transition hover:bg-slate-700"><Key className="h-4 w-4 text-amber-300" /><span>Senha</span></button>
+            <button aria-label="Sair" title="Sair" onClick={sair} className="flex min-h-10 items-center gap-2 rounded-xl border border-rose-500/60 bg-rose-500/10 px-3.5 py-2.5 text-xs font-bold text-rose-300 transition hover:bg-rose-500/20"><LogOut className="h-4 w-4" /><span>Sair</span></button>
             <div role="group" aria-label="Tema da interface" className="inline-flex items-center rounded-xl border border-sky-400/50 bg-slate-800/80 p-1">
-              <button type="button" onClick={() => handleAlterarTema(TEMAS.CLARO)} aria-pressed={tema === TEMAS.CLARO} aria-label="Usar tema claro" title="Tema claro" className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 ${tema === TEMAS.CLARO ? "bg-white text-blue-900 shadow" : "text-slate-300 hover:bg-slate-700"}`}><Sun className="h-3.5 w-3.5 text-amber-500" /><span className="hidden sm:inline">Claro</span></button>
-              <button type="button" onClick={() => handleAlterarTema(TEMAS.ESCURO)} aria-pressed={tema === TEMAS.ESCURO} aria-label="Usar tema escuro" title="Tema escuro" className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 ${tema === TEMAS.ESCURO ? "bg-slate-950 text-white shadow" : "text-slate-300 hover:bg-slate-700"}`}><Moon className="h-3.5 w-3.5 text-yellow-300" /><span className="hidden sm:inline">Escuro</span></button>
+              <button type="button" onClick={() => handleAlterarTema(TEMAS.CLARO)} aria-pressed={tema === TEMAS.CLARO} aria-label="Usar tema claro" title="Tema claro" className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 lg:px-2.5 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 ${tema === TEMAS.CLARO ? "bg-white text-blue-900 shadow" : "text-slate-300 hover:bg-slate-700"}`}><Sun className="h-3.5 w-3.5 text-amber-500" /><span className="hidden lg:inline">Claro</span></button>
+              <button type="button" onClick={() => handleAlterarTema(TEMAS.ESCURO)} aria-pressed={tema === TEMAS.ESCURO} aria-label="Usar tema escuro" title="Tema escuro" className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 lg:px-2.5 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 ${tema === TEMAS.ESCURO ? "bg-slate-950 text-white shadow" : "text-slate-300 hover:bg-slate-700"}`}><Moon className="h-3.5 w-3.5 text-yellow-300" /><span className="hidden lg:inline">Escuro</span></button>
+            </div>
             </div>
           </div>
         </div>
