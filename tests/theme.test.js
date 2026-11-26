@@ -11,8 +11,22 @@ function criarStorage(inicial = {}) {
 }
 
 test("tema persistido é lido com fallback claro para valores inválidos", () => {
+  assert.equal(obterTemaSalvo(criarStorage()), TEMAS.CLARO);
   assert.equal(obterTemaSalvo(criarStorage({ [THEME_STORAGE_KEY]: "escuro" })), TEMAS.ESCURO);
   assert.equal(obterTemaSalvo(criarStorage({ [THEME_STORAGE_KEY]: "desconhecido" })), TEMAS.CLARO);
+});
+
+test("falha de armazenamento não impede inicialização ou aplicação do tema", () => {
+  const storageBloqueado = {
+    getItem() { throw new Error("armazenamento indisponível"); },
+    setItem() { throw new Error("armazenamento indisponível"); },
+  };
+  const raiz = { dataset: {}, style: {} };
+
+  assert.equal(obterTemaSalvo(storageBloqueado), TEMAS.CLARO);
+  assert.equal(aplicarTema(TEMAS.ESCURO, raiz, storageBloqueado), TEMAS.ESCURO);
+  assert.equal(raiz.dataset.theme, TEMAS.ESCURO);
+  assert.equal(raiz.style.colorScheme, "dark");
 });
 
 test("alternar tema atualiza a raiz e persiste sem depender de navegador", () => {

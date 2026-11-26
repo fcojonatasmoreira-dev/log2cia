@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Check, Clock3, RefreshCw, Search, X } from "lucide-react";
 import { listarBancoHoras, analisarSolicitacaoBancoHoras } from "../services/bancoHorasService";
 import { getPoliciais } from "../services/policiaisService";
+import { SkeletonCard, SkeletonTable } from "../components/ui/Skeleton";
 
 const dataLegivel = (valor) => {
   if (!valor) return "—";
@@ -16,6 +17,7 @@ export default function BancoHorasGestao() {
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [policiais, setPoliciais] = useState([]);
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("pendente");
@@ -30,6 +32,7 @@ export default function BancoHorasGestao() {
       const [banco, efetivo] = await Promise.all([listarBancoHoras(), getPoliciais()]);
       setSolicitacoes(banco.solicitacoes || []);
       setPoliciais(efetivo || []);
+      setDadosCarregados(true);
     } catch (e) {
       setErro(e.message || "Não foi possível carregar as solicitações.");
     } finally {
@@ -91,11 +94,11 @@ export default function BancoHorasGestao() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {carregando && !dadosCarregados ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-busy="true" aria-label="Carregando indicadores"><SkeletonCard lines={1} /><SkeletonCard lines={1} /><SkeletonCard lines={1} /></div> : dadosCarregados && <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white border border-slate-200 rounded-xl p-4"><p className="text-xs font-semibold text-slate-500">Solicitações</p><p className="text-2xl font-bold text-slate-900 mt-1">{solicitacoes.length}</p></div>
         <div className="bg-white border border-amber-200 rounded-xl p-4"><p className="text-xs font-semibold text-amber-700">Pendentes de análise</p><p className="text-2xl font-bold text-amber-700 mt-1">{pendentes}</p></div>
         <div className="bg-white border border-emerald-200 rounded-xl p-4"><p className="text-xs font-semibold text-emerald-700">Deferidas</p><p className="text-2xl font-bold text-emerald-700 mt-1">{solicitacoes.filter((s) => s.status === "deferida").length}</p></div>
-      </div>
+      </div>}
 
       {erro && <div className="flex gap-2 items-start p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm"><AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />{erro}</div>}
 
@@ -104,7 +107,7 @@ export default function BancoHorasGestao() {
           <div className="relative flex-1 max-w-lg"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por policial, matrícula ou ocorrência..." className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500" /></div>
           <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white"><option value="pendente">Pendentes</option><option value="deferida">Deferidas</option><option value="indeferida">Indeferidas</option><option value="todas">Todas</option></select>
         </div>
-        {carregando ? <div className="p-10 text-center text-sm text-slate-500">Carregando solicitações...</div> : filtradas.length === 0 ? <div className="p-10 text-center text-sm text-slate-500"><Clock3 className="w-8 h-8 mx-auto mb-2 text-slate-300" />Nenhuma solicitação encontrada.</div> : (
+        {carregando && !dadosCarregados ? <div className="p-4" aria-busy="true" aria-label="Carregando solicitações"><SkeletonTable rows={5} columns={6} /></div> : erro && !dadosCarregados ? null : filtradas.length === 0 ? <div className="p-10 text-center text-sm text-slate-500"><Clock3 className="w-8 h-8 mx-auto mb-2 text-slate-300" />Nenhuma solicitação encontrada.</div> : (
           <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50 text-[11px] uppercase text-slate-500"><tr><th className="px-4 py-3">Policial</th><th className="px-4 py-3">Solicitação</th><th className="px-4 py-3">Serviço</th><th className="px-4 py-3">Horas</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Ação</th></tr></thead><tbody className="divide-y divide-slate-100">{filtradas.map((s) => { const p = policiaisPorId.get(s.policial_id); return <tr key={s.id} className="hover:bg-slate-50/70"><td className="px-4 py-3"><div className="font-semibold text-slate-800">{p?.nome_guerra || p?.nome_completo || "Policial não localizado"}</div><div className="text-xs text-slate-500">Matrícula: {p?.matricula || "—"}</div></td><td className="px-4 py-3"><div className="font-medium text-slate-700">{s.tipo === "dispensa" ? "Dispensa de serviço" : "Inclusão de horas"}</div>{s.numero_ocorrencia && <div className="text-xs text-slate-500">Ocorrência: {s.numero_ocorrencia}</div>}</td><td className="px-4 py-3 text-slate-600">{dataLegivel(s.data_servico)}<div className="text-xs text-slate-500">Turno {s.turno || "—"}</div></td><td className="px-4 py-3 font-semibold text-slate-700">{horasLegiveis(s.horas_solicitadas)}</td><td className="px-4 py-3"><span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold ${s.status === "pendente" ? "bg-amber-100 text-amber-800" : s.status === "deferida" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>{statusLabel(s.status)}</span></td><td className="px-4 py-3 text-right">{s.status === "pendente" ? <button onClick={() => abrirAnalise(s)} className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">Analisar</button> : <button onClick={() => abrirAnalise(s)} className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold">Detalhes</button>}</td></tr>; })}</tbody></table></div>
         )}
       </div>

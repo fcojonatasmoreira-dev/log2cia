@@ -1,9 +1,16 @@
+import { solicitarRevalidacaoSessao } from "./sessionService.js";
+
 const API = "/api/drso";
 async function request(options = {}, mes) {
   const url = mes ? `${API}?mes=${encodeURIComponent(mes)}` : API;
   const response = await fetch(url, { credentials: "include", headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Não foi possível concluir a operação DRSO.");
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) solicitarRevalidacaoSessao();
+    const error = new Error(data.error || "Não foi possível concluir a operação DRSO.");
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 export const listarDrso = (mes) => request({}, mes);

@@ -1,3 +1,5 @@
+import { solicitarRevalidacaoSessao } from "./sessionService.js";
+
 const API = "/api/viaturas";
 
 async function request(url, options = {}) {
@@ -12,7 +14,10 @@ async function request(url, options = {}) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || "Não foi possível concluir a operação com a viatura.");
+    if (response.status === 401 || response.status === 403) solicitarRevalidacaoSessao();
+    const error = new Error(data.error || "Não foi possível concluir a operação com a viatura.");
+    error.status = response.status;
+    throw error;
   }
   return data;
 }

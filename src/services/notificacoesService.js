@@ -1,3 +1,5 @@
+import { solicitarRevalidacaoSessao } from "./sessionService.js";
+
 const API = "/api/notificacoes";
 
 async function request(options = {}) {
@@ -7,7 +9,12 @@ async function request(options = {}) {
     ...options,
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Não foi possível carregar as notificações.");
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) solicitarRevalidacaoSessao();
+    const error = new Error(data.error || "Não foi possível carregar as notificações.");
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 

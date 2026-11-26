@@ -26,6 +26,7 @@ import {
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { SkeletonPage, SkeletonTable, SkeletonText } from "../components/ui/Skeleton";
 
 const postosOficiais = [
   "ASPIRANTE",
@@ -49,6 +50,7 @@ export default function Policiais() {
   const initialSearch = searchParams.get("search") || "";
 
   const [policiais, setPoliciais] = useState([]);
+  const [policiaisCarregados, setPoliciaisCarregados] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -111,6 +113,7 @@ export default function Policiais() {
       setError(null);
       const data = await getPoliciais();
       setPoliciais(data);
+      setPoliciaisCarregados(true);
     } catch (err) {
       setError("Falha ao carregar a lista de policiais. Verifique a conexão.");
     } finally {
@@ -633,13 +636,13 @@ export default function Policiais() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {loading ? (
+                {loading && !policiaisCarregados ? (
                   <tr>
                     <td
                       colSpan={totalColunas}
-                      className="text-center py-8 text-slate-400"
+                      className="p-3"
                     >
-                      Carregando efetivo...
+                      <SkeletonPage label="Carregando efetivo"><SkeletonTable rows={6} columns={totalColunas} /></SkeletonPage>
                     </td>
                   </tr>
                 ) : filteredPoliciais.length === 0 ? (
@@ -801,9 +804,7 @@ export default function Policiais() {
               </h3>
 
               {loadingCautelas ? (
-                <p className="text-xs text-slate-400 text-center py-4">
-                  Carregando...
-                </p>
+                <SkeletonPage className="py-2" label="Carregando equipamentos e cautelas"><SkeletonText lines={3} /></SkeletonPage>
               ) : cautelasAtivas.length === 0 ? (
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-slate-500 text-xs">
                   Nenhum armamento ou equipamento acautelado no momento.

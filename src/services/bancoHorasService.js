@@ -1,3 +1,5 @@
+import { solicitarRevalidacaoSessao } from "./sessionService.js";
+
 const API = "/api/banco-horas";
 
 async function request(options = {}) {
@@ -8,7 +10,12 @@ async function request(options = {}) {
     headers: { "Content-Type": "application/json", ...options.headers },
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || "Falha ao acessar o Banco de Horas.");
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) solicitarRevalidacaoSessao();
+    const error = new Error(body.error || "Falha ao acessar o Banco de Horas.");
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
 

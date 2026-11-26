@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Clock3, PlusCircle, RefreshCw, X } from "lucide-react";
+import { Skeleton, SkeletonTable } from "../components/ui/Skeleton";
+import { createLatestRequestGuard } from "../utils/latestRequestGuard";
+import { chaveContextoSessao } from "../utils/sessionContext";
+import { solicitarRevalidacaoSessao } from "../services/sessionService";
 
 const dataBR = (valor) => {
   if (!valor) return "—";
@@ -16,14 +20,18 @@ const statusInfo = {
   indeferida: { label: "Indeferida", classe: "bg-rose-100 text-rose-700" },
 };
 
-export default function BancoHorasPolicial() {
-  const [dados, setDados] = useState({
-    saldo: 0,
-    folgasDisponiveis: 0,
-    movimentacoes: [],
-    solicitacoes: [],
-  });
+const DADOS_VAZIOS = { saldo: 0, folgasDisponiveis: 0, movimentacoes: [], solicitacoes: [] };
+
+export default function BancoHorasPolicial({ user }) {
+  const contextoAtual = chaveContextoSessao(user);
+  const [consulta] = useState(() => createLatestRequestGuard());
+  const [estadoDados, setEstadoDados] = useState({ contexto: "", valor: DADOS_VAZIOS });
+  const [estadoErro, setEstadoErro] = useState({ contexto: "", mensagem: "" });
+  const dadosCarregados = estadoDados.contexto === contextoAtual;
+  const dados = dadosCarregados ? estadoDados.valor : DADOS_VAZIOS;
   const [carregando, setCarregando] = useState(true);
+  const erroDados = estadoErro.contexto === contextoAtual ? estadoErro.mensagem : "";
+  const carregandoContexto = carregando || (!dadosCarregados && !erroDados);
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
   const [formAberto, setFormAberto] = useState(false);
@@ -40,33 +48,41 @@ export default function BancoHorasPolicial() {
   const [justificativa, setJustificativa] = useState("");
 
   const carregar = useCallback(async () => {
-    setCarregando(true);
-    setErro("");
-    try {
-      const response = await fetch("/api/banco-horas", {
-        credentials: "include",
-      });
+    return consulta.run(async () => {
+      const response = await fetch("/api/banco-horas", { credentials: "include" });
       const json = await response.json().catch(() => ({}));
-      if (!response.ok)
-        throw new Error(
-          json.error || "Não foi possível carregar seu Banco de Horas.",
-        );
-      setDados({
-        saldo: Number(json.saldo || 0),
-        folgasDisponiveis: Number(json.folgas_disponiveis || 0),
-        movimentacoes: json.movimentacoes || [],
-        solicitacoes: json.solicitacoes || [],
-      });
-    } catch (e) {
-      setErro(e.message || "Não foi possível carregar seu Banco de Horas.");
-    } finally {
-      setCarregando(false);
-    }
-  }, []);
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) solicitarRevalidacaoSessao();
+        const error = new Error(json.error || "Não foi possível carregar seu Banco de Horas.");
+        error.status = response.status;
+        throw error;
+      }
+      return json;
+    }, {
+      onSuccess: (json) => {
+        setEstadoErro({ contexto: contextoAtual, mensagem: "" });
+        setEstadoDados({ contexto: contextoAtual, valor: {
+          saldo: Number(json.saldo || 0),
+          folgasDisponiveis: Number(json.folgas_disponiveis || 0),
+          movimentacoes: json.movimentacoes || [],
+          solicitacoes: json.solicitacoes || [],
+        } });
+      },
+      onError: (error) => {
+        setEstadoErro({ contexto: contextoAtual, mensagem: error.message || "Não foi possível carregar seu Banco de Horas." });
+        if (error.status === 401 || error.status === 403) setEstadoDados({ contexto: "", valor: DADOS_VAZIOS });
+      },
+      onSettled: () => {
+        setCarregando(false);
+      },
+    });
+  }, [contextoAtual, consulta]);
 
   useEffect(() => {
-    carregar();
-  }, [carregar]);
+    void carregar();
+    return () => consulta.invalidate();
+  }, [carregar, consulta]);
+
 
   const enviarSolicitacao = async (e) => {
     e.preventDefault();
@@ -121,8 +137,12 @@ export default function BancoHorasPolicial() {
         }),
       });
       const json = await response.json().catch(() => ({}));
-      if (!response.ok)
-        throw new Error(json.error || "Não foi possível enviar a solicitação.");
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) solicitarRevalidacaoSessao();
+        const error = new Error(json.error || "Não foi possível enviar a solicitação.");
+        error.status = response.status;
+        throw error;
+      }
       setSucesso(
         "Solicitação enviada com sucesso. Ela ficará pendente até a análise do P1.",
       );
@@ -179,8 +199,12 @@ export default function BancoHorasPolicial() {
             {formAberto ? "Fechar formulário" : "Nova inserção"}
           </button>
           <button
-            onClick={carregar}
-            disabled={carregando}
+            onClick={() => {
+              setCarregando(true);
+              setEstadoErro({ contexto: contextoAtual, mensagem: "" });
+              void carregar();
+            }}
+            disabled={carregandoContexto}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw className="w-4 h-4" />
@@ -188,10 +212,10 @@ export default function BancoHorasPolicial() {
           </button>
         </div>
       </div>
-      {erro && (
+      {(erro || erroDados) && (
         <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          {erro}
+          {erro || erroDados}
         </div>
       )}
       {sucesso && (
@@ -204,13 +228,13 @@ export default function BancoHorasPolicial() {
           <Clock3 className="h-5 w-5" />
           Saldo atual
         </div>
-        <div className="mt-2 text-3xl font-extrabold">
-          {horasBR(dados.saldo)}
+        <div className="mt-2 min-h-9 text-3xl font-extrabold" aria-busy={carregando && !dadosCarregados}>
+          {!dadosCarregados ? carregandoContexto ? <Skeleton className="h-8 w-28 bg-white/15" /> : "Saldo indisponível" : horasBR(dados.saldo)}
         </div>
         <div className="mt-3 border-t border-slate-700 pt-3">
           <div className="text-xs text-slate-400">Folgas disponíveis</div>
           <div className="text-2xl font-extrabold">
-            {Number(dados.folgasDisponiveis || 0)}
+            {!dadosCarregados ? carregandoContexto ? <Skeleton className="mt-2 h-7 w-12 bg-white/15" /> : "—" : Number(dados.folgasDisponiveis || 0)}
           </div>
         </div>
       </section>
@@ -433,9 +457,12 @@ export default function BancoHorasPolicial() {
         <div className="border-b border-slate-100 p-4">
           <h2 className="font-bold text-slate-800">Minhas solicitações</h2>
         </div>
-        {carregando ? (
-          <p className="p-5 text-sm text-slate-500">Carregando...</p>
-        ) : solicitacoes.length === 0 ? (
+        {carregandoContexto && !dadosCarregados ? (
+          <div className="space-y-3 p-4" aria-busy="true" aria-label="Carregando solicitações pessoais">
+            <div className="space-y-3 rounded-xl border border-slate-100 p-4"><Skeleton className="h-4 w-2/3" /><Skeleton className="h-3 w-full" /><Skeleton className="h-12 w-full" /></div>
+            <div className="space-y-3 rounded-xl border border-slate-100 p-4"><Skeleton className="h-4 w-1/2" /><Skeleton className="h-3 w-5/6" /><Skeleton className="h-12 w-full" /></div>
+          </div>
+        ) : erroDados && !dadosCarregados ? null : solicitacoes.length === 0 ? (
           <p className="p-5 text-sm text-slate-500">
             Você ainda não possui solicitações.
           </p>
@@ -497,9 +524,9 @@ export default function BancoHorasPolicial() {
             Meu histórico de movimentações
           </h2>
         </div>
-        {carregando ? (
-          <p className="p-5 text-sm text-slate-500">Carregando...</p>
-        ) : movimentacoes.length === 0 ? (
+        {carregandoContexto && !dadosCarregados ? (
+          <div className="p-4" aria-busy="true" aria-label="Carregando histórico pessoal"><SkeletonTable rows={5} columns={4} /></div>
+        ) : erroDados && !dadosCarregados ? null : movimentacoes.length === 0 ? (
           <p className="p-5 text-sm text-slate-500">
             Nenhuma movimentação registrada.
           </p>

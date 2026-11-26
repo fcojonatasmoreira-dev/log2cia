@@ -22,6 +22,7 @@ import {
 } from "../services/viaturasService";
 import { listarAreasOperacao } from "../services/areasOperacaoService";
 import HistoricoOperacionalViaturas from "./HistoricoOperacionalViaturas";
+import { Skeleton, SkeletonCard, SkeletonTable } from "../components/ui/Skeleton";
 
 const SITUACOES = [
   { value: "operando", label: "Operando" },
@@ -176,6 +177,7 @@ export default function Viaturas() {
   const [filtro, setFiltro] = useState("todos");
   const [viaturaSelecionada, setViaturaSelecionada] = useState(null);
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
@@ -212,6 +214,7 @@ export default function Viaturas() {
     try {
       const resultado = await listarViaturas();
       setViaturas(resultado.viaturas || []);
+      setDadosCarregados(true);
     } catch (e) {
       setErro(e.message || "Não foi possível carregar as viaturas.");
     } finally {
@@ -855,7 +858,15 @@ export default function Viaturas() {
       {erro && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{erro}</div>}
       {sucesso && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{sucesso}</div>}
 
+      {carregando && !dadosCarregados ? (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3" aria-label="Carregando indicadores de viaturas">
+          {Array.from({ length: 5 }, (_, index) => <SkeletonCard key={index} className="h-24" lines={1} />)}
+        </div>
+      ) : erro && !dadosCarregados ? (
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {["Total", "Operando", "Baixadas", "Manutenção", "Inativas"].map((titulo) => <div key={titulo} className="bg-white rounded-xl border border-slate-200 p-4"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{titulo}</div><div className="mt-1 text-2xl font-bold text-slate-400">—</div></div>)}
+      </div>
+      ) : <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           ["Total", resumo.total, "text-slate-800"],
           ["Operando", resumo.operando, "text-emerald-700"],
@@ -868,7 +879,7 @@ export default function Viaturas() {
             <div className={`mt-1 text-2xl font-bold ${classe}`}>{valor}</div>
           </div>
         ))}
-      </div>
+      </div>}
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
         <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
@@ -909,8 +920,10 @@ export default function Viaturas() {
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        {carregando ? (
-          <div className="p-8 text-center text-sm text-slate-500">Carregando viaturas...</div>
+        {carregando && !dadosCarregados ? (
+          <div className="overflow-x-auto p-4" aria-label="Carregando listagem de viaturas"><SkeletonTable rows={6} columns={9} className="min-w-[900px]" /></div>
+        ) : erro && !dadosCarregados ? (
+          <div className="p-8 text-center text-sm text-rose-700" role="alert">{erro}</div>
         ) : listaFiltrada.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-500">Nenhuma viatura encontrada.</div>
         ) : (
@@ -1109,7 +1122,7 @@ export default function Viaturas() {
                         <option value="">Sem área definida</option>
                         {macroareas.filter((area) => area.ativa).map((area) => <option key={area.id} value={area.id}>{area.nome}</option>)}
                       </select>
-                      {carregandoMacroareas && <span className="block text-xs text-slate-500">Carregando macroáreas...</span>}
+                      {carregandoMacroareas && <div className="mt-2" aria-label="Carregando áreas de operação"><Skeleton className="h-4 w-2/3"/><span className="sr-only">Carregando áreas de operação</span></div>}
                       {erroMacroareas && <span className="block text-xs text-rose-600">{erroMacroareas}</span>}
                       {!carregandoMacroareas && !erroMacroareas && macroareas.every((area) => !area.ativa) && <span className="block text-xs text-slate-500">Nenhuma macroárea ativa cadastrada.</span>}
                     </label>

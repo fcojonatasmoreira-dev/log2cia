@@ -7,6 +7,7 @@ import {
   excluirItemArquivo,
   getEstruturaArquivo,
 } from "../services/arquivoService";
+import { SkeletonCard, SkeletonPage, SkeletonText } from "../components/ui/Skeleton";
 
 export default function GerenciamentoArquivo() {
   const [estrutura, setEstrutura] = useState({
@@ -15,7 +16,9 @@ export default function GerenciamentoArquivo() {
     pastas: [],
   });
   const [erro, setErro] = useState("");
+  const [falhaCargaEstrutura, setFalhaCargaEstrutura] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [estruturaCarregada, setEstruturaCarregada] = useState(false);
   const [modal, setModal] = useState(null);
   const [nome, setNome] = useState("");
   const [pai, setPai] = useState("");
@@ -27,9 +30,12 @@ export default function GerenciamentoArquivo() {
     try {
       setCarregando(true);
       setErro("");
+      setFalhaCargaEstrutura(false);
       setEstrutura(await getEstruturaArquivo());
+      setEstruturaCarregada(true);
     } catch (e) {
       setErro(e.message);
+      setFalhaCargaEstrutura(true);
     } finally {
       setCarregando(false);
     }
@@ -201,32 +207,21 @@ export default function GerenciamentoArquivo() {
         </div>
       )}
 
-      {carregando ? (
-        <div className="bg-white rounded-xl border p-8 text-center text-sm text-slate-500">
-          Carregando estrutura...
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div><h2 className="font-bold text-slate-800">Estantes</h2><p className="text-xs text-slate-500">Crie e organize as estantes físicas.</p></div>
+          <button onClick={() => abrirNovo("estante")} className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold"><Plus className="w-4 h-4" />Nova Estante</button>
         </div>
-      ) : (
+      </div>
+
+      {carregando && !estruturaCarregada ? (
+        <SkeletonPage className="grid gap-4 md:grid-cols-2" label="Carregando estrutura do Arquivo">
+          <SkeletonCard lines={2} />
+          <div className="theme-surface rounded-2xl border border-slate-200 bg-white p-4"><SkeletonText lines={4} /></div>
+          <div className="md:col-span-2"><SkeletonCard lines={3} /></div>
+        </SkeletonPage>
+      ) : falhaCargaEstrutura && !estruturaCarregada ? null : (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="font-bold text-slate-800">Estantes</h2>
-
-                <p className="text-xs text-slate-500">
-                  Crie e organize as estantes físicas.
-                </p>
-              </div>
-
-              <button
-                onClick={() => abrirNovo("estante")}
-                className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold"
-              >
-                <Plus className="w-4 h-4" />
-                Nova Estante
-              </button>
-            </div>
-          </div>
-
           {estrutura.estantes.length === 0 ? (
             <div className="bg-white rounded-xl border p-8 text-center text-sm text-slate-500">
               Nenhuma estante cadastrada.

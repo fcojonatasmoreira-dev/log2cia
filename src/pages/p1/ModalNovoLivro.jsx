@@ -20,6 +20,7 @@ import {
   Copy,
   Loader2,
 } from "lucide-react";
+import { Skeleton, SkeletonTable } from "../../components/ui/Skeleton";
 
 export default function ModalNovoLivro({
   isOpen,
@@ -31,6 +32,9 @@ export default function ModalNovoLivro({
 }) {
   const [policiais, setPoliciais] = useState([]);
   const [loadingPoliciais, setLoadingPoliciais] = useState(false);
+  const [erroPoliciais, setErroPoliciais] = useState("");
+  const [loadingFilhos, setLoadingFilhos] = useState(false);
+  const [erroFilhos, setErroFilhos] = useState("");
   const isMaster = isMasterGlobal === true;
 
   // Campos principais do cabeçalho
@@ -99,6 +103,9 @@ export default function ModalNovoLivro({
       setTempoDecorridoTexto("");
 
       if (livroParaEditar) {
+        setViaturasLista([]);
+        setOcorrencias([]);
+        setErroFilhos("");
         setDataServico(
           livroParaEditar.data_servico || new Date().toISOString().slice(0, 10),
         );
@@ -115,6 +122,8 @@ export default function ModalNovoLivro({
 
         carregarDadosFilhos(livroParaEditar.id);
       } else {
+        setLoadingFilhos(false);
+        setErroFilhos("");
         setDataServico(new Date().toISOString().slice(0, 10));
         setTurno("A");
         setPermanenteSelecionado(
@@ -175,17 +184,21 @@ export default function ModalNovoLivro({
 
   async function carregarPoliciais() {
     setLoadingPoliciais(true);
+    setErroPoliciais("");
     try {
       const data = await getPoliciais({ uso: "livro" });
       if (data) setPoliciais(data);
     } catch (err) {
       console.error("Erro ao carregar policiais:", err.message);
+      setErroPoliciais(err.message || "Não foi possível carregar a lista de policiais.");
     } finally {
       setLoadingPoliciais(false);
     }
   }
 
   async function carregarDadosFilhos(livroId) {
+    setLoadingFilhos(true);
+    setErroFilhos("");
     try {
       const { viaturas: vtrData, ocorrencias: ocoData } =
         await carregarItensLivro(livroId);
@@ -213,6 +226,9 @@ export default function ModalNovoLivro({
       }
     } catch (err) {
       console.error("Erro ao carregar itens filhos do livro:", err.message);
+      setErroFilhos(err.message || "Não foi possível carregar os detalhes deste livro.");
+    } finally {
+      setLoadingFilhos(false);
     }
   }
 
@@ -534,6 +550,7 @@ export default function ModalNovoLivro({
             ✕
           </button>
         </div>
+        {erroPoliciais && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{erroPoliciais}</p>}
 
         {/* FORMULÁRIO PRINCIPAL DE EDIÇÃO E VISUALIZAÇÃO */}
         <form
@@ -594,7 +611,9 @@ export default function ModalNovoLivro({
                     className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl uppercase font-bold outline-none disabled:bg-slate-100 disabled:text-slate-600"
                   />
                 </div>
+                {buscaPermanente && !modoVisualizacao && loadingPoliciais && <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl border border-slate-200 bg-white p-2 shadow-lg"><Skeleton className="h-8 w-full"/><p className="sr-only">Carregando lista de policiais</p></div>}
                 {buscaPermanente &&
+                  !loadingPoliciais &&
                   !modoVisualizacao &&
                   filtrarPoliciais(buscaPermanente).length > 0 && (
                     <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
@@ -637,7 +656,9 @@ export default function ModalNovoLivro({
                     className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl uppercase outline-none disabled:bg-slate-100 disabled:text-slate-600"
                   />
                 </div>
+                {buscaAntecessor && !modoVisualizacao && loadingPoliciais && <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl border border-slate-200 bg-white p-2 shadow-lg"><Skeleton className="h-8 w-full"/><p className="sr-only">Carregando lista de policiais</p></div>}
                 {buscaAntecessor &&
+                  !loadingPoliciais &&
                   !modoVisualizacao &&
                   filtrarPoliciais(buscaAntecessor).length > 0 && (
                     <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
@@ -678,7 +699,9 @@ export default function ModalNovoLivro({
                     className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl uppercase outline-none disabled:bg-slate-100 disabled:text-slate-600"
                   />
                 </div>
+                {buscaSubstituto && !modoVisualizacao && loadingPoliciais && <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl border border-slate-200 bg-white p-2 shadow-lg"><Skeleton className="h-8 w-full"/><p className="sr-only">Carregando lista de policiais</p></div>}
                 {buscaSubstituto &&
+                  !loadingPoliciais &&
                   !modoVisualizacao &&
                   filtrarPoliciais(buscaSubstituto).length > 0 && (
                     <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
@@ -727,7 +750,7 @@ export default function ModalNovoLivro({
                 )}
               </div>
 
-              {viaturasLista.map((vtrItem, idx) => (
+              {loadingFilhos ? <SkeletonTable rows={2} columns={4}/> : erroFilhos ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{erroFilhos}<button type="button" onClick={() => carregarDadosFilhos(livroParaEditar.id)} className="ml-2 font-semibold underline">Tentar novamente</button></div> : viaturasLista.map((vtrItem, idx) => (
                 <div
                   key={idx}
                   className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-end pt-2 border-b border-slate-100 pb-2 last:border-none"
@@ -1178,7 +1201,7 @@ export default function ModalNovoLivro({
               </p>
 
               <div className="space-y-3">
-                {ocorrencias.map((oco, idx) => (
+                {loadingFilhos ? <SkeletonTable rows={2} columns={1}/> : erroFilhos ? <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{erroFilhos}</p> : ocorrencias.map((oco, idx) => (
                   <div key={idx} className="flex gap-2 items-start">
                     <span className="font-bold text-slate-600 text-xs mt-2 w-6 shrink-0">
                       {idx + 1}.
@@ -1455,7 +1478,7 @@ export default function ModalNovoLivro({
               </tr>
             </thead>
             <tbody>
-              {viaturasLista.map((v, i) => (
+              {loadingFilhos ? <tr><td colSpan="8" style={{ padding: "8px" }}><SkeletonTable rows={2} columns={4}/></td></tr> : erroFilhos ? <tr><td colSpan="8" role="alert" style={{ padding: "8px", color: "#be123c" }}>{erroFilhos}</td></tr> : viaturasLista.map((v, i) => (
                 <tr key={i}>
                   <td
                     style={{
@@ -1541,7 +1564,7 @@ export default function ModalNovoLivro({
               marginBottom: "20px",
             }}
           >
-            {ocorrencias.map((oco, idx) => (
+            {loadingFilhos ? <SkeletonTable rows={2} columns={1}/> : erroFilhos ? <p role="alert">{erroFilhos}</p> : ocorrencias.map((oco, idx) => (
               <div key={idx} style={{ marginBottom: "8px" }}>
                 <b>{idx + 1}</b> –{" "}
                 {oco.descricao || "Nenhuma alteração registrada."}
@@ -1627,7 +1650,7 @@ export default function ModalNovoLivro({
               <>
                 <button
                   type="submit"
-                  disabled={salvando}
+                  disabled={salvando || loadingFilhos || Boolean(erroFilhos)}
                   onClick={(e) => handleSalvarLivro(e, false)}
                   className={`w-full sm:w-auto px-6 py-2.5 font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 ${
                     statusBotaoSalvo
@@ -1647,7 +1670,7 @@ export default function ModalNovoLivro({
                 </button>
                 <button
                   type="button"
-                  disabled={salvando}
+                  disabled={salvando || loadingFilhos || Boolean(erroFilhos)}
                   onClick={(e) => handleSalvarLivro(e, true)}
                   className="w-full sm:w-auto px-6 py-2.5 bg-rose-600 text-white font-bold rounded-xl shadow-md hover:bg-rose-700 flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >

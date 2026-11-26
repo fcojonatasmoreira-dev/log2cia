@@ -7,6 +7,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { getPoliciaisBancoHoras } from "../services/policiaisService";
+import { Skeleton, SkeletonPage, SkeletonTable } from "../components/ui/Skeleton";
 
 const formatarData = (valor) => {
   if (!valor) return "—";
@@ -34,6 +35,7 @@ export default function NovaInsercaoBancoHoras() {
   const [turno, setTurno] = useState("");
   const [turnoDescricao, setTurnoDescricao] = useState("");
   const [carregando, setCarregando] = useState(true);
+  const [erroHistorico, setErroHistorico] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
@@ -52,20 +54,27 @@ export default function NovaInsercaoBancoHoras() {
       if (!id) {
         setMovimentacoes([]);
         setSaldo(0);
+        setErroHistorico("");
         return;
       }
-      const response = await fetch(
-        `/api/banco-horas?policial_id=${encodeURIComponent(id)}`,
-        { credentials: "include" },
-      );
-      const json = await response.json();
-      if (!response.ok)
-        throw new Error(
-          json.error || "Não foi possível carregar o banco de horas.",
+      setErroHistorico("");
+      try {
+        const response = await fetch(
+          `/api/banco-horas?policial_id=${encodeURIComponent(id)}`,
+          { credentials: "include" },
         );
-      setMovimentacoes(json.movimentacoes || []);
-      setSaldo(Number(json.saldo || 0));
-      setFolgasDisponiveis(Number(json.folgas_disponiveis || 0));
+        const json = await response.json();
+        if (!response.ok)
+          throw new Error(
+            json.error || "Não foi possível carregar o banco de horas.",
+          );
+        setMovimentacoes(json.movimentacoes || []);
+        setSaldo(Number(json.saldo || 0));
+        setFolgasDisponiveis(Number(json.folgas_disponiveis || 0));
+      } catch (error) {
+        setErroHistorico(error.message || "Não foi possível carregar o histórico.");
+        throw error;
+      }
     },
     [policialId],
   );
@@ -508,7 +517,14 @@ export default function NovaInsercaoBancoHoras() {
           </h2>
         </div>
         {carregando ? (
-          <p className="p-5 text-sm text-slate-500">Carregando...</p>
+          <SkeletonPage className="space-y-3 p-4" label="Carregando histórico de movimentações">
+            <div className="grid grid-cols-4 gap-2 px-3">
+              {Array.from({ length: 4 }, (_, indice) => <Skeleton key={indice} className="h-3 w-3/4" />)}
+            </div>
+            <SkeletonTable rows={5} columns={4} />
+          </SkeletonPage>
+        ) : erroHistorico ? (
+          <p role="alert" className="p-5 text-sm text-rose-700">{erroHistorico}</p>
         ) : movimentacoes.length === 0 ? (
           <p className="p-5 text-sm text-slate-500">
             Nenhuma movimentação registrada para este policial.

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Archive, CalendarDays, RefreshCw, Send, Trash2 } from "lucide-react";
 import { atualizarEvento, comentarEvento, excluirEvento, listarSolicitacoesEventos, registrarOficioExternoEvento } from "../services/eventosService";
+import { Skeleton, SkeletonCard, SkeletonPage } from "../components/ui/Skeleton";
 import { getEstruturaArquivo } from "../services/arquivoService";
 
 const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900";
@@ -21,8 +22,10 @@ export default function Eventos({ user }) {
   const podeComentar = role === "master" || role === "oficial";
   const podeExcluir = role === "master";
   const [eventos, setEventos] = useState([]);
+  const [eventosCarregados, setEventosCarregados] = useState(false);
   const [busca, setBusca] = useState("");
   const [carregando, setCarregando] = useState(true);
+  const [falhaCargaEventos, setFalhaCargaEventos] = useState(false);
   const [salvando, setSalvando] = useState("");
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
@@ -34,13 +37,16 @@ export default function Eventos({ user }) {
   const [formulariosArquivo, setFormulariosArquivo] = useState({});
   const [mostrarArquivados, setMostrarArquivados] = useState(false);
 
-  const carregar = useCallback(async () => {
+  const carregar = useCallback(async (mostrarCarregamento = false) => {
+    if (mostrarCarregamento) setCarregando(true);
     try {
       const resultado = await listarSolicitacoesEventos();
       setEventos(resultado.eventos || []);
+      setEventosCarregados(true);
       setEquipes(Object.fromEntries((resultado.eventos || []).map((item) => [item.id, item.equipe_responsavel || ""])));
       setOpoNumeros(Object.fromEntries((resultado.eventos || []).map((item) => [item.id, item.opo_numero || ""])));
-    } catch (e) { setErro(e.message); }
+      setFalhaCargaEventos(false);
+    } catch (e) { setErro(e.message); setFalhaCargaEventos(true); }
     finally { setCarregando(false); }
   }, []);
 
@@ -58,14 +64,14 @@ export default function Eventos({ user }) {
 
   async function executar(id, mensagem, operacao) {
     setErro(""); setSucesso(""); setSalvando(id);
-    try { const retorno = await operacao(); await carregar(); setSucesso(typeof retorno === "string" ? retorno : mensagem); }
+    try { const retorno = await operacao(); await carregar(true); setSucesso(typeof retorno === "string" ? retorno : mensagem); }
     catch (e) { setErro(e.message); }
     finally { setSalvando(""); }
   }
 
   function atualizar() {
     setErro("");
-    carregar();
+    void carregar(true);
   }
 
   async function salvarOpo(evento) {
@@ -133,8 +139,8 @@ export default function Eventos({ user }) {
     <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold text-slate-900">Solicitações de eventos</h1><p className="text-sm text-slate-600">Consulta e acompanhamento das solicitações recebidas.</p></div><button type="button" onClick={atualizar} disabled={carregando} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><RefreshCw className="h-4 w-4"/>Atualizar</button></header>
     {erro && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{erro}</p>}{sucesso && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{sucesso}</p>}
     <section className="rounded-xl border border-slate-200 bg-white p-4"><h2 className="font-semibold text-slate-800">Recebimento externo</h2><p className="mt-1 text-sm text-slate-600">Os QR Codes são gerados e gerenciados em cada estante autorizada, no Gerenciamento do Arquivo.</p></section>
-    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-bold text-slate-900">{mostrarArquivados ? "Solicitações arquivadas" : "Fila de solicitações"}</h2><p className="text-xs text-slate-500">{filtrados.length} solicitação(ões)</p></div><div className="flex flex-wrap items-end gap-3"><label className="grid gap-1 text-xs font-medium text-slate-600">Pesquisar<input value={busca} onChange={(e) => setBusca(e.target.value)} className={inputClass} placeholder="Evento, responsável, equipe ou local"/></label><button type="button" onClick={() => setMostrarArquivados((atual) => !atual)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold">{mostrarArquivados ? "Ver ativas" : "Ver arquivadas"}</button></div></div>
-      {carregando ? <p className="p-4 text-sm text-slate-500">Carregando solicitações…</p> : filtrados.length === 0 ? <p className="p-4 text-sm text-slate-500">Nenhuma solicitação encontrada.</p> : <div className="divide-y divide-slate-200">{filtrados.map((evento) => <details key={evento.id} className="py-3"><summary className="cursor-pointer list-inside"><span className="font-semibold text-slate-900">{evento.protocolo ? `Evento ${evento.protocolo}` : evento.nome_evento} · {evento.nome_evento}</span><span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">{evento.arquivado_em ? "Arquivada" : "Pendente"}</span>{evento.numero_oficio_registrado && <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">Ofício externo {evento.numero_oficio_registrado}</span>}<span className="mt-1 block pl-5 text-xs text-slate-600">{evento.tipo_evento} · {dataHora(evento.data_hora_inicio)} · {evento.endereco || evento.referencia || "Localização no mapa"}</span></summary>
+    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-bold text-slate-900">{mostrarArquivados ? "Solicitações arquivadas" : "Fila de solicitações"}</h2><p className="text-xs text-slate-500">{carregando && !eventosCarregados ? <Skeleton className="inline-block h-3 w-24 align-middle" /> : falhaCargaEventos && !eventosCarregados ? "— solicitação(ões)" : `${filtrados.length} solicitação(ões)`}</p></div><div className="flex flex-wrap items-end gap-3"><label className="grid gap-1 text-xs font-medium text-slate-600">Pesquisar<input value={busca} onChange={(e) => setBusca(e.target.value)} className={inputClass} placeholder="Evento, responsável, equipe ou local"/></label><button type="button" onClick={() => setMostrarArquivados((atual) => !atual)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold">{mostrarArquivados ? "Ver ativas" : "Ver arquivadas"}</button></div></div>
+      {carregando && !eventosCarregados ? <SkeletonPage className="space-y-3 p-2" label="Carregando solicitações de eventos">{Array.from({ length: 3 }, (_, indice) => <SkeletonCard key={indice} lines={3} />)}</SkeletonPage> : falhaCargaEventos && !eventosCarregados ? null : filtrados.length === 0 ? <p className="p-4 text-sm text-slate-500">Nenhuma solicitação encontrada.</p> : <div className="divide-y divide-slate-200">{filtrados.map((evento) => <details key={evento.id} className="py-3"><summary className="cursor-pointer list-inside"><span className="font-semibold text-slate-900">{evento.protocolo ? `Evento ${evento.protocolo}` : evento.nome_evento} · {evento.nome_evento}</span><span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">{evento.arquivado_em ? "Arquivada" : "Pendente"}</span>{evento.numero_oficio_registrado && <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">Ofício externo {evento.numero_oficio_registrado}</span>}<span className="mt-1 block pl-5 text-xs text-slate-600">{evento.tipo_evento} · {dataHora(evento.data_hora_inicio)} · {evento.endereco || evento.referencia || "Localização no mapa"}</span></summary>
         <article className="mt-3 space-y-4 rounded-lg bg-slate-50 p-4 text-sm">
           <div className="grid gap-3 sm:grid-cols-2"><p><strong>Responsável:</strong> {evento.responsavel_nome}</p><p><strong>Telefone/WhatsApp:</strong> {evento.responsavel_telefone || evento.responsavel_contato}</p><p><strong>E-mail:</strong> {evento.responsavel_email || "Não informado"}</p><p><strong>Início:</strong> {dataHora(evento.data_hora_inicio)}</p><p><strong>Término:</strong> {dataHora(evento.data_hora_fim)}</p><p><strong>Endereço:</strong> {evento.endereco || "Não informado"}</p><p><strong>Referência:</strong> {evento.referencia || "Não informada"}</p></div>
           {evento.latitude != null && evento.longitude != null && <a className="text-blue-700 underline" href={`https://www.openstreetmap.org/?mlat=${evento.latitude}&mlon=${evento.longitude}#map=16/${evento.latitude}/${evento.longitude}`} target="_blank" rel="noreferrer">Ver localização no mapa</a>}

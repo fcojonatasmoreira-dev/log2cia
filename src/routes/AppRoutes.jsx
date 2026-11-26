@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import AppLayout from "../components/layout/AppLayout";
@@ -23,61 +23,104 @@ import AreasOperacao from "../pages/AreasOperacao";
 import DRSO from "../pages/DRSO";
 import EfetivoExternoDRSO from "../pages/EfetivoExternoDRSO";
 import Permutas from "../pages/Permutas";
-import { obterSessao, logout } from "../services/sessionService";
+import { EVENTO_REVALIDAR_SESSAO, obterSessao, logout } from "../services/sessionService";
 import { podeAcessarNovaInsercaoBancoHoras, telaBancoHoras } from "../utils/bancoHorasAccess";
+import { chaveContextoSessao } from "../utils/sessionContext";
+import { Skeleton, SkeletonPage, SkeletonText } from "../components/ui/Skeleton";
 
 export default function AppRoutes() {
   const [usuario, setUsuario] = useState(null);
   const [loading, setLoading] = useState(true);
   const [avisoSessao, setAvisoSessao] = useState("");
+  const usuarioRef = useRef(null);
+  const validacaoRef = useRef(0);
+
+  const definirUsuario = (novoUsuario) => {
+    usuarioRef.current = novoUsuario;
+    setUsuario(novoUsuario);
+  };
 
   useEffect(() => {
     let ativo = true;
-    let verificando = false;
+    let sessaoJaConfirmada = false;
 
     const validarSessao = async () => {
-      if (verificando) return;
-      verificando = true;
+      const idValidacao = ++validacaoRef.current;
       try {
         const { user } = await obterSessao();
-        if (!ativo) return;
-        localStorage.setItem("log2cia_user", JSON.stringify(user));
-        setUsuario(user);
+        if (!ativo || idValidacao !== validacaoRef.current) return;
+        const usuarioSerializado = JSON.stringify(user);
+        if (localStorage.getItem("log2cia_user") !== usuarioSerializado) {
+          localStorage.setItem("log2cia_user", usuarioSerializado);
+          window.dispatchEvent(new Event("usuarioAtualizado"));
+        }
+        sessaoJaConfirmada = true;
+        setAvisoSessao("");
+        if (JSON.stringify(usuarioRef.current) !== usuarioSerializado) {
+          definirUsuario(user);
+        }
       } catch (error) {
-        if (!ativo) return;
+        if (!ativo || idValidacao !== validacaoRef.current) return;
         if (error.message?.includes("Seu perfil foi alterado e não permite o modo de acesso atual")) {
           setAvisoSessao("Seu perfil foi alterado e o modo desta sessão não está mais autorizado. Entre novamente para carregar as permissões atualizadas.");
+        } else if (error.status === 401 || error.status === 403) {
+          if (sessaoJaConfirmada) setAvisoSessao("Sua sessão expirou, foi revogada ou não está mais autorizada. Entre novamente.");
         }
-        localStorage.removeItem("log2cia_user");
-        setUsuario(null);
+        if (error.status === 401 || error.status === 403) {
+          localStorage.removeItem("log2cia_user");
+          definirUsuario(null);
+        } else if (!usuarioRef.current) {
+          // Sem uma sessão previamente confirmada, não confie no cache local.
+          localStorage.removeItem("log2cia_user");
+          definirUsuario(null);
+        }
       } finally {
-        verificando = false;
-        if (ativo) setLoading(false);
+        if (ativo && idValidacao === validacaoRef.current) setLoading(false);
       }
     };
 
     const aoAtualizarOutraAba = (evento) => {
-      if (evento.key === "log2cia_mode_change") {
-        window.location.reload();
-        return;
+      if (evento.key === "log2cia_mode_change" || evento.key === "log2cia_user") {
+        // Remova imediatamente a árvore anterior antes de reconstruir a sessão.
+        definirUsuario(null);
+        if (evento.key === "log2cia_user" && evento.newValue === null) {
+          setAvisoSessao("");
+          setLoading(false);
+          return;
+        }
+        setLoading(true);
+        void validarSessao();
       }
-      if (evento.key === "log2cia_user") validarSessao();
     };
 
-    validarSessao();
+    const aoSolicitarRevalidacao = () => { void validarSessao(); };
+    const aoRetornar = () => {
+      if (document.visibilityState === "visible") void validarSessao();
+    };
+
+    void validarSessao();
     window.addEventListener("storage", aoAtualizarOutraAba);
-    // A sessão é validada ao carregar o aplicativo. As operações protegidas
-    // devem validar novamente no backend; não fazemos consultas periódicas.
+    window.addEventListener(EVENTO_REVALIDAR_SESSAO, aoSolicitarRevalidacao);
+    window.addEventListener("focus", aoSolicitarRevalidacao);
+    document.addEventListener("visibilitychange", aoRetornar);
+    const intervaloSessao = window.setInterval(() => {
+      if (document.visibilityState === "visible") void validarSessao();
+    }, 60_000);
     return () => {
       ativo = false;
+      validacaoRef.current += 1;
+      window.clearInterval(intervaloSessao);
       window.removeEventListener("storage", aoAtualizarOutraAba);
+      window.removeEventListener(EVENTO_REVALIDAR_SESSAO, aoSolicitarRevalidacao);
+      window.removeEventListener("focus", aoSolicitarRevalidacao);
+      document.removeEventListener("visibilitychange", aoRetornar);
     };
   }, []);
 
   const handleLogout = async () => {
-    try { await logout(); } catch (e) { console.error("Erro ao encerrar sessão:", e); }
     localStorage.removeItem("log2cia_user");
-    setUsuario(null);
+    definirUsuario(null);
+    try { await logout(); } catch (e) { console.error("Erro ao encerrar sessão:", e); }
     window.location.href = "/";
   };
 
@@ -85,9 +128,18 @@ export default function AppRoutes() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-sans">
-        <span className="text-sm font-medium">Carregando Log2CIA...</span>
-      </div>
+      <SkeletonPage className="flex min-h-screen items-center justify-center bg-slate-900 px-4" label="Validando sessão autenticada">
+        <div className="w-full max-w-sm space-y-5 rounded-2xl border border-slate-700 bg-slate-800/70 p-6 shadow-xl">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-12 w-12 shrink-0 rounded-xl bg-slate-700" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-5 w-2/3 bg-slate-700" />
+              <Skeleton className="h-3 w-1/2 bg-slate-700" />
+            </div>
+          </div>
+          <SkeletonText lines={3} className="gap-3" lineHeight="0.9rem" />
+        </div>
+      </SkeletonPage>
     );
   }
 
@@ -107,6 +159,7 @@ export default function AppRoutes() {
             path="/"
             element={
               <AppLayout
+                key={chaveContextoSessao(usuario)}
                 role={usuario.role || "user"}
                 user={usuario}
                 onLogout={handleLogout}
@@ -147,7 +200,7 @@ export default function AppRoutes() {
               destinoBancoHoras === "gestao"
                 ? <BancoHoras />
                 : destinoBancoHoras === "pessoal"
-                  ? <BancoHorasPolicial />
+                  ? <BancoHorasPolicial user={usuario} />
                   : <Navigate to="/" replace />
             } />
 

@@ -9,6 +9,7 @@ import {
   listarViaturas,
   registrarAcompanhamentoOcorrencia,
 } from "../services/viaturasService";
+import { SkeletonCard, SkeletonTable } from "../components/ui/Skeleton";
 
 const FILTROS_INICIAIS = { de: "", ate: "", mes: "", turno: "", policial_id: "", viatura_id: "", acao: "todas", situacao: "" };
 const dataHora = (valor) => valor ? new Date(valor).toLocaleString("pt-BR") : "—";
@@ -95,7 +96,7 @@ function OcorrenciaDetalhes({ evento, podeTratar, aoFechar }) {
         <section className="space-y-3 border-t border-slate-200 pt-4">
           <h3 className="font-bold text-slate-800">Acompanhamento da ocorrência</h3>
           {erro && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-700">{erro}</p>}
-          {carregando ? <p className="text-slate-500">Carregando comentários e encaminhamentos…</p> : acompanhamentos.length ? <ol className="space-y-2">{acompanhamentos.map((item) => <li key={item.id} className="rounded-lg border border-slate-200 p-3">
+        {carregando ? <div className="space-y-2" aria-label="Carregando histórico da ocorrência"><SkeletonCard lines={2}/><SkeletonCard lines={2}/></div> : acompanhamentos.length ? <ol className="space-y-2">{acompanhamentos.map((item) => <li key={item.id} className="rounded-lg border border-slate-200 p-3">
             <p className="font-semibold text-slate-800">{item.tipo === "encaminhamento_oficina" ? "Encaminhamento para oficina" : "Comentário"}{item.oficina ? ` · ${item.oficina}` : ""}</p>
             <p className="my-1 whitespace-pre-wrap text-slate-700">{item.comentario}</p>
             <p className="text-xs text-slate-500">{nomePolicial(item.policial)} · {dataHora(item.created_at)}</p>
@@ -120,6 +121,7 @@ export default function HistoricoOperacionalViaturas({ user, onVoltar }) {
   const [selecionado, setSelecionado] = useState(null);
   const [viaturaExpandida, setViaturaExpandida] = useState(null);
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
   const [erro, setErro] = useState("");
   const [erroViaturas, setErroViaturas] = useState("");
   const role = String(user?.role || "").trim().toLowerCase();
@@ -134,9 +136,9 @@ export default function HistoricoOperacionalViaturas({ user, onVoltar }) {
     try {
       const resultado = await listarHistoricoOperacionalViaturas({ ...filtrosAtivos, pagina });
       setDados(resultado);
+      setDadosCarregados(true);
     } catch (e) {
       setErro(e.message || "Não foi possível consultar o histórico operacional.");
-      setDados((anterior) => ({ ...anterior, viaturas: [], tem_mais: false }));
     } finally {
       setCarregando(false);
     }
@@ -205,7 +207,7 @@ export default function HistoricoOperacionalViaturas({ user, onVoltar }) {
         <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={limparFiltros} disabled={carregando} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 disabled:opacity-50">Limpar filtros</button><button type="button" onClick={() => consultar(1, filtros)} disabled={carregando} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{carregando ? "Consultando…" : "Aplicar filtros"}</button></div>
         {erroViaturas && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{erroViaturas}</p>}
         {erro && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{erro}</p>}
-        {carregando ? <p className="py-8 text-center text-sm text-slate-500">Carregando histórico…</p> : dados.viaturas?.length ? <div className="divide-y divide-slate-200">{dados.viaturas.map((grupo) => {
+        {carregando && dadosCarregados && <div className="py-2" aria-label="Atualizando histórico"><SkeletonTable rows={1} columns={4}/></div>}{carregando && !dadosCarregados ? <div className="space-y-3 py-3" aria-label="Carregando histórico de viaturas">{Array.from({ length: 4 }, (_, index) => <SkeletonCard key={index} lines={2}/>)}</div> : erro && !dadosCarregados ? <div className="py-8"/> : dados.viaturas?.length ? <div className="divide-y divide-slate-200">{dados.viaturas.map((grupo) => {
           const aberta = viaturaExpandida === grupo.viatura.id;
           return <article key={grupo.viatura.id} className="py-1">
             <button type="button" aria-expanded={aberta} onClick={() => setViaturaExpandida(aberta ? null : grupo.viatura.id)} className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-3 text-left hover:bg-blue-50/50"><span className="font-semibold text-slate-800">{grupo.viatura.identificacao} · {grupo.viatura.placa}</span><ChevronRight className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${aberta ? "rotate-90" : ""}`}/></button>

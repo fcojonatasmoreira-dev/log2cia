@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import { createOficio, deleteOficio, getOficios, updateOficio } from "../services/oficiosService";
 import { getEstruturaArquivo } from "../services/arquivoService";
+import { SkeletonPage, SkeletonTable } from "../components/ui/Skeleton";
 
 function hoje() { return new Date().toISOString().slice(0, 10); }
 function formatarData(data) { if (!data) return "—"; const [ano, mes, dia] = data.split("-"); return `${dia}/${mes}/${ano}`; }
@@ -17,6 +18,8 @@ export default function Oficios() {
   const [anoNumero, setAnoNumero] = useState(new Date().getFullYear());
   const [estrutura, setEstrutura] = useState({ estantes: [], colunas: [], pastas: [] });
   const [loading, setLoading] = useState(true);
+  const [oficiosCarregados, setOficiosCarregados] = useState(false);
+  const [falhaCargaOficios, setFalhaCargaOficios] = useState(false);
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
   const [dataFiltro, setDataFiltro] = useState("");
@@ -43,10 +46,10 @@ export default function Oficios() {
 
   const carregar = async () => {
     try {
-      setLoading(true); setErro("");
+      setLoading(true); setErro(""); setFalhaCargaOficios(false);
       const resultado = await getOficios({ busca, data: dataFiltro, estante_id: estanteFiltro, coluna_id: colunaFiltro, pasta_id: pastaFiltro, tipo_origem: tipoFiltro, tipo_numero: tipoFiltro === "evento" ? "evento" : "interno" });
-      setOficios(resultado.oficios || []); setProximoNumero(resultado.proximo_numero || null); setAnoNumero(resultado.ano_numero || new Date().getFullYear());
-    } catch (e) { setErro(e.message); } finally { setLoading(false); }
+      setOficios(resultado.oficios || []); setProximoNumero(resultado.proximo_numero || null); setAnoNumero(resultado.ano_numero || new Date().getFullYear()); setOficiosCarregados(true); setFalhaCargaOficios(false);
+    } catch (e) { setErro(e.message); setFalhaCargaOficios(true); } finally { setLoading(false); }
   };
 
   useEffect(() => { carregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
@@ -117,7 +120,7 @@ export default function Oficios() {
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div><h2 className="font-bold text-slate-800">Correspondências registradas</h2><p className="text-xs text-slate-500 mt-0.5">Próximo número disponível: {proximoNumero ? `${tipoFiltro === "evento" ? "EVT-" : ""}${String(proximoNumero).padStart(3, "0")}/${anoNumero}` : "—"}</p></div><button type="button" onClick={carregar} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600" title="Atualizar"><RefreshCw className="w-4 h-4" /></button></div>
-        {loading ? <div className="p-8 text-center text-sm text-slate-500">Carregando Ofícios...</div> : oficios.length === 0 ? <div className="p-8 text-center text-sm text-slate-500">Nenhum Ofício encontrado.</div> : (
+        {loading && !oficiosCarregados ? <SkeletonPage className="p-4" label="Carregando Ofícios"><div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-slate-600"><tr>{["Número", "Data", "Tipo", "Remetente", "Destinatário", "Assunto", "Arquivo", "Ações"].map((titulo) => <th key={titulo} className="px-4 py-3 text-left font-bold">{titulo}</th>)}</tr></thead><tbody><tr><td colSpan={8} className="p-2"><SkeletonTable rows={5} columns={8} /></td></tr></tbody></table></div></SkeletonPage> : falhaCargaOficios && !oficiosCarregados ? null : oficios.length === 0 ? <div className="p-8 text-center text-sm text-slate-500">Nenhum Ofício encontrado.</div> : (
           <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="text-left px-4 py-3 font-bold">Número</th><th className="text-left px-4 py-3 font-bold">Data</th><th className="text-left px-4 py-3 font-bold">Tipo</th><th className="text-left px-4 py-3 font-bold">Remetente</th><th className="text-left px-4 py-3 font-bold">Destinatário</th><th className="text-left px-4 py-3 font-bold">Assunto</th><th className="text-left px-4 py-3 font-bold">Arquivo</th><th className="text-right px-4 py-3 font-bold">Ações</th></tr></thead><tbody className="divide-y divide-slate-100">
             {oficios.map((oficio) => { const meu = meusOficios.has(oficio.id); return <tr key={oficio.id} className="hover:bg-slate-50"><td className="px-4 py-3 font-bold whitespace-nowrap">{oficio.numero}</td><td className="px-4 py-3 whitespace-nowrap">{formatarData(oficio.data_oficio)}</td><td className="px-4 py-3">{oficio.tipo_origem === "interno" ? "Interno" : oficio.tipo_origem === "externo" ? "Externo" : "Legado"}</td><td className="px-4 py-3">{oficio.remetente}</td><td className="px-4 py-3">{oficio.destinatario}</td><td className="px-4 py-3 min-w-[220px]">{oficio.assunto}</td><td className="px-4 py-3 min-w-[200px]"><div className="flex items-start gap-1.5 text-slate-600"><Archive className="w-4 h-4 mt-0.5 shrink-0" /><span>{oficio.localizacao_arquivo || "Não informado"}</span></div>{oficio.documento_url && <a href={oficio.documento_url} target="_blank" rel="noreferrer" className="mt-1 block text-xs font-semibold text-blue-700 underline">Abrir documento digital</a>}</td><td className="px-4 py-3"><div className="flex justify-end gap-1">{meu && <><button type="button" onClick={() => abrirEdicao(oficio)} title="Editar meu Ofício" className="p-2 rounded-lg text-blue-600 hover:bg-blue-50"><Pencil className="w-4 h-4" /></button><button type="button" onClick={() => excluir(oficio)} disabled={excluindo === oficio.id} title="Excluir meu Ofício" className="p-2 rounded-lg text-rose-600 hover:bg-rose-50"><Trash2 className="w-4 h-4" /></button></>}</div></td></tr>; })}
           </tbody></table></div>

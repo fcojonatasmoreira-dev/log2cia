@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, CheckCheck, LoaderCircle } from "lucide-react";
 import { listarNotificacoes, marcarNotificacaoLida, marcarTodasNotificacoesLidas } from "../../services/notificacoesService";
+import { createLatestRequestGuard } from "../../utils/latestRequestGuard";
 
 const INTERVALO_ATUALIZACAO_MS = 60_000;
 const INTERVALO_FECHAMENTO_MS = 5_000;
@@ -20,6 +21,16 @@ export default function NotificacoesMenu() {
   const [operacao, setOperacao] = useState(false);
   const [erro, setErro] = useState("");
   const timerFechamento = useRef(null);
+  const [consulta] = useState(() => createLatestRequestGuard());
+  const montado = useRef(true);
+
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+      consulta.invalidate();
+    };
+  }, [consulta]);
 
   const limparTimerFechamento = () => {
     if (timerFechamento.current) window.clearTimeout(timerFechamento.current);
@@ -41,18 +52,23 @@ export default function NotificacoesMenu() {
     let ativo = true;
     const atualizarAtiva = async (silenciosa = false) => {
       if (!silenciosa) setCarregando(true);
-      try {
-        const resultado = await listarNotificacoes();
-        if (ativo) {
+      await consulta.run(listarNotificacoes, {
+        onSuccess: (resultado) => {
+          if (!ativo) return;
           setNotificacoes(resultado.notificacoes);
           setNaoLidas(resultado.nao_lidas);
           setErro("");
-        }
-      } catch (error) {
-        if (ativo) setErro(error.message || "Não foi possível atualizar as notificações.");
-      } finally {
-        if (ativo && !silenciosa) setCarregando(false);
-      }
+        },
+        onError: (error) => {
+          if (!ativo) return;
+          if (error.status === 401 || error.status === 403) {
+            setNotificacoes([]);
+            setNaoLidas(0);
+          }
+          setErro(error.message || "Não foi possível atualizar as notificações.");
+        },
+        onSettled: () => { if (ativo && !silenciosa) setCarregando(false); },
+      });
     };
     void atualizarAtiva();
     const intervalo = window.setInterval(() => {
@@ -62,10 +78,11 @@ export default function NotificacoesMenu() {
     document.addEventListener("visibilitychange", aoRetornar);
     return () => {
       ativo = false;
+      consulta.invalidate();
       window.clearInterval(intervalo);
       document.removeEventListener("visibilitychange", aoRetornar);
     };
-  }, []);
+  }, [consulta]);
 
   const abrirDestino = async (item) => {
     limparTimerFechamento();
@@ -74,17 +91,24 @@ export default function NotificacoesMenu() {
     try {
       if (!item.lida_em) {
         await marcarNotificacaoLida(item.id);
+        if (!montado.current) return;
         setNotificacoes((atuais) => atuais.map((notificacao) => notificacao.id === item.id
           ? { ...notificacao, lida_em: new Date().toISOString() } : notificacao));
         setNaoLidas((quantidade) => Math.max(0, quantidade - 1));
       }
+      if (!montado.current) return;
       if (item.banco_horas_solicitacao_id) navegar(`/banco-horas?solicitacao_id=${encodeURIComponent(item.banco_horas_solicitacao_id)}`);
       else if (item.abrir_controle_escala) navegar(`/permutas?visao=controle_escala&permuta_id=${encodeURIComponent(item.permuta_id)}`);
       else navegar(`/permutas?permuta_id=${encodeURIComponent(item.permuta_id)}`);
     } catch (error) {
+      if (!montado.current) return;
+      if (error.status === 401 || error.status === 403) {
+        setNotificacoes([]);
+        setNaoLidas(0);
+      }
       setErro(error.message || "Não foi possível atualizar a notificação.");
     } finally {
-      setOperacao(false);
+      if (montado.current) setOperacao(false);
     }
   };
 
@@ -93,14 +117,20 @@ export default function NotificacoesMenu() {
     setOperacao(true);
     try {
       await marcarTodasNotificacoesLidas();
+      if (!montado.current) return;
       const lidaEm = new Date().toISOString();
       setNotificacoes((atuais) => atuais.map((item) => item.lida_em ? item : { ...item, lida_em: lidaEm }));
       setNaoLidas(0);
       setErro("");
     } catch (error) {
+      if (!montado.current) return;
+      if (error.status === 401 || error.status === 403) {
+        setNotificacoes([]);
+        setNaoLidas(0);
+      }
       setErro(error.message || "Não foi possível marcar as notificações como lidas.");
     } finally {
-      setOperacao(false);
+      if (montado.current) setOperacao(false);
     }
   };
 

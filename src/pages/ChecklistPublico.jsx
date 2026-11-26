@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import ResumoChecklistViatura from "../components/viaturas/ResumoChecklistViatura";
+import { Skeleton, SkeletonPage, SkeletonText } from "../components/ui/Skeleton";
 
 const rotulosMovimentacao = { inicio_servico: "Entrada de serviço", retirada_oficina: "Retirada da oficina", recebimento_opm: "Recebimento de outra OPM", viatura_nova: "Recebimento de viatura nova", fim_servico: "Fim de serviço", encaminhamento_oficina: "Encaminhamento à oficina", devolucao_opm: "Devolução à OPM de origem", baixa_definitiva: "Baixa definitiva", outras_situacoes: "Outras situações" };
 
@@ -30,8 +31,9 @@ function DadosEtapa({ titulo, etapa }) {
 
 export default function ChecklistPublico() {
   const { token } = useParams();
-  const [dados, setDados] = useState(null);
-  const [erro, setErro] = useState("");
+  const [resultado, setResultado] = useState({ token: null, dados: null, erro: "" });
+  const dados = resultado.token === token ? resultado.dados : null;
+  const erro = resultado.token === token ? resultado.erro : "";
 
   useEffect(() => {
     let ativo = true;
@@ -41,8 +43,8 @@ export default function ChecklistPublico() {
         if (!resposta.ok) throw new Error(resultado.error || "Este link de checklist é inválido ou expirou.");
         return resultado;
       })
-      .then((resultado) => { if (ativo) setDados(resultado); })
-      .catch((error) => { if (ativo) setErro(error.message); });
+      .then((dadosConsultados) => { if (ativo) setResultado({ token, dados: dadosConsultados, erro: "" }); })
+      .catch((error) => { if (ativo) setResultado({ token, dados: null, erro: error.message }); });
     return () => { ativo = false; };
   }, [token]);
 
@@ -50,7 +52,18 @@ export default function ChecklistPublico() {
   return <main className="min-h-screen bg-slate-100 px-4 py-8">
     <article className="mx-auto max-w-3xl space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
       <header><p className="text-sm font-semibold text-blue-700">Log2CIA · Viaturas</p><h1 className="mt-1 text-2xl font-bold text-slate-900">{dados?.etapa === "completo" ? "Checklist da movimentação" : `Checklist de ${etapa}`}</h1><p className="mt-1 text-sm text-slate-500">Consulta compartilhada somente para leitura.</p></header>
-      {erro ? <p role="alert" className="rounded-lg bg-rose-50 p-4 text-sm text-rose-700">{erro}</p> : !dados ? <p className="text-sm text-slate-500">Carregando checklist…</p> : <>
+      {erro ? <p role="alert" className="rounded-lg bg-rose-50 p-4 text-sm text-rose-700">{erro}</p> : !dados ? <SkeletonPage className="space-y-4" label="Consultando checklist da viatura">
+        <Skeleton className="h-16 w-full rounded-xl" />
+        <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+          <Skeleton className="h-5 w-1/3" />
+          <SkeletonText lines={4} />
+        </div>
+        <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+          <Skeleton className="h-5 w-1/2" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      </SkeletonPage> : <>
         <div><dt className="text-slate-500">Viatura</dt><dd className="rounded-xl bg-slate-50 p-4 font-semibold text-slate-900">{dados.viatura?.identificacao || "—"} · {dados.viatura?.placa || "—"}</dd></div>
         {dados.etapa === "completo" ? <div className="space-y-4"><DadosEtapa titulo="Entrada" etapa={dados.etapas?.entrada}/><DadosEtapa titulo="Saída" etapa={dados.etapas?.saida}/></div> : <>
           <DadosEtapa titulo={etapa === "entrada" ? "Entrada" : "Saída"} etapa={{ data_hora: dados.data_hora, quilometragem: dados.quilometragem, tipo: dados.tipo, tipo_detalhe: dados.tipo_detalhe, observacoes: dados.observacoes, turno: dados.turno, responsavel: dados.responsavel, checklist: dados.checklist, fotos: dados.fotos }}/>

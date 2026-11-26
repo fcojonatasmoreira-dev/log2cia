@@ -8,6 +8,7 @@ import { calcularIndicadoresCalendario, criarEventosCalendarioCompleto, dataLoca
 import { agruparServicosControleEscala, obterPeriodoControleEscala, separarServicosControleEscala } from "../utils/permutasEscala";
 import { filtrarPoliciaisPorBusca, filtrarPoliciaisSubstitutos, formatarIdentificacaoPolicial } from "../utils/hierarquiaPolicial";
 import { alternarEstadoLinhaPermuta, atualizarStatusPermuta, obterIdsMiniCalendariosAbertos, podeAtualizarControleEscala as podeOperarControleEscala, podeCancelarPermuta, podeConsultarCalendario, podeConsultarCalendarioProprio, podeDecidirPermuta } from "../utils/permutasUi";
+import { Skeleton, SkeletonCalendar, SkeletonCard } from "../components/ui/Skeleton";
 
 const SERVICO_VAZIO = { data: "", turno: "", horario_inicio: "", horario_fim: "", descricao: "" };
 const STATUS = {
@@ -27,6 +28,7 @@ const EVENTO_HISTORICO = {
   CANCELADA: "Cancelamento",
 };
 const LIMITE_MOTIVO_PERMUTA = 500;
+const LISTA_VAZIA = Object.freeze([]);
 
 function dataBrasileira(valor) {
   if (!valor) return "—";
@@ -165,7 +167,7 @@ function MiniCalendarioPolicial({ id, policial, permutas, dispensas, carregando,
       <div className="grid grid-cols-7 text-center text-[9px] font-bold text-slate-500">
         {["S", "T", "Q", "Q", "S", "S", "D"].map((dia, indice) => <span key={`${dia}-${indice}`} className="py-1">{dia}</span>)}
       </div>
-      <div className="grid grid-cols-7 overflow-hidden rounded-lg border border-slate-200 bg-white">
+      {carregando && !erro ? <SkeletonCalendar days={dias.length} /> : erro ? null : <div className="grid grid-cols-7 overflow-hidden rounded-lg border border-slate-200 bg-white">
         {dias.map((dia) => {
           const doMes = dia.slice(0, 7) === mesAtual;
           const eventosDia = eventosPorDia.get(dia) || [];
@@ -184,11 +186,11 @@ function MiniCalendarioPolicial({ id, policial, permutas, dispensas, carregando,
             </span>}
           </button>;
         })}
-      </div>
+      </div>}
       <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
         {erro && <p role="alert" className="text-[10px] font-medium text-rose-700">{erro}</p>}
         <p className="text-[10px] font-bold text-slate-600">Movimentações em {formatarDataCalendario(diaSelecionado, { day: "2-digit", month: "2-digit" })}</p>
-        {!eventosSelecionados.length && <p className="text-[10px] text-slate-500">Nenhuma movimentação neste dia.</p>}
+        {carregando && !erro ? <div className="space-y-2 py-1" aria-busy="true"><Skeleton className="h-3 w-full" /><Skeleton className="h-3 w-4/5" /></div> : !erro && !eventosSelecionados.length && <p className="text-[10px] text-slate-500">Nenhuma movimentação neste dia.</p>}
         {eventosSelecionados.map((evento) => {
           if (evento.tipoEvento === "dispensa") {
             const dispensa = evento.dispensa;
@@ -223,6 +225,7 @@ export default function Permutas({ user }) {
   const permutaDestinoId = new URLSearchParams(location.search).get("permuta_id") || "";
   const usuarioId = user?.id;
   const role = String(user?.role || "").trim().toLowerCase();
+  const contextoPermutas = `${usuarioId || ""}:${role}:${user?.modo_acesso || ""}:${user?.is_master === true ? "master" : "regular"}`;
   const modoPolicial = user?.modo_acesso === "policial";
   const podeCriarPermuta = modoPolicial && (role === "policial" || role === "master" || user?.is_master === true);
   const isMaster = role === "master" || user?.is_master === true;
@@ -233,7 +236,8 @@ export default function Permutas({ user }) {
   const podeAdministrar = user?.modo_acesso === "administrativo" && (isMaster || role === "oficial");
   const podeAtualizarControleEscala = podeOperarControleEscala(user);
   const statusInicial = podeAdministrar ? "AGUARDANDO_ANALISE" : "";
-  const [permutas, setPermutas] = useState([]);
+  const [permutasArmazenadas, setPermutas] = useState([]);
+  const [contextoPermutasCarregadas, setContextoPermutasCarregadas] = useState("");
   const [policiais, setPoliciais] = useState([]);
   const [policiaisCalendario, setPoliciaisCalendario] = useState([]);
   const [carregando, setCarregando] = useState(true);
@@ -276,22 +280,33 @@ export default function Permutas({ user }) {
   const [listaPoliciaisCalendarioAberta, setListaPoliciaisCalendarioAberta] = useState(false);
   const [permutasCalendario, setPermutasCalendario] = useState([]);
   const [dispensasCalendario, setDispensasCalendario] = useState([]);
+  const [contextoCalendarioCarregado, setContextoCalendarioCarregado] = useState("");
   const [carregandoCalendario, setCarregandoCalendario] = useState(false);
   const [erroCalendario, setErroCalendario] = useState("");
   const [atualizacaoCalendario, setAtualizacaoCalendario] = useState(0);
   const [calendariosMini, setCalendariosMini] = useState({});
   const [calendariosMiniChaveCarregada, setCalendariosMiniChaveCarregada] = useState("");
+  const [contextoMiniCalendariosCarregado, setContextoMiniCalendariosCarregado] = useState("");
   const [erroMiniCalendarios, setErroMiniCalendarios] = useState(null);
   const [atualizacaoMiniCalendarios, setAtualizacaoMiniCalendarios] = useState(0);
   const [miniCalendariosAbertos, setMiniCalendariosAbertos] = useState({});
-  const [servicosEscala, setServicosEscala] = useState([]);
-  const [indicadoresEscala, setIndicadoresEscala] = useState({ pendentes: 0, aplicados: 0, revisao: 0, total: 0 });
+  const [servicosEscalaArmazenados, setServicosEscala] = useState([]);
+  const [indicadoresEscalaArmazenados, setIndicadoresEscala] = useState({ pendentes: 0, aplicados: 0, revisao: 0, total: 0 });
+  const [contextoEscalaCarregado, setContextoEscalaCarregado] = useState("");
   const [periodoEscala, setPeriodoEscala] = useState("amanha");
   const [dataInicioEscala, setDataInicioEscala] = useState("");
   const [dataFimEscala, setDataFimEscala] = useState("");
   const [carregandoEscala, setCarregandoEscala] = useState(false);
   const [erroEscala, setErroEscala] = useState("");
   const [atualizacaoEscala, setAtualizacaoEscala] = useState(0);
+
+  const permutas = contextoPermutasCarregadas === contextoPermutas ? permutasArmazenadas : LISTA_VAZIA;
+  const servicosEscala = contextoEscalaCarregado === contextoPermutas ? servicosEscalaArmazenados : LISTA_VAZIA;
+  const escalaDoContexto = contextoEscalaCarregado === contextoPermutas;
+  const indicadoresEscala = contextoEscalaCarregado === contextoPermutas
+    ? indicadoresEscalaArmazenados
+    : { pendentes: 0, aplicados: 0, revisao: 0, total: 0 };
+
   const [escalasExpandidas, setEscalasExpandidas] = useState({});
   const versaoControleEscala = useRef(0);
   const intervaloEscala = useMemo(() => obterPeriodoControleEscala(periodoEscala, dataLocalHoje(), dataInicioEscala, dataFimEscala), [periodoEscala, dataInicioEscala, dataFimEscala]);
@@ -319,19 +334,23 @@ export default function Permutas({ user }) {
         || (Date.parse(`${filtroDataFimLista}T00:00:00Z`) - Date.parse(`${filtroDataInicioLista}T00:00:00Z`)) / 86400000 > 44);
     if (datasIncompletas || intervaloInvalido) {
       setPermutas([]);
+      setContextoPermutasCarregadas(contextoPermutas);
       setErro(datasIncompletas ? "Informe as datas inicial e final do serviço." : "O período de serviço não pode exceder 45 dias nem começar após a data final.");
       setCarregando(false);
       return;
     }
     try {
       const resultado = await listarPermutas(parametrosConsulta);
-      if (versao === versaoConsultaLista.current) setPermutas(resultado.permutas || []);
+      if (versao === versaoConsultaLista.current) {
+        setPermutas(resultado.permutas || []);
+        setContextoPermutasCarregadas(contextoPermutas);
+      }
     } catch (error) {
       if (versao === versaoConsultaLista.current) setErro(error.message || "Não foi possível carregar suas permutas.");
     } finally {
       if (versao === versaoConsultaLista.current) setCarregando(false);
     }
-  }, [parametrosConsulta, usuarioId, filtroDataInicioLista, filtroDataFimLista]);
+  }, [parametrosConsulta, usuarioId, filtroDataInicioLista, filtroDataFimLista, contextoPermutas]);
 
   useEffect(() => {
     if (!usuarioId) return undefined;
@@ -346,6 +365,7 @@ export default function Permutas({ user }) {
         if (ativo && versao === versaoConsultaLista.current) {
           setErro(datasIncompletas ? "Informe as datas inicial e final do serviço." : "O período de serviço não pode exceder 45 dias nem começar após a data final.");
           setPermutas([]);
+          setContextoPermutasCarregadas(contextoPermutas);
           setCarregando(false);
         }
         return;
@@ -355,12 +375,17 @@ export default function Permutas({ user }) {
         setCarregando(true);
       }
       listarPermutas(parametrosConsulta)
-      .then((resultado) => { if (ativo && versao === versaoConsultaLista.current) setPermutas(resultado.permutas || []); })
+      .then((resultado) => {
+        if (ativo && versao === versaoConsultaLista.current) {
+          setPermutas(resultado.permutas || []);
+          setContextoPermutasCarregadas(contextoPermutas);
+        }
+      })
       .catch((error) => { if (ativo && versao === versaoConsultaLista.current) setErro(error.message || "Não foi possível carregar suas permutas."); })
       .finally(() => { if (ativo && versao === versaoConsultaLista.current) setCarregando(false); });
     }, 250);
     return () => { ativo = false; window.clearTimeout(temporizador); };
-  }, [parametrosConsulta, usuarioId, filtroDataInicioLista, filtroDataFimLista]);
+  }, [parametrosConsulta, usuarioId, filtroDataInicioLista, filtroDataFimLista, contextoPermutas]);
   useEffect(() => {
     if (!podeCriarPermuta) return undefined;
     let ativo = true;
@@ -392,13 +417,14 @@ export default function Permutas({ user }) {
           if (ativo && versao === versaoControleEscala.current) {
             setServicosEscala(resultado.servicos || []);
             setIndicadoresEscala(resultado.indicadores || { pendentes: 0, aplicados: 0, revisao: 0, total: 0 });
+            setContextoEscalaCarregado(contextoPermutas);
           }
         })
         .catch((error) => { if (ativo && versao === versaoControleEscala.current) setErroEscala(error.message || "Não foi possível consultar o Controle de Escala."); })
         .finally(() => { if (ativo && versao === versaoControleEscala.current) setCarregandoEscala(false); });
     }, 250);
     return () => { ativo = false; window.clearTimeout(temporizador); };
-  }, [podeConsultarGeral, visaoGeral, atualizacaoEscala, controleEscalaSolicitado, permutaDestinoId]);
+  }, [podeConsultarGeral, visaoGeral, atualizacaoEscala, controleEscalaSolicitado, permutaDestinoId, contextoPermutas]);
 
   const enviadas = useMemo(() => permutas.filter((item) => item.solicitante_id === usuarioId), [permutas, usuarioId]);
   const recebidas = useMemo(() => permutas.filter((item) => item.destinatario_id === usuarioId), [permutas, usuarioId]);
@@ -423,15 +449,23 @@ export default function Permutas({ user }) {
   const inicioMiniCalendario = deslocarData(diasMiniCalendario[0], -1);
   const fimMiniCalendario = diasMiniCalendario.at(-1) || "";
   const idPolicialCalendario = podeConsultarGeral ? filtrosCalendario.policial_id : usuarioId;
-  const chaveConsultaMiniCalendarios = `${idsMiniCalendariosChave}|${inicioMiniCalendario}|${fimMiniCalendario}|${atualizacaoMiniCalendarios}`;
-  const indicadoresCalendario = useMemo(() => calcularIndicadoresCalendario(permutasCalendario, {
+  const chaveConsultaMiniCalendarios = `${contextoPermutas}|${idsMiniCalendariosChave}|${inicioMiniCalendario}|${fimMiniCalendario}|${atualizacaoMiniCalendarios}`;
+  const dadosMiniCalendariosVisiveis = contextoMiniCalendariosCarregado === contextoPermutas ? calendariosMini : {};
+  const contextoConsultaCalendario = `${contextoPermutas}|${idPolicialCalendario || ""}|${modoCalendario}|${referenciaCalendario}|${JSON.stringify(filtrosCalendario)}`;
+  const calendarioAutorizado = contextoCalendarioCarregado === contextoConsultaCalendario;
+  const permutasCalendarioVisiveis = calendarioAutorizado ? permutasCalendario : LISTA_VAZIA;
+  const dispensasCalendarioVisiveis = calendarioAutorizado ? dispensasCalendario : LISTA_VAZIA;
+  const carregamentoInicialCalendario = visaoGeral === "calendario"
+    && Boolean(idPolicialCalendario)
+    && (carregandoCalendario || contextoCalendarioCarregado !== contextoConsultaCalendario);
+  const indicadoresCalendario = useMemo(() => calcularIndicadoresCalendario(permutasCalendarioVisiveis, {
     policialId: idPolicialCalendario,
     participacao: filtrosCalendario.participacao,
     status: filtrosCalendario.status,
     tipo: filtrosCalendario.tipo,
     dataInicio: inicioIndicadoresCalendario,
     dataFim: fimIndicadoresCalendario,
-  }), [permutasCalendario, filtrosCalendario, idPolicialCalendario, inicioIndicadoresCalendario, fimIndicadoresCalendario]);
+  }), [permutasCalendarioVisiveis, filtrosCalendario, idPolicialCalendario, inicioIndicadoresCalendario, fimIndicadoresCalendario]);
   const policialCalendarioSelecionado = podeConsultarGeral
     ? policiaisCalendario.find((policial) => policial.id === idPolicialCalendario) || (idPolicialCalendario === usuarioId ? user : null)
     : user;
@@ -452,13 +486,14 @@ export default function Permutas({ user }) {
           dispensas: (resultadoDispensas.dispensas || []).filter((item) => item.policial_id === policialId),
         }])));
         setCalendariosMiniChaveCarregada(chaveConsultaMiniCalendarios);
+        setContextoMiniCalendariosCarregado(contextoPermutas);
         setErroMiniCalendarios(null);
       })
       .catch((error) => {
         if (ativo) setErroMiniCalendarios({ chave: chaveConsultaMiniCalendarios, mensagem: error.message || "Não foi possível carregar os mini calendários." });
       });
     return () => { ativo = false; };
-  }, [visaoGeral, idsMiniCalendariosChave, inicioMiniCalendario, fimMiniCalendario, calendariosMiniChaveCarregada, chaveConsultaMiniCalendarios]);
+  }, [visaoGeral, idsMiniCalendariosChave, inicioMiniCalendario, fimMiniCalendario, calendariosMiniChaveCarregada, chaveConsultaMiniCalendarios, contextoPermutas]);
 
   useEffect(() => {
     if (!podeConsultarProprioCalendario || visaoGeral !== "calendario" || !usuarioId || !dataFimConsultaCalendario || !idPolicialCalendario) return undefined;
@@ -475,20 +510,29 @@ export default function Permutas({ user }) {
         if (!ativo) return;
         setPermutasCalendario(resultado.permutas || []);
         setDispensasCalendario(resultadoDispensas.dispensas || []);
+        setContextoCalendarioCarregado(contextoConsultaCalendario);
+        setErroCalendario("");
       })
-      .catch((error) => { if (ativo) setErroCalendario(error.message || "Não foi possível carregar o calendário de Permutas."); })
+      .catch((error) => {
+        if (ativo) {
+          setPermutasCalendario([]);
+          setDispensasCalendario([]);
+          setContextoCalendarioCarregado(contextoConsultaCalendario);
+          setErroCalendario(error.message || "Não foi possível carregar o calendário de Permutas.");
+        }
+      })
       .finally(() => { if (ativo) setCarregandoCalendario(false); });
     return () => { ativo = false; };
-  }, [podeConsultarProprioCalendario, podeConsultarGeral, visaoGeral, usuarioId, idPolicialCalendario, filtrosCalendario, dataInicioConsultaCalendario, dataFimConsultaCalendario, atualizacaoCalendario]);
+  }, [podeConsultarProprioCalendario, podeConsultarGeral, visaoGeral, usuarioId, idPolicialCalendario, filtrosCalendario, dataInicioConsultaCalendario, dataFimConsultaCalendario, atualizacaoCalendario, contextoConsultaCalendario]);
 
-  const eventosCalendario = useMemo(() => idPolicialCalendario ? criarEventosCalendarioCompleto(permutasCalendario, dispensasCalendario, {
+  const eventosCalendario = useMemo(() => idPolicialCalendario ? criarEventosCalendarioCompleto(permutasCalendarioVisiveis, dispensasCalendarioVisiveis, {
       policialId: idPolicialCalendario,
       participacao: filtrosCalendario.participacao,
       status: filtrosCalendario.status,
       tipo: filtrosCalendario.tipo,
       dataInicio: dataInicioConsultaCalendario,
       dataFim: dataFimConsultaCalendario,
-    }) : [], [permutasCalendario, dispensasCalendario, idPolicialCalendario, filtrosCalendario, dataInicioConsultaCalendario, dataFimConsultaCalendario]);
+    }) : [], [permutasCalendarioVisiveis, dispensasCalendarioVisiveis, idPolicialCalendario, filtrosCalendario, dataInicioConsultaCalendario, dataFimConsultaCalendario]);
   const eventosPorDia = useMemo(() => {
     const diasVisiveis = new Set(diasCalendario);
     const mapa = new Map();
@@ -536,6 +580,7 @@ export default function Permutas({ user }) {
     const novosFiltros = typeof atualizar === "function" ? atualizar(filtrosCalendario) : atualizar;
     setCarregandoCalendario(Boolean(novosFiltros.policial_id));
     setPermutasCalendario([]);
+    setDispensasCalendario([]);
     setFiltrosCalendario(novosFiltros);
   }
 
@@ -898,9 +943,9 @@ export default function Permutas({ user }) {
               {podeVerCalendario && aberto && <MiniCalendarioPolicial
                 id={idCalendario}
                 policial={participante.policial || { id: participante.id, nome_guerra: participante.nome }}
-                permutas={calendariosMiniChaveCarregada === chaveConsultaMiniCalendarios ? calendariosMini[participante.id]?.permutas || [] : []}
-                dispensas={calendariosMiniChaveCarregada === chaveConsultaMiniCalendarios ? calendariosMini[participante.id]?.dispensas || [] : []}
-                carregando={Boolean(idsMiniCalendariosChave) && calendariosMiniChaveCarregada !== chaveConsultaMiniCalendarios && erroMiniCalendarios?.chave !== chaveConsultaMiniCalendarios}
+                permutas={dadosMiniCalendariosVisiveis[participante.id]?.permutas || []}
+                dispensas={dadosMiniCalendariosVisiveis[participante.id]?.dispensas || []}
+                carregando={Boolean(idsMiniCalendariosChave) && calendariosMiniChaveCarregada !== chaveConsultaMiniCalendarios && !dadosMiniCalendariosVisiveis[participante.id] && erroMiniCalendarios?.chave !== chaveConsultaMiniCalendarios}
                 erro={erroMiniCalendarios?.chave === chaveConsultaMiniCalendarios ? erroMiniCalendarios.mensagem : ""}
               />}
               {!podeVerCalendario && <p className="mt-2 text-[10px] text-slate-500">O calendário de outros policiais não está disponível para este perfil.</p>}
@@ -1227,9 +1272,9 @@ export default function Permutas({ user }) {
 
       {visaoGeral === "controle_escala" ? (
         <section className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {!escalaDoContexto && !erroEscala ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-busy="true" aria-label="Carregando indicadores do Controle de Escala">{Array.from({ length: 4 }, (_, index) => <SkeletonCard key={`escala-indicador-${index}`} lines={1} />)}</div> : escalaDoContexto && <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[["Pendentes", indicadoresEscala.pendentes, "border-amber-200 bg-amber-50 text-amber-900"], ["Aplicados", indicadoresEscala.aplicados, "border-blue-200 bg-blue-50 text-blue-900"], ["Revisão necessária", indicadoresEscala.revisao, "border-rose-200 bg-rose-50 text-rose-900"], ["Serviços acompanhados", indicadoresEscala.total, "border-slate-200 bg-white text-slate-900"]].map(([label, valor, estilo]) => <div key={label} className={`rounded-xl border p-3 ${estilo}`}><p className="text-xl font-bold">{valor}</p><p className="text-xs font-semibold">{label}</p></div>)}
-          </div>
+          </div>}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div><h2 className="text-sm font-bold text-slate-800">Serviços {intervaloEscala.inicio === intervaloEscala.fim ? `de ${dataBrasileira(intervaloEscala.inicio)}` : intervaloEscala.inicio ? `${dataBrasileira(intervaloEscala.inicio)} a ${dataBrasileira(intervaloEscala.fim)}` : "do período"}</h2><p className="mt-1 text-xs text-slate-500">O período rápido começa amanhã, conforme a data local. Pendências fora dele continuam disponíveis abaixo.</p></div>
@@ -1245,7 +1290,7 @@ export default function Permutas({ user }) {
           </div>
           {intervaloEscala.erro && periodoEscala === "personalizado" && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{intervaloEscala.erro}</div>}
           {erroEscala && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{erroEscala}</div>}
-          {carregandoEscala ? <div className="rounded-xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-500">Carregando serviços acompanhados…</div> : <div className="space-y-6">
+          {!escalaDoContexto && !erroEscala ? <div className="space-y-3" aria-busy="true" aria-label="Carregando serviços do Controle de Escala"><SkeletonCard lines={4} /><SkeletonCard lines={4} /><SkeletonCard lines={4} /></div> : erroEscala && !escalaDoContexto ? null : <div className="space-y-6">
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold text-slate-900">Pendentes de atualização no período</h2><span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900">{listasEscala.pendentesPeriodo.length}</span></div>
               {renderListaEscala(listasEscala.pendentesPeriodo, periodoEscala === "personalizado" && intervaloEscala.erro ? "Informe um período válido para listar os serviços pendentes." : "Nenhum serviço pendente de atualização neste período.")}
@@ -1269,7 +1314,7 @@ export default function Permutas({ user }) {
             </section>}
           </div>}
         </section>
-      ) : carregando ? <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">Carregando {podeConsultarGeral ? "solicitações" : "suas permutas"}...</div> : visaoGeral === "calendario" ? (
+      ) : visaoGeral === "calendario" ? (
         <section className="space-y-4">
           <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end sm:justify-between">
             <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1348,7 +1393,7 @@ export default function Permutas({ user }) {
                 <span>Histórico de <strong>{identificacaoPolicial(policialCalendarioSelecionado)}</strong></span>
                 <span>{formatarDataCalendario(inicioIndicadoresCalendario)} – {formatarDataCalendario(fimIndicadoresCalendario)}</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+              {carregamentoInicialCalendario && !erroCalendario ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5" aria-busy="true">{Array.from({ length: 5 }, (_, index) => <SkeletonCard key={`calendario-indicador-${index}`} lines={1} />)}</div> : !erroCalendario && <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
                 {[
                   ["Foi substituído", indicadoresCalendario.foiSubstituido, "bg-amber-50 text-amber-950 border-amber-200"],
                   ["Substituiu alguém", indicadoresCalendario.substituiu, "bg-blue-50 text-blue-950 border-blue-200"],
@@ -1356,7 +1401,7 @@ export default function Permutas({ user }) {
                   ["Trocas recíprocas", indicadoresCalendario.reciprocas, "bg-violet-50 text-violet-950 border-violet-200"],
                   ["Solicitações distintas", indicadoresCalendario.solicitacoes, "bg-emerald-50 text-emerald-950 border-emerald-200"],
                 ].map(([rotulo, valor, estilo]) => <div key={rotulo} className={`rounded-xl border p-3 ${estilo}`}><p className="text-xl font-bold">{valor}</p><p className="text-[11px] font-semibold">{rotulo}</p></div>)}
-              </div>
+              </div>}
             </>
           )}
 
@@ -1373,7 +1418,8 @@ export default function Permutas({ user }) {
               </div>
             </div>
             {erroCalendario && <div role="alert" className="m-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{erroCalendario}</div>}
-            {carregandoCalendario && <div className="px-4 py-2 text-xs text-slate-500">Atualizando serviços do período…</div>}
+            {carregandoCalendario && calendarioAutorizado && <div className="px-4 py-2"><Skeleton className="h-3 w-40" /></div>}
+            {carregamentoInicialCalendario && !erroCalendario ? <div className="p-3" aria-busy="true" aria-label="Carregando calendário"><SkeletonCalendar days={diasCalendario.length} /></div> : !erroCalendario && <>
             <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500 sm:text-xs">
               {[
                 ["Seg", "Segunda-feira"], ["Ter", "Terça-feira"], ["Qua", "Quarta-feira"],
@@ -1413,7 +1459,7 @@ export default function Permutas({ user }) {
                   </button>
                 );
               })}
-            </div>
+            </div></>}
           </div>
 
           <section className="space-y-3">
@@ -1421,7 +1467,7 @@ export default function Permutas({ user }) {
               <h2 className="text-lg font-bold text-slate-900">Movimentações de {policialCalendarioSelecionado ? identificacaoPolicial(policialCalendarioSelecionado) : "policial não selecionado"} em {formatarDataCalendario(dataSelecionada, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</h2>
               <span className="text-xs text-slate-500">{eventosDiaSelecionado.length} marcação(ões)</span>
             </div>
-            {!eventosDiaSelecionado.length && <div className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Nenhum serviço corresponde aos filtros nesta data.</div>}
+            {carregamentoInicialCalendario && !erroCalendario ? <div className="grid gap-3 sm:grid-cols-2" aria-busy="true"><SkeletonCard lines={3} /><SkeletonCard lines={3} /></div> : !erroCalendario && !eventosDiaSelecionado.length && <div className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Nenhum serviço corresponde aos filtros nesta data.</div>}
             {eventosDiaSelecionado.map((evento) => {
               if (evento.tipoEvento === "dispensa") {
                 const dispensa = evento.dispensa;
@@ -1471,14 +1517,20 @@ export default function Permutas({ user }) {
             })}
           </section>
         </section>
-      ) : podeConsultarGeral ? (
+      ) : (carregando || contextoPermutasCarregadas !== contextoPermutas) && !erro ? (
+        <div className="space-y-3" aria-busy="true" aria-label={podeConsultarGeral ? "Carregando solicitações de Permutas" : "Carregando suas Permutas"}>
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
+        </div>
+      ) : erro && contextoPermutasCarregadas !== contextoPermutas ? null : podeConsultarGeral ? (
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-bold text-slate-900">{listagemOperacionalP1 ? "Acompanhamento de Permutas" : "Solicitações encontradas"}</h2>
             <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600">{permutas.length}</span>
           </div>
           {permutas.length ? <div className="space-y-3">{permutas.map((item) => renderCartaoPermuta({ item, direcao: "administrativa" }))}</div>
-            : <div className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Nenhuma permuta encontrada para os filtros selecionados.</div>}
+            : erro ? null : <div className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Nenhuma permuta encontrada para os filtros selecionados.</div>}
           {listagemOperacionalP1 && <p className="text-xs text-slate-500">Consulta operacional somente para acompanhamento. Decisões administrativas ficam disponíveis para Oficial e Master.</p>}
         </section>
       ) : (

@@ -1,3 +1,5 @@
+import { solicitarRevalidacaoSessao } from "./sessionService.js";
+
 const API = "/api/viaturas?recurso=livro-permanencia";
 
 async function request(url = API, options = {}) {
@@ -11,7 +13,10 @@ async function request(url = API, options = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || "Não foi possível concluir a operação do Livro da Permanência.");
+    if (response.status === 401 || response.status === 403) solicitarRevalidacaoSessao();
+    const error = new Error(data.error || "Não foi possível concluir a operação do Livro da Permanência.");
+    error.status = response.status;
+    throw error;
   }
   return data;
 }

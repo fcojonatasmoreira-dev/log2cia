@@ -27,6 +27,7 @@ import {
 import * as XLSX from "xlsx-js-style";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { Skeleton, SkeletonTable } from "../components/ui/Skeleton";
 
 function formatarTipo(texto) {
   if (!texto) return "Armamento";
@@ -39,6 +40,8 @@ export default function Inventario() {
     useState({});
   const [radios, setRadios] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [erroCarregamento, setErroCarregamento] = useState("");
   const [armaSelecionada, setArmaSelecionada] = useState(null);
   const [radioSelecionado, setRadioSelecionado] = useState(null);
   const [itemEspecialSelecionado, setItemEspecialSelecionado] = useState(null);
@@ -341,9 +344,9 @@ export default function Inventario() {
 
   async function carregarDados() {
     setLoading(true);
+    setErroCarregamento("");
     try {
       const equipData = await getEquipamentos();
-      if (equipData) setEquipamentos(equipData);
 
       const cautelasResponse = await fetch("/api/cautelas?uso=ativas", { credentials: "include" });
       const cautelasBody = await cautelasResponse.json().catch(() => ({}));
@@ -372,9 +375,12 @@ export default function Inventario() {
           radioData.error || "Não foi possível carregar os rádios.",
         );
       }
+      if (equipData) setEquipamentos(equipData);
       setRadios(radioData.radios || []);
+      setDadosCarregados(true);
     } catch (err) {
       console.error("Erro ao carregar dados:", err.message);
+      setErroCarregamento(err.message || "Não foi possível carregar os dados do acervo.");
     } finally {
       setLoading(false);
     }
@@ -1313,11 +1319,17 @@ export default function Inventario() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="text-center py-10 text-slate-500 font-medium">
-          Carregando acervo...
-        </div>
+      {erroCarregamento && dadosCarregados && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{erroCarregamento}</div>}
+      {loading && !dadosCarregados ? (
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4" aria-label="Carregando indicadores e itens do acervo">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-14" />)}</div>
+          <div className="overflow-x-auto"><SkeletonTable rows={6} columns={abaAtiva === "coletes" ? 8 : 6} className="min-w-[680px]" /></div>
+        </section>
+      ) : erroCarregamento && !dadosCarregados ? (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{erroCarregamento}</div>
       ) : abaAtiva !== "radios" ? (
+        <>
+        {loading && dadosCarregados && <div className="space-y-2" aria-label="Atualizando acervo"><Skeleton className="h-2 w-full"/><p className="sr-only">Atualizando dados do acervo</p></div>}
         <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-x-auto">
           <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-100">
             <span className="text-xs font-semibold text-slate-700">
@@ -1454,7 +1466,10 @@ export default function Inventario() {
             </tbody>
           </table>
         </div>
+        </>
       ) : (
+        <>
+        {loading && dadosCarregados && <div className="space-y-2" aria-label="Atualizando rádios"><Skeleton className="h-2 w-full"/><p className="sr-only">Atualizando dados dos rádios</p></div>}
         <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-x-auto">
           <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-100">
             <span className="text-xs font-semibold text-slate-700">
@@ -1550,6 +1565,7 @@ export default function Inventario() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {radioSelecionado && (

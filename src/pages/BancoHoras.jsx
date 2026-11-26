@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getPoliciaisBancoHoras } from "../services/policiaisService";
+import { Skeleton, SkeletonCard, SkeletonTable } from "../components/ui/Skeleton";
 
 const dataBR = (valor) => {
   if (!valor) return "—";
@@ -44,6 +45,7 @@ export default function BancoHoras() {
   const [movimentacoes, setMovimentacoes] = useState([]);
   const [filtro, setFiltro] = useState("pendente");
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
   const [analisando, setAnalisando] = useState("");
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
@@ -74,6 +76,7 @@ export default function BancoHoras() {
       setPoliciais(policiaisLista || []);
       setPodeEditarMovimentacao(Boolean(bh.permissoes?.editar_movimentacao));
       setPodeExcluirMovimentacao(Boolean(bh.permissoes?.excluir_movimentacao));
+      setDadosCarregados(true);
     } catch (e) {
       setErro(e.message);
     } finally {
@@ -329,8 +332,8 @@ export default function BancoHoras() {
           <div className="flex items-center gap-2">
             <Clock3 className="w-5 h-5 text-slate-500" />
             <h2 className="font-bold text-slate-800">Solicitações</h2>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
-              {lista.length}
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600" aria-busy={carregando && !dadosCarregados}>
+              {carregando && !dadosCarregados ? <Skeleton className="h-3 w-5" /> : erro && !dadosCarregados ? "—" : lista.length}
             </span>
           </div>
           <select
@@ -344,11 +347,13 @@ export default function BancoHoras() {
             <option value="todas">Todas</option>
           </select>
         </div>
-        {carregando ? (
-          <p className="p-5 text-sm text-slate-500">
-            Carregando solicitações...
-          </p>
-        ) : lista.length === 0 ? (
+        {carregando && !dadosCarregados ? (
+          <div className="space-y-3 p-4" aria-busy="true" aria-label="Carregando solicitações do Banco de Horas">
+            <SkeletonCard lines={3} />
+            <SkeletonCard lines={3} />
+            <SkeletonCard lines={3} />
+          </div>
+        ) : erro && !dadosCarregados ? null : lista.length === 0 ? (
           <p className="p-5 text-sm text-slate-500">
             Nenhuma solicitação encontrada.
           </p>
@@ -520,9 +525,11 @@ export default function BancoHoras() {
             />
           </div>
         </div>
-        {carregando ? (
-          <p className="p-5 text-sm text-slate-500">Carregando saldos...</p>
-        ) : consultaPoliciais.length === 0 ? (
+        {carregando && !dadosCarregados ? (
+          <div className="p-4" aria-busy="true" aria-label="Carregando saldos do efetivo">
+            <SkeletonTable rows={5} columns={6} />
+          </div>
+        ) : erro && !dadosCarregados ? null : consultaPoliciais.length === 0 ? (
           <p className="p-5 text-sm text-slate-500">
             Nenhum policial encontrado.
           </p>

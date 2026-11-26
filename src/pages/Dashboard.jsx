@@ -9,6 +9,7 @@ import { listarNotificacoes } from "../services/notificacoesService";
 import { podeVerAlertasDashboard } from "../utils/dashboardAccess";
 import { saudacaoOficial } from "../utils/dashboardGreeting";
 import ModuleNavigation from "../components/layout/ModuleNavigation";
+import { Skeleton, SkeletonCard, SkeletonText } from "../components/ui/Skeleton";
 
 const formatarNumero = (valor) => new Intl.NumberFormat("pt-BR").format(valor);
 
@@ -79,49 +80,44 @@ function categoriaAlerta(item) {
 export default function Dashboard() {
   const { usuario } = useOutletContext();
   const navigate = useNavigate();
-  const [metrics, setMetrics] = useState(null);
-  const [notificacoes, setNotificacoes] = useState([]);
-  const [erro, setErro] = useState("");
-  const [erroNotificacoes, setErroNotificacoes] = useState("");
-  const [carregando, setCarregando] = useState(true);
-  const [atualizadoEm, setAtualizadoEm] = useState(null);
+  const contextoDashboard = `${usuario?.id || ""}:${usuario?.modo_acesso || ""}`;
+  const [estadoMetricas, setEstadoMetricas] = useState(null);
+  const [estadoNotificacoes, setEstadoNotificacoes] = useState(null);
+  const [imagemBannerCarregada, setImagemBannerCarregada] = useState(false);
+  const [atualizandoManualmente, setAtualizandoManualmente] = useState(false);
   const requisicao = useRef(0);
   const modoPolicial = usuario?.modo_acesso === "policial";
   const saudacao = saudacaoOficial(usuario);
   const podeAlertas = podeVerAlertasDashboard(usuario);
-
-  const aplicarResultados = useCallback((resultados, idRequisicao) => {
-    if (idRequisicao !== requisicao.current) return;
-    setErro("");
-    if (resultados[0].status === "fulfilled") {
-      setMetrics(resultados[0].value);
-      setAtualizadoEm(new Date());
-    } else {
-      setMetrics(null);
-      setErro(resultados[0].reason?.message || "Não foi possível carregar o resumo.");
-    }
-    if (podeAlertas) {
-      const resultadoAlertas = resultados[1];
-      if (resultadoAlertas.status === "fulfilled") {
-        setNotificacoes(resultadoAlertas.value.notificacoes || []);
-        setErroNotificacoes("");
-      } else {
-        setNotificacoes([]);
-        setErroNotificacoes(resultadoAlertas.reason?.message || "Não foi possível carregar os alertas.");
-      }
-    } else {
-      setNotificacoes([]);
-      setErroNotificacoes("");
-    }
-    setCarregando(false);
-  }, [podeAlertas]);
-
   const atualizar = useCallback(() => {
     const idRequisicao = ++requisicao.current;
-    const tarefas = [getDashboardMetrics()];
-    if (podeAlertas) tarefas.push(listarNotificacoes());
-    return Promise.allSettled(tarefas).then((resultados) => aplicarResultados(resultados, idRequisicao));
-  }, [aplicarResultados, podeAlertas]);
+    const metricas = getDashboardMetrics().then((valor) => {
+      if (idRequisicao !== requisicao.current) return;
+      setEstadoMetricas({ contexto: contextoDashboard, valor, erro: "", carregando: false, atualizadoEm: new Date() });
+    }).catch((error) => {
+      if (idRequisicao !== requisicao.current) return;
+      setEstadoMetricas((atual) => ({
+        contexto: contextoDashboard,
+        valor: atual?.contexto === contextoDashboard ? atual.valor : null,
+        erro: error?.message || "Não foi possível carregar o resumo.",
+        carregando: false,
+        atualizadoEm: atual?.contexto === contextoDashboard ? atual.atualizadoEm : null,
+      }));
+    });
+    const alertas = podeAlertas ? listarNotificacoes().then((resultado) => {
+      if (idRequisicao !== requisicao.current) return;
+      setEstadoNotificacoes({ contexto: contextoDashboard, valor: resultado.notificacoes || [], erro: "", carregando: false });
+    }).catch((error) => {
+      if (idRequisicao !== requisicao.current) return;
+      setEstadoNotificacoes((atual) => ({
+        contexto: contextoDashboard,
+        valor: atual?.contexto === contextoDashboard ? atual.valor : null,
+        erro: error?.message || "Não foi possível carregar os alertas.",
+        carregando: false,
+      }));
+    }) : Promise.resolve();
+    return Promise.all([metricas, alertas]);
+  }, [contextoDashboard, podeAlertas]);
 
   useEffect(() => {
     void atualizar();
@@ -129,10 +125,20 @@ export default function Dashboard() {
   }, [atualizar, usuario?.id, usuario?.modo_acesso]);
 
   const atualizarManualmente = () => {
-    setCarregando(true);
-    void atualizar();
+    setAtualizandoManualmente(true);
+    void atualizar().finally(() => setAtualizandoManualmente(false));
   };
 
+  const metricasAtuais = estadoMetricas?.contexto === contextoDashboard ? estadoMetricas : null;
+  const notificacoesAtuais = estadoNotificacoes?.contexto === contextoDashboard ? estadoNotificacoes : null;
+  const metrics = metricasAtuais?.valor || null;
+  const notificacoes = notificacoesAtuais?.valor || [];
+  const erro = metricasAtuais?.erro || "";
+  const erroNotificacoes = notificacoesAtuais?.erro || "";
+  const carregandoMetricas = !metricasAtuais || metricasAtuais.carregando;
+  const carregandoNotificacoes = podeAlertas && (!notificacoesAtuais || notificacoesAtuais.carregando);
+  const carregando = carregandoMetricas || carregandoNotificacoes || atualizandoManualmente;
+  const atualizadoEm = metricasAtuais?.atualizadoEm || null;
   const cards = cartoesDoResumo(usuario, metrics || {});
   const alertasRecentes = notificacoes.slice(0, 5);
   const dataReferencia = dataAtual();
@@ -144,8 +150,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
-      <section className="dashboard-hero relative isolate flex min-h-[176px] items-center overflow-hidden rounded-2xl bg-[#071a3c] px-4 py-4 text-white shadow-lg sm:min-h-[180px] sm:px-8">
-        <img src="/images/dashboard-jeep-commander-hero.webp" alt="" aria-hidden="true" className="dashboard-hero-image absolute object-contain object-right" />
+      <section className="dashboard-hero relative isolate flex min-h-[176px] items-center overflow-hidden rounded-2xl bg-[#071a3c] px-4 py-4 text-white shadow-lg sm:min-h-[180px] sm:px-8" aria-busy={!imagemBannerCarregada}>
+        {!imagemBannerCarregada && <Skeleton className="absolute inset-y-0 right-0 w-[58%] rounded-none opacity-35" />}
+        <img src="/images/dashboard-jeep-commander-hero.webp" alt="" aria-hidden="true" onLoad={() => setImagemBannerCarregada(true)} onError={() => setImagemBannerCarregada(true)} className="dashboard-hero-image absolute object-contain object-right" />
         <div className="dashboard-hero-overlay absolute inset-0 bg-gradient-to-r from-[#06152f]/95 via-[#06152f]/70 to-[#06152f]/10" />
         <div className="dashboard-hero-content relative z-10 flex w-full items-center">
           <div className="dashboard-hero-copy min-w-0 border-l-[5px] border-cyan-400 pl-4">
@@ -158,7 +165,7 @@ export default function Dashboard() {
       <div className="dashboard-hero-toolbar -mt-3 flex w-full flex-wrap items-center justify-end gap-2">
         {atualizadoEm && <span className="mr-1 text-[11px] text-slate-600">Atualizado {new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(atualizadoEm)}</span>}
         <span className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-blue-700 bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow-sm">Visão do perfil</span>
-        <button onClick={atualizarManualmente} disabled={carregando} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-70"><RefreshCw className={`h-4 w-4 ${carregando ? "animate-spin" : ""}`} />Atualizar</button>
+        <button onClick={atualizarManualmente} disabled={atualizandoManualmente} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-70"><RefreshCw className={`h-4 w-4 ${carregando ? "animate-spin" : ""}`} />Atualizar</button>
       </div>
 
       {saudacao && <div className="flex justify-end"><p className="dashboard-official-greeting rounded-lg border px-3 py-1.5 text-sm font-semibold">{saudacao}</p></div>}
@@ -177,17 +184,20 @@ export default function Dashboard() {
         {erro && <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{erro}</div>}
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(310px,1fr)]">
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2" aria-busy={carregandoMetricas}>
+              {carregandoMetricas && !metrics && Array.from({ length: modoPolicial ? 2 : 4 }, (_, index) => <SkeletonCard key={`metric-skeleton-${index}`} lines={2} />)}
               {cards.map((item) => {
                 const Icone = item.icone;
                 return <button key={item.titulo} onClick={() => navigate(item.rota)} className={`dashboard-metric ${GRADIENTES[item.cor] || GRADIENTES.blue} group flex min-h-[118px] flex-col justify-between rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-[#f4f7ff] p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md`}>
-                  <div className="flex items-start justify-between gap-3"><span className={`grid h-10 w-10 place-items-center rounded-xl border ${CORES[item.cor]}`}><Icone className="h-6 w-6" /></span><span className="text-3xl font-extrabold tracking-tight text-[#0d1d48]">{carregando && !metrics ? "—" : formatarNumero(item.valor)}</span></div>
+                  <div className="flex items-start justify-between gap-3"><span className={`grid h-10 w-10 place-items-center rounded-xl border ${CORES[item.cor]}`}><Icone className="h-6 w-6" /></span><span className="text-3xl font-extrabold tracking-tight text-[#0d1d48]">{formatarNumero(item.valor)}</span></div>
                   <div><h3 className="text-sm font-bold leading-tight text-[#101a43]">{item.titulo}</h3><p className="mt-1 text-[11px] leading-snug text-slate-500">{item.legenda}</p></div>
                   <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600">Abrir módulo <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" /></span>
                 </button>;
               })}
-              {!cards.length && !erro && <div className="col-span-full rounded-2xl border border-dashed border-blue-200 bg-blue-50/50 p-6 text-sm text-slate-600">Não há indicadores disponíveis para este perfil. Os módulos autorizados continuam acessíveis acima.</div>}
+              {!carregandoMetricas && !cards.length && !erro && <div className="col-span-full rounded-2xl border border-dashed border-blue-200 bg-blue-50/50 p-6 text-sm text-slate-600">Não há indicadores disponíveis para este perfil. Os módulos autorizados continuam acessíveis acima.</div>}
             </div>
+
+            {carregandoMetricas && !metrics && <div className="grid gap-4 sm:grid-cols-2" aria-hidden="true"><SkeletonCard lines={3} /><SkeletonCard lines={3} /></div>}
 
             {metrics?.efetivoAtivoCadastrado !== undefined && <section className="rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-[#f5f8ff] p-4 shadow-sm sm:p-5">
               <div className="mb-4 flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-600"><UsersRound className="h-5 w-5" /></span><div><h3 className="font-extrabold text-[#101a43]">Efetivo da Unidade</h3><p className="text-[11px] text-slate-500">Cadastros ativos — não representa presença no serviço</p></div></div>
@@ -204,7 +214,7 @@ export default function Dashboard() {
 
           {podeAlertas && <aside className="dashboard-alerts rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-[#f5f8ff] p-4 shadow-sm sm:p-5">
             <div className="mb-3 flex items-center justify-between border-b border-blue-100 pb-3"><div className="flex items-center gap-2.5"><Bell className="h-6 w-6 text-blue-500" /><h3 className="text-lg font-extrabold text-[#101a43]">Alertas Recentes</h3></div><span className="text-[11px] text-slate-500">Da Central</span></div>
-            {erroNotificacoes ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{erroNotificacoes}</div> : alertasRecentes.length ? <ul className="space-y-2">{alertasRecentes.map((item) => {
+            {carregandoNotificacoes && !notificacoesAtuais?.valor ? <div className="space-y-2" aria-busy="true" aria-label="Carregando alertas">{Array.from({ length: 3 }, (_, index) => <div key={`alert-skeleton-${index}`} className="flex items-start gap-3 rounded-xl border border-blue-100 bg-white p-3"><Skeleton className="h-10 w-10 shrink-0 rounded-xl" /><div className="min-w-0 flex-1 space-y-2 pt-1"><SkeletonText lines={1} /><Skeleton className="h-3 w-[72%]" /></div></div>)}</div> : erroNotificacoes ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{erroNotificacoes}</div> : alertasRecentes.length ? <ul className="space-y-2">{alertasRecentes.map((item) => {
               const categoria = categoriaAlerta(item);
               const Icone = categoria === "orange" ? Clock3 : categoria === "pink" ? ArrowLeftRight : categoria === "blue" ? Car : Bell;
               return <li key={item.id}><button onClick={() => abrirNotificacao(item)} data-lida={Boolean(item.lida_em)} className={`dashboard-alert-card dashboard-alert-card--${categoria} flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left shadow-sm transition hover:-translate-y-px hover:shadow-md ${item.lida_em ? "border-slate-200 bg-white" : "border-blue-200 bg-blue-50/70"}`}>

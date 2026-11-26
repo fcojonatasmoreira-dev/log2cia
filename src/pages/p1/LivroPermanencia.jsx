@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   excluirLivroPermanencia,
   listarLivrosPermanencia,
@@ -17,56 +17,68 @@ import {
   RotateCcw,
 } from "lucide-react";
 import ModalNovoLivro from "./ModalNovoLivro";
+import { Skeleton, SkeletonTable } from "../../components/ui/Skeleton";
+import { createLatestRequestGuard } from "../../utils/latestRequestGuard";
+import { chaveContextoSessao } from "../../utils/sessionContext";
 
 export default function LivroPermanencia({ userLogado }) {
   const [livros, setLivros] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [erroCarregamento, setErroCarregamento] = useState("");
+  const [contextoDados, setContextoDados] = useState("");
+  const [contextoErro, setContextoErro] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
   const [livroSelecionadoParaEdicao, setLivroSelecionadoParaEdicao] =
     useState(null);
-  const [isMaster, setIsMaster] = useState(false);
-  const [temAcesso, setTemAcesso] = useState(false);
-  const [verificandoAcesso, setVerificandoAcesso] = useState(true);
+  const contextoAtual = chaveContextoSessao(userLogado);
+  const dadosDoContextoAtual = contextoDados === contextoAtual;
+  const dadosCarregadosNoContexto = dadosCarregados && dadosDoContextoAtual;
+  const livrosDoContextoAtual = dadosCarregadosNoContexto ? livros : [];
+  const erroDoContextoAtual = contextoErro === contextoAtual ? erroCarregamento : "";
+  const carregandoContextoAtual = loading || (!dadosCarregadosNoContexto && contextoErro !== contextoAtual);
+  const [consultaLivros] = useState(() => createLatestRequestGuard());
+
+  const roleNormalizado = String(userLogado?.role || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const masterDeclarado = userLogado?.is_master === true;
+
+  const isMaster = masterDeclarado || roleNormalizado === "master" || roleNormalizado === "p1_escalante_servico_ordinario";
+  const ehPermanente = roleNormalizado === "permanente da guarda";
+  const ehOficial = roleNormalizado === "oficial";
+  const temAcesso = isMaster || ehPermanente || ehOficial;
+
+  const carregarLivros = useCallback(async () => {
+    const contextoConsulta = contextoAtual;
+    return consultaLivros.run(listarLivrosPermanencia, {
+      onSuccess: ({ livros: data }) => {
+        setLivros(data || []);
+        setContextoDados(contextoConsulta);
+        setDadosCarregados(true);
+        setErroCarregamento("");
+        setContextoErro(contextoConsulta);
+      },
+      onError: (err) => {
+        console.error("Erro ao carregar livros:", err.message);
+        setErroCarregamento(err.message || "Não foi possível carregar os livros de permanência.");
+        setContextoErro(contextoConsulta);
+        if (err.status === 401 || err.status === 403) {
+          setLivros([]);
+          setDadosCarregados(false);
+          setContextoDados("");
+        }
+      },
+      onSettled: () => setLoading(false),
+    });
+  }, [contextoAtual, consultaLivros]);
 
   useEffect(() => {
-    carregarLivros();
-    verificarAcesso();
-  }, [userLogado]);
-
-  function verificarAcesso() {
-    setVerificandoAcesso(true);
-    const normalizarPerfil = (perfil) =>
-      String(perfil || "")
-        .trim()
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
-    const role = normalizarPerfil(userLogado?.role);
-    const ehMaster =
-      userLogado?.is_master === true ||
-      role === "master" ||
-      role === "p1_escalante_servico_ordinario";
-    const ehPermanente = role === "permanente da guarda";
-    const ehOficial = role === "oficial";
-
-    setIsMaster(ehMaster);
-    setTemAcesso(ehMaster || ehPermanente || ehOficial);
-    setVerificandoAcesso(false);
-  }
-
-  async function carregarLivros() {
-    setLoading(true);
-    try {
-      const { livros: data } = await listarLivrosPermanencia();
-      setLivros(data || []);
-    } catch (err) {
-      console.error("Erro ao carregar livros:", err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const ehOficial = String(userLogado?.role || "").trim().toLowerCase() === "oficial";
+    void carregarLivros();
+    return () => consultaLivros.invalidate();
+  }, [contextoAtual, carregarLivros, consultaLivros]);
 
   const handleNovoLivroClick = () => {
     if (ehOficial) return;
@@ -132,14 +144,6 @@ export default function LivroPermanencia({ userLogado }) {
     }
   };
 
-  if (verificandoAcesso) {
-    return (
-      <div className="p-8 text-center text-sm text-slate-500">
-        Verificando acesso...
-      </div>
-    );
-  }
-
   if (!temAcesso) {
     return (
       <div className="p-8 text-center text-sm text-slate-500">
@@ -176,11 +180,14 @@ export default function LivroPermanencia({ userLogado }) {
           Histórico de Livros de Permanência Registrados
         </div>
 
-        {loading ? (
-          <div className="p-8 text-center text-xs text-slate-400">
-            Carregando livros...
-          </div>
-        ) : livros.length === 0 ? (
+        {erroDoContextoAtual && <div role="alert" className="border-b border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{erroDoContextoAtual}</div>}
+        {carregandoContextoAtual && !dadosCarregadosNoContexto ? (
+          <div className="space-y-3 p-4" aria-label="Carregando livros e turnos"><Skeleton className="h-8 w-full"/><SkeletonTable rows={5} columns={6}/></div>
+        ) : loading && dadosCarregadosNoContexto ? (
+          <div className="px-4 pt-2" aria-label="Atualizando livros"><Skeleton className="h-2 w-full"/></div>
+        ) : erroDoContextoAtual && !dadosCarregadosNoContexto ? (
+          <div role="alert" className="p-4 text-sm text-rose-700">{erroDoContextoAtual}</div>
+        ) : livrosDoContextoAtual.length === 0 ? (
           <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
             <FileText className="w-8 h-8 text-slate-300" />
             Nenhum livro de permanência registrado até o momento.
@@ -205,7 +212,7 @@ export default function LivroPermanencia({ userLogado }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {livros.map((livro) => {
+                {livrosDoContextoAtual.map((livro) => {
                   const isFechado =
                     livro.status === "fechado" || livro.status === "assinado";
                   const isAssinado = livro.status === "assinado";
