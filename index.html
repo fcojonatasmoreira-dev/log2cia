@@ -2,9 +2,16 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-icon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>log2cia</title>
+    <meta name="theme-color" content="#071a3c" />
+    <meta name="description" content="Sistema institucional de Gestão de Armamento e Efetivo da 2ª CIA / 15º BPM." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Log2CIA" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>Log2CIA</title>
     <script>
       try {
         const tema = localStorage.getItem("log2cia_theme") === "escuro" ? "escuro" : "claro";

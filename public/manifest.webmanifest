@@ -1,0 +1,31 @@
+{
+  "name": "Log2CIA — Sistema de Gestão de Armamento e Efetivo da 2ª CIA / 15º BPM",
+  "short_name": "Log2CIA",
+  "description": "Sistema institucional de Gestão de Armamento e Efetivo da 2ª CIA / 15º BPM.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#071a3c",
+  "background_color": "#071a3c",
+  "icons": [
+    {
+      "src": "/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
