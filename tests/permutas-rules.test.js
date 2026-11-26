@@ -21,7 +21,7 @@ test("policial, P1, Oficial e Master recebem permissões próprias do módulo", 
     consultar_geral: false, decidir: false, cancelar_deferida: false,
   });
   assert.deepEqual(permissoesPermuta({ role: "p1" }), {
-    criar: true, confirmar: true, consultar_proprias: true,
+    criar: false, confirmar: false, consultar_proprias: true,
     consultar_geral: true, decidir: false, cancelar_deferida: false,
   });
   assert.equal(permissoesPermuta({ role: "p1_escalante_servico_ordinario" }).decidir, false);
@@ -30,8 +30,13 @@ test("policial, P1, Oficial e Master recebem permissões próprias do módulo", 
   assert.equal(permissoesPermuta({ role: "oficial" }).decidir, true);
   assert.equal(permissoesPermuta({ role: "master" }).consultar_geral, true);
   assert.equal(permissoesPermuta({ role: "master" }).cancelar_deferida, true);
-  assert.equal(permissoesPermuta({ role: "policial", is_master: true }).decidir, true);
+  assert.equal(permissoesPermuta({ role: "master" }).criar, false, "Master no modo administrativo não usa ações pessoais");
+  assert.equal(permissoesPermuta({ role: "master", is_master: true }).decidir, true);
   assert.equal(permissoesPermuta({ role: "armeiro" }).criar, false);
+  const masterPolicial = permissoesPermuta({ role: "policial", modo_acesso: "policial" });
+  assert.equal(masterPolicial.criar, true);
+  assert.equal(masterPolicial.decidir, false);
+  assert.equal(masterPolicial.consultar_geral, false);
 });
 
 test("valida campos básicos do serviço informado sem presumir escala de origem", () => {

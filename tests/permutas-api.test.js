@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import handler from "../server/api/permutas/index.js";
-import { criarSessao } from "../server/api/auth/_session.js";
+import { criarSessao, lerSessao, trocarModoSessao } from "../server/api/auth/_session.js";
 
 const ATOR_ID = "11111111-1111-4111-8111-111111111111";
 const OUTRO_ID = "22222222-2222-4222-8222-222222222222";
@@ -18,7 +18,7 @@ function resposta() {
   };
 }
 
-async function executar({ role, body, actorId = ATOR_ID, permutaInfo = {}, destinatarioInfo, sessaoValida = true, contaSuspensa = false }) {
+async function executar({ role, modo = null, body, actorId = ATOR_ID, permutaInfo = {}, destinatarioInfo, sessaoValida = true, contaSuspensa = false }) {
   const anterior = {
     fetch: globalThis.fetch,
     sessionSecret: process.env.SESSION_SECRET,
@@ -53,9 +53,11 @@ async function executar({ role, body, actorId = ATOR_ID, permutaInfo = {}, desti
     }
     return Response.json({ message: `Requisição inesperada: ${url.pathname}` }, { status: 404 });
   };
+  const tokenBase = criarSessao({ id: actorId, role, auth_version: 0 });
+  const token = modo ? trocarModoSessao(lerSessao({ headers: { cookie: `log2cia_session=${tokenBase}` } }), modo) : tokenBase;
   const req = {
     method: "POST", query: {}, body,
-      headers: { cookie: sessaoValida ? `log2cia_session=${criarSessao({ id: actorId, auth_version: 0 })}` : "log2cia_session=invalida" },
+      headers: { cookie: sessaoValida ? `log2cia_session=${token}` : "log2cia_session=invalida" },
   };
   const res = resposta();
   try {
@@ -73,6 +75,26 @@ async function executar({ role, body, actorId = ATOR_ID, permutaInfo = {}, desti
     }
   }
 }
+
+test("ações pessoais e administrativas de Permutas obedecem ao modo assinado", async () => {
+  const motivo = "Necessidade de serviço";
+  const servico = { data: "2026-12-01", turno: "A", horario_inicio: "08:00", horario_fim: "16:00", descricao: "Patrulhamento" };
+  const corpoCriar = { acao: "criar", tipo: "SUBSTITUICAO_SIMPLES", destinatario_id: OUTRO_ID, motivo, servico };
+
+  const adminCriar = await executar({ role: "master", body: corpoCriar });
+  assert.equal(adminCriar.status, 403);
+  assert.equal(adminCriar.chamadas.some((item) => item.path.endsWith("permutas_servico_criar_v1")), false);
+
+  const policialCriar = await executar({ role: "master", modo: "policial", body: corpoCriar });
+  assert.equal(policialCriar.status, 201);
+  assert.ok(policialCriar.chamadas.some((item) => item.path.endsWith("permutas_servico_criar_v1")));
+
+  const policialDecidir = await executar({ role: "master", modo: "policial", body: {
+    acao: "decidir", permuta_id: PERMUTA_ID, deferir: true, servicos_conferidos: true,
+  } });
+  assert.equal(policialDecidir.status, 403);
+  assert.equal(policialDecidir.chamadas.some((item) => item.path.endsWith("permutas_servico_decidir_v2")), false);
+});
 
 async function executarListagem({ role = "oficial", query = {}, calendarioGrande = false, actorId = ATOR_ID, controleEscalaFixture = false } = {}) {
   const anterior = {

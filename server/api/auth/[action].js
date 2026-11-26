@@ -3,6 +3,7 @@ const handlers = {
   logout: () => import("./_logout.js"),
   me: () => import("./_me.js"),
   "change-password": () => import("./_change-password.js"),
+  "change-mode": () => import("./_change-mode.js"),
 };
 
 export default async function handler(req, res) {

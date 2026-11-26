@@ -1,4 +1,5 @@
 import { supabaseAdmin, normalizarRole, respostaErro } from "../_server.js";
+import { usuarioDaSessao } from "../auth/_accessMode.js";
 import { lerSessao } from "../auth/_session.js";
 const ehEscalante = (usuario) => usuario?.drso_escalante === true && normalizarRole(usuario) === "p1";
 const podeGerenciar = (usuario) => normalizarRole(usuario) === "master" || usuario?.is_master === true || ehEscalante(usuario);
@@ -118,6 +119,10 @@ export default async function handler(req, res) {
     if (usuario.primeiro_acesso === true) {
       return respostaErro(res, 403, "Altere a senha temporária antes de acessar este recurso.");
     }
+    if (!externo) {
+      usuario = usuarioDaSessao(usuario, sessao);
+      if (!usuario) return respostaErro(res, 403, "Modo de acesso incompatível com o perfil atual.");
+    }
     const gestor = !externo && podeGerenciar(usuario);
     if (externo && req.method === "POST" && !["voluntariar", "retirar_voluntariado"].includes(String(req.body?.acao || ""))) return respostaErro(res, 403, "Contas externas só podem gerenciar o próprio voluntariado DRSO.");
     if (req.method === "GET") {
@@ -134,7 +139,16 @@ export default async function handler(req, res) {
       if (policiaisResult.error) throw policiaisResult.error;
       if (viaturasResult.error) throw viaturasResult.error;
       if (externosResult.error) throw externosResult.error;
-      const escalasR = externo ? escalasBrutas.filter(e=>e.status==="aberta") : escalasBrutas;
+      const modoPolicialInterno = !externo && usuario.modo_acesso === "policial";
+      const escalasVinculadasAoUsuario = modoPolicialInterno
+        ? await listarPaginado(() => db.from("drso_voluntarios").select("escala_id").eq("policial_id", usuario.id))
+        : [];
+      const idsEscalasDoUsuario = new Set(escalasVinculadasAoUsuario.map((item) => item.escala_id));
+      const escalasR = externo
+        ? escalasBrutas.filter(e=>e.status==="aberta")
+        : modoPolicialInterno
+          ? escalasBrutas.filter(e=>e.status==="aberta" || idsEscalasDoUsuario.has(e.id))
+          : escalasBrutas;
       const ids = new Set(escalasR.map(x => x.id));
       const idsEscalas = [...ids];
       const [voluntariosR, areasEscalasR] = await Promise.all([
@@ -149,20 +163,29 @@ export default async function handler(req, res) {
         ...efetivo.map(p=>[chavePolicial(p.id,false),p.nome_exibicao]),
         ...externosR.map(p=>[chavePolicial(p.id,true),[p.posto_graduacao,p.numeral,p.nome_guerra||p.nome_completo].filter(Boolean).join(" ")]),
       ]);
-      const vinculos = voluntariosR.map(v=>{
+      const vinculosCompletos = voluntariosR.map(v=>{
         const isExterno=Boolean(v.policial_externo_id);
         const idPessoa=v.policial_externo_id||v.policial_id;
         return {...v,chave_policial:chavePolicial(idPessoa,isExterno),is_externo:isExterno,nome_exibicao:nomesPorId.get(chavePolicial(idPessoa,isExterno))||"Policial"};
       });
+      const vinculos = modoPolicialInterno
+        ? vinculosCompletos.filter((v) => v.policial_id === usuario.id)
+        : vinculosCompletos;
       const chaveUsuario = chavePolicial(usuario.id, externo);
-      const policiaisVisiveis = externo ? todosPoliciais.filter(p => chavePolicial(p.id,p.origem_efetivo==="externo") === chaveUsuario || vinculos.some(v => v.chave_policial === chavePolicial(p.id,p.origem_efetivo==="externo"))) : todosPoliciais;
+      const policiaisVisiveis = externo
+        ? todosPoliciais.filter(p => chavePolicial(p.id,p.origem_efetivo==="externo") === chaveUsuario || vinculos.some(v => v.chave_policial === chavePolicial(p.id,p.origem_efetivo==="externo")))
+        : modoPolicialInterno
+          ? efetivo.filter((p) => p.id === usuario.id)
+          : todosPoliciais;
+      const quantidadeVoluntariosPorEscala = new Map();
+      for (const vinculo of vinculosCompletos) quantidadeVoluntariosPorEscala.set(vinculo.escala_id, (quantidadeVoluntariosPorEscala.get(vinculo.escala_id) || 0) + 1);
       const areasPorEscala = new Map();
       for (const area of areasEscalasR) {
         if (!areasPorEscala.has(area.escala_id)) areasPorEscala.set(area.escala_id, []);
         areasPorEscala.get(area.escala_id).push(area);
       }
-      const escalasComAreas = escalasR.map(escala => ({ ...escala, areas_selecionadas: areasPorEscala.get(escala.id) || [] }));
-      const resposta = { escalas: escalasComAreas, voluntarios: vinculos, policiais: policiaisVisiveis, viaturas: externo ? [] : viaturasR, usuario_id: usuario.id, conta_externa: externo, permissoes: { gerenciar: gestor, externo: externo, consultar_var: !externo, cadastrar_externos: gestor, escalante_drso: !externo && (ehEscalante(usuario) || normalizarRole(usuario) === "master" || usuario.is_master === true) } };
+      const escalasComAreas = escalasR.map(escala => ({ ...escala, quantidade_voluntarios: quantidadeVoluntariosPorEscala.get(escala.id) || 0, areas_selecionadas: areasPorEscala.get(escala.id) || [] }));
+      const resposta = { escalas: escalasComAreas, voluntarios: vinculos, policiais: policiaisVisiveis, viaturas: externo || modoPolicialInterno ? [] : viaturasR, usuario_id: usuario.id, conta_externa: externo, permissoes: { gerenciar: gestor, externo: externo, consultar_var: !externo && !modoPolicialInterno, cadastrar_externos: gestor, escalante_drso: !modoPolicialInterno && !externo && (ehEscalante(usuario) || normalizarRole(usuario) === "master" || usuario.is_master === true) } };
       if (gestor) {
         const { data: areasOperacao, error: erroAreas } = await db.from("macroareas_operacao")
           .select("id,nome,ativa,microareas_operacao(id,macroarea_id,nome,ativa)")
@@ -176,6 +199,7 @@ export default async function handler(req, res) {
     if (req.method !== "POST") { res.setHeader("Allow", "GET, POST"); return respostaErro(res,405,"Método não permitido."); }
     const body = req.body || {}; const acao = txt(body.acao);
     if (acao === "voluntariar") {
+      if (!externo && usuario.modo_acesso !== "policial") return respostaErro(res, 403, "O voluntariado pessoal está disponível somente no modo Policial.");
       const escalaId = txt(body.escala_id); if (!escalaId) return respostaErro(res,400,"Selecione uma escala.");
       const {data: escala,error: ee}=await db.from("drso_escalas").select("id,status").eq("id",escalaId).maybeSingle(); if(ee)throw ee;
       if(!escala||escala.status!=="aberta")return respostaErro(res,409,"Esta escala não está recebendo voluntários.");
@@ -184,11 +208,13 @@ export default async function handler(req, res) {
       return res.status(201).json({voluntario:data});
     }
     if (acao === "retirar_voluntariado") {
+      if (!externo && usuario.modo_acesso !== "policial") return respostaErro(res, 403, "A retirada do voluntariado pessoal está disponível somente no modo Policial.");
       const escalaId=txt(body.escala_id); const {data:escala,error:ee}=await db.from("drso_escalas").select("status").eq("id",escalaId).maybeSingle();if(ee)throw ee;
       if(!escala||escala.status!=="aberta")return respostaErro(res,409,"Após o fechamento, solicite desistência ao escalante.");
       const {error}=await db.from("drso_voluntarios").delete().eq("escala_id",escalaId).eq(externo?"policial_externo_id":"policial_id",usuario.id);if(error)throw error;return res.status(200).json({sucesso:true});
     }
     if (acao === "solicitar_desistencia") {
+      if (!externo && usuario.modo_acesso !== "policial") return respostaErro(res, 403, "A desistência pessoal está disponível somente no modo Policial.");
       const escalaId = txt(body.escala_id);
       const { data: escala, error: e1 } = await db.from("drso_escalas").select("id,status").eq("id", escalaId).maybeSingle();
       if (e1) throw e1;

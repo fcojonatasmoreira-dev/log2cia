@@ -24,10 +24,12 @@ import DRSO from "../pages/DRSO";
 import EfetivoExternoDRSO from "../pages/EfetivoExternoDRSO";
 import Permutas from "../pages/Permutas";
 import { obterSessao, logout } from "../services/sessionService";
+import { podeAcessarNovaInsercaoBancoHoras, telaBancoHoras } from "../utils/bancoHorasAccess";
 
 export default function AppRoutes() {
   const [usuario, setUsuario] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [avisoSessao, setAvisoSessao] = useState("");
 
   useEffect(() => {
     let ativo = true;
@@ -43,6 +45,9 @@ export default function AppRoutes() {
         setUsuario(user);
       } catch (error) {
         if (!ativo) return;
+        if (error.message?.includes("Seu perfil foi alterado e não permite o modo de acesso atual")) {
+          setAvisoSessao("Seu perfil foi alterado e o modo desta sessão não está mais autorizado. Entre novamente para carregar as permissões atualizadas.");
+        }
         localStorage.removeItem("log2cia_user");
         setUsuario(null);
       } finally {
@@ -51,11 +56,21 @@ export default function AppRoutes() {
       }
     };
 
+    const aoAtualizarOutraAba = (evento) => {
+      if (evento.key === "log2cia_mode_change") {
+        window.location.reload();
+        return;
+      }
+      if (evento.key === "log2cia_user") validarSessao();
+    };
+
     validarSessao();
+    window.addEventListener("storage", aoAtualizarOutraAba);
     // A sessão é validada ao carregar o aplicativo. As operações protegidas
     // devem validar novamente no backend; não fazemos consultas periódicas.
     return () => {
       ativo = false;
+      window.removeEventListener("storage", aoAtualizarOutraAba);
     };
   }, []);
 
@@ -65,6 +80,8 @@ export default function AppRoutes() {
     setUsuario(null);
     window.location.href = "/";
   };
+
+  const destinoBancoHoras = telaBancoHoras(usuario);
 
   if (loading) {
     return (
@@ -80,7 +97,7 @@ export default function AppRoutes() {
         <Route path="/checklist-publico/:token" element={<ChecklistPublico />} />
         <Route path="/solicitar-evento" element={<SolicitacaoEventoPublica />} />
         {!usuario ? (
-          <Route path="*" element={<Login />} />
+          <Route path="*" element={<Login avisoSessao={avisoSessao} />} />
         ) : usuario.primeiro_acesso ? (
           <Route path="*" element={<AlterarSenhaObrigatoria />} />
         ) : usuario.tipo_acesso === "drso_externo" ? (
@@ -104,7 +121,9 @@ export default function AppRoutes() {
             {(usuario.is_master === true || ["master", "p1"].includes(String(usuario.role || "").trim().toLowerCase()) || usuario.permissoes?.gerenciar_drso === true || usuario.drso_escalante === true) && (
               <Route path="drso/efetivo-externo" element={<EfetivoExternoDRSO />} />
             )}
-            <Route path="inventario" element={<Inventario />} />
+            {(usuario.is_master === true || ["master", "p4", "armeiro", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+              <Route path="inventario" element={<Inventario />} />
+            )}
             {(usuario.is_master === true || ["master", "p4", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
               <Route path="viaturas" element={<Viaturas />} />
             )}
@@ -114,7 +133,9 @@ export default function AppRoutes() {
             {["policial", "armeiro"].includes(String(usuario.role || "").trim().toLowerCase()) ? null : (
               <Route path="areas-operacao" element={<AreasOperacao />} />
             )}
-            <Route path="policiais" element={<Policiais />} />
+            {(usuario.is_master === true || ["master", "p4", "armeiro", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+              <Route path="policiais" element={<Policiais />} />
+            )}
             {(usuario.is_master === true || ["master", "p1", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())) && (
               <Route path="eventos" element={<Eventos user={usuario} />} />
             )}
@@ -122,16 +143,15 @@ export default function AppRoutes() {
               <Route path="oficios" element={<Oficios />} />
             )}
 
-            <Route
-              path="banco-horas"
-              element={
-                usuario.is_master === true || ["master", "p1", "oficial"].includes(String(usuario.role || "").trim().toLowerCase())
-                  ? <BancoHoras />
-                  : <BancoHorasPolicial />
-              }
-            />
+            <Route path="banco-horas" element={
+              destinoBancoHoras === "gestao"
+                ? <BancoHoras />
+                : destinoBancoHoras === "pessoal"
+                  ? <BancoHorasPolicial />
+                  : <Navigate to="/" replace />
+            } />
 
-            {(usuario.is_master === true || ["master", "p1"].includes(String(usuario.role || "").trim().toLowerCase())) && (
+            {podeAcessarNovaInsercaoBancoHoras(usuario) && (
               <Route path="banco-horas/nova" element={<NovaInsercaoBancoHoras />} />
             )}
 

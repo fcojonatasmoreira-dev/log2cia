@@ -223,19 +223,21 @@ export default function Permutas({ user }) {
   const permutaDestinoId = new URLSearchParams(location.search).get("permuta_id") || "";
   const usuarioId = user?.id;
   const role = String(user?.role || "").trim().toLowerCase();
+  const modoPolicial = user?.modo_acesso === "policial";
+  const podeCriarPermuta = modoPolicial && (role === "policial" || role === "master" || user?.is_master === true);
   const isMaster = role === "master" || user?.is_master === true;
   const podeConsultarGeral = podeConsultarCalendario(user);
   const podeConsultarProprioCalendario = podeConsultarCalendarioProprio(user);
   const controleEscalaSolicitado = new URLSearchParams(location.search).get("visao") === "controle_escala" && podeConsultarGeral;
-  const listagemOperacionalP1 = role === "p1" || role === "p1_escalante_servico_ordinario";
-  const podeAdministrar = isMaster || role === "oficial";
+  const listagemOperacionalP1 = user?.modo_acesso === "administrativo" && (role === "p1" || role === "p1_escalante_servico_ordinario");
+  const podeAdministrar = user?.modo_acesso === "administrativo" && (isMaster || role === "oficial");
   const podeAtualizarControleEscala = podeOperarControleEscala(user);
   const statusInicial = podeAdministrar ? "AGUARDANDO_ANALISE" : "";
   const [permutas, setPermutas] = useState([]);
   const [policiais, setPoliciais] = useState([]);
   const [policiaisCalendario, setPoliciaisCalendario] = useState([]);
   const [carregando, setCarregando] = useState(true);
-  const [carregandoPoliciais, setCarregandoPoliciais] = useState(true);
+  const [carregandoPoliciais, setCarregandoPoliciais] = useState(podeCriarPermuta);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
   const [erroPoliciais, setErroPoliciais] = useState("");
@@ -360,13 +362,14 @@ export default function Permutas({ user }) {
     return () => { ativo = false; window.clearTimeout(temporizador); };
   }, [parametrosConsulta, usuarioId, filtroDataInicioLista, filtroDataFimLista]);
   useEffect(() => {
+    if (!podeCriarPermuta) return undefined;
     let ativo = true;
     getPoliciaisPermutas()
       .then((lista) => { if (ativo) setPoliciais(lista || []); })
       .catch((error) => { if (ativo) setErroPoliciais(error.message || "Não foi possível carregar os policiais disponíveis."); })
       .finally(() => { if (ativo) setCarregandoPoliciais(false); });
     return () => { ativo = false; };
-  }, []);
+  }, [podeCriarPermuta]);
 
   useEffect(() => {
     if (!podeConsultarGeral) return undefined;
@@ -854,7 +857,7 @@ export default function Permutas({ user }) {
             <p className="mt-1 text-xs text-slate-500">Solicitada em {dataHoraBrasileira(item.criada_em)}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {item.solicitante_id === usuarioId && ["AGUARDANDO_CONFIRMACAO", "AGUARDANDO_ANALISE"].includes(item.status) && <>
+            {podeCriarPermuta && item.solicitante_id === usuarioId && ["AGUARDANDO_CONFIRMACAO", "AGUARDANDO_ANALISE"].includes(item.status) && <>
               <button type="button" onClick={() => edicao?.permuta_id === item.id ? setEdicao(null) : abrirEdicaoPermuta(item)} className="rounded-lg border border-blue-200 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50">{edicao?.permuta_id === item.id ? "Fechar edição" : "Editar solicitação"}</button>
               <button type="button" onClick={() => abrirCancelamento(item)} className="rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50">Cancelar solicitação</button>
             </>}
@@ -965,7 +968,7 @@ export default function Permutas({ user }) {
           </div>
         )}
 
-        {aguardaMinhaConfirmacao && (
+        {modoPolicial && aguardaMinhaConfirmacao && (
           <div className="border-t border-slate-100 pt-3">
             <button type="button" onClick={() => abrirConfirmacao(item)} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-blue-700">
               <Check className="h-4 w-4" /> Confirmar minha participação
@@ -1119,9 +1122,9 @@ export default function Permutas({ user }) {
               {podeConsultarGeral && <button type="button" onClick={() => { setVisaoGeralSelecionada("controle_escala"); navegar("/permutas?visao=controle_escala"); }} aria-pressed={visaoGeral === "controle_escala"} className={`rounded-lg px-3 py-2 text-sm font-semibold ${visaoGeral === "controle_escala" ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}>Controle de Escala</button>}
             </div>
           )}
-          <button type="button" onClick={() => { setFormAberto((aberto) => !aberto); limparMensagens(); }} disabled={carregandoPoliciais || Boolean(erroPoliciais)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+          {podeCriarPermuta && <button type="button" onClick={() => { setFormAberto((aberto) => !aberto); limparMensagens(); }} disabled={carregandoPoliciais || Boolean(erroPoliciais)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
             <Plus className="h-4 w-4" /> {formAberto ? "Fechar" : "Nova permuta"}
-          </button>
+          </button>}
               <button type="button" onClick={atualizarLista} disabled={carregando} aria-label="Atualizar permutas" className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-700 hover:bg-slate-50 disabled:opacity-50">
             <RefreshCw className={`h-4 w-4 ${carregando ? "animate-spin" : ""}`} />
           </button>
@@ -1165,7 +1168,7 @@ export default function Permutas({ user }) {
         </div>
       )}
 
-      {formAberto && (
+      {podeCriarPermuta && formAberto && (
         <section className="space-y-4 rounded-2xl border border-blue-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex items-center justify-between gap-2">
             <div><h2 className="font-bold text-slate-900">Nova permuta</h2><p className="text-xs text-slate-500">Ao enviar, sua concordância será registrada. A confirmação pendente será apenas a do destinatário.</p></div>

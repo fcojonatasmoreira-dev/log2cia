@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { lerSessao } from "./_session.js";
+import { usuarioDaSessao } from "./_accessMode.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -87,7 +88,11 @@ export default async function handler(req, res) {
     delete user.auth_version;
     delete user.credencial_provisionada;
 
-    return res.status(200).json({ user });
+    const usuarioEfetivo = usuarioDaSessao(user, sessao);
+    if (!usuarioEfetivo) {
+      return res.status(403).json({ error: "Seu perfil foi alterado e não permite o modo de acesso atual. Entre novamente para carregar as permissões atualizadas." });
+    }
+    return res.status(200).json({ user: usuarioEfetivo });
   } catch (error) {
     console.error("Falha ao validar sessão:", error.message);
 

@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { MODOS_ACESSO, modoInicial } from "./_accessMode.js";
 
 const COOKIE_NAME = "log2cia_session";
 const MAX_AGE = 60 * 60 * 8;
@@ -16,14 +17,27 @@ export function criarSessao(usuario, manterConectado = false) {
   const agora = Math.floor(Date.now() / 1000);
   const maxAge = manterConectado ? MAX_AGE : MIN_AGE;
 
-  const payload = Buffer.from(
-    JSON.stringify({
+  const dados = {
       sub: usuario.id,
       ver: Number.isInteger(usuario.auth_version) ? usuario.auth_version : 0,
       iat: agora,
       exp: agora + maxAge,
-    }),
-  ).toString("base64url");
+  };
+  if (usuario.tipo_acesso !== "drso_externo" && usuario.role) {
+    dados.modo = modoInicial(usuario);
+  }
+  return assinarSessao(dados);
+}
+
+export function trocarModoSessao(sessao, modo) {
+  if (![MODOS_ACESSO.ADMINISTRATIVO, MODOS_ACESSO.POLICIAL].includes(modo)) {
+    throw new Error("Modo de acesso inválido.");
+  }
+  return assinarSessao({ ...sessao, modo });
+}
+
+function assinarSessao(dados) {
+  const payload = Buffer.from(JSON.stringify(dados)).toString("base64url");
 
   const assinatura = createHmac("sha256", secret())
     .update(payload)
@@ -82,6 +96,7 @@ export function lerSessao(req) {
       dados.exp <= dados.iat ||
       dados.exp - dados.iat < MIN_AGE ||
       dados.exp - dados.iat > MAX_AGE
+      || (dados.modo !== undefined && ![MODOS_ACESSO.ADMINISTRATIVO, MODOS_ACESSO.POLICIAL].includes(dados.modo))
     ) {
       return null;
     }
@@ -94,9 +109,13 @@ export function lerSessao(req) {
 
 export function definirCookie(res, token, manterConectado = false) {
   const maxAge = manterConectado ? MAX_AGE : MIN_AGE;
+  definirCookieComValidade(res, token, maxAge);
+}
+
+export function definirCookieComValidade(res, token, maxAge) {
   res.setHeader(
     "Set-Cookie",
-    `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
+    `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${Math.max(0, Math.floor(maxAge))}`,
   );
 }
 

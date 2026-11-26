@@ -5,6 +5,7 @@ import {
   respostaErro,
 } from "../_server.js";
 import { assinarCaminhos, caminhoDeImagemValido, enviarImagemPrivada } from "../_armazenamento.js";
+import { podeLerInventario } from "../equipamentos/index.js";
 
 const PERFIS_GESTAO = ["master", "p4", "armeiro"];
 const PERFIS_EDICAO_EXCLUSAO = ["master", "p4"];
@@ -41,6 +42,9 @@ export default async function handler(req, res) {
     const role = normalizarRole(usuario);
 
     if (req.method === "GET") {
+      if (usuario.modo_acesso !== "administrativo" || !podeLerInventario(usuario)) {
+        return respostaErro(res, 403, "A consulta de rádios está disponível somente no modo Administrativo para perfis autorizados ao inventário.");
+      }
       const { data, error } = await db
         .from("radios")
         .select("*")

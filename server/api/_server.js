@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { lerSessao } from "./auth/_session.js";
+import { usuarioDaSessao } from "./auth/_accessMode.js";
 
 export function respostaErro(res, status, error) {
   return res.status(status).json({ error });
@@ -58,7 +59,7 @@ export async function usuarioAutenticado(req, res, dependencias = {}) {
     return null;
   }
 
-  return {
+  const usuario = {
     id: data.id,
     nome_completo: data.nome_completo,
     nome_guerra: data.nome_guerra,
@@ -73,6 +74,12 @@ export async function usuarioAutenticado(req, res, dependencias = {}) {
     primeiro_acesso: data.primeiro_acesso,
     drso_escalante: data.drso_escalante,
   };
+  const usuarioEfetivo = usuarioDaSessao(usuario, sessao);
+  if (!usuarioEfetivo) {
+    respostaErro(res, 403, "Seu perfil foi alterado e não permite o modo de acesso atual. Entre novamente para carregar as permissões atualizadas.");
+    return null;
+  }
+  return usuarioEfetivo;
 }
 
 export function normalizarRole(user) {

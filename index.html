@@ -1,10 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>log2cia</title>
+    <script>
+      try {
+        const tema = localStorage.getItem("log2cia_theme") === "escuro" ? "escuro" : "claro";
+        document.documentElement.dataset.theme = tema;
+        document.documentElement.style.colorScheme = tema === "escuro" ? "dark" : "light";
+      } catch {
+        document.documentElement.dataset.theme = "claro";
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

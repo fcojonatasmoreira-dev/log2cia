@@ -1,7 +1,7 @@
 export function podeConsultarCalendario(usuario) {
   const role = String(usuario?.role || "").trim().toLowerCase();
-  return role === "master" || usuario?.is_master === true
-    || ["oficial", "p1", "p1_escalante_servico_ordinario"].includes(role);
+  return usuario?.modo_acesso !== "policial" && (role === "master" || usuario?.is_master === true
+    || ["oficial", "p1", "p1_escalante_servico_ordinario"].includes(role));
 }
 
 export function podeConsultarCalendarioProprio(usuario) {
@@ -14,7 +14,7 @@ export function podeConsultarCalendarioProprio(usuario) {
 
 export function podeAtualizarControleEscala(usuario) {
   const role = String(usuario?.role || "").trim().toLowerCase();
-  return usuario?.is_master === true || ["p1", "p1_escalante_servico_ordinario", "master"].includes(role);
+  return usuario?.modo_acesso !== "policial" && (usuario?.is_master === true || ["p1", "p1_escalante_servico_ordinario", "master"].includes(role));
 }
 
 export function obterIdsMiniCalendariosAbertos(permutas, calendariosAbertos, { usuarioId, podeConsultarGeral }) {
@@ -34,15 +34,15 @@ export function alternarEstadoLinhaPermuta(linhasAbertas, permutaId) {
 
 export function podeDecidirPermuta(usuario, status) {
   const role = String(usuario?.role || "").trim().toLowerCase();
-  const podeAdministrar = role === "oficial" || role === "master" || usuario?.is_master === true;
+  const podeAdministrar = usuario?.modo_acesso !== "policial" && (role === "oficial" || role === "master" || usuario?.is_master === true);
   return podeAdministrar && status === "AGUARDANDO_ANALISE";
 }
 
 export function podeCancelarPermuta(usuario, permuta) {
   const role = String(usuario?.role || "").trim().toLowerCase();
-  const podeAdministrar = role === "oficial" || role === "master" || usuario?.is_master === true;
+  const podeAdministrar = usuario?.modo_acesso !== "policial" && (role === "oficial" || role === "master" || usuario?.is_master === true);
   if (podeAdministrar && permuta?.status === "DEFERIDA") return true;
-  return usuario?.id === permuta?.solicitante_id
+  return usuario?.modo_acesso === "policial" && usuario?.id === permuta?.solicitante_id
     && ["AGUARDANDO_CONFIRMACAO", "AGUARDANDO_ANALISE"].includes(permuta?.status);
 }
 

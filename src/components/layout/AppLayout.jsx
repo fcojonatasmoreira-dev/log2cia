@@ -1,34 +1,42 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LogOut, Key, Shield, BookOpen, Clock3, FileText, Archive, Car, CalendarDays, MapPinned, CalendarCheck, ArrowLeftRight } from "lucide-react";
+import { Key, LogOut, Moon, Shield, Sun } from "lucide-react";
 import NotificacoesMenu from "./NotificacoesMenu";
+import ModuleNavigation from "./ModuleNavigation";
 import { novaInstanciaPresenca, registrarPresenca } from "../../services/presencaService";
+import { alterarModo } from "../../services/sessionService";
+import { podeVerAlertasDashboard, podeVerPainelMaster } from "../../utils/dashboardAccess";
+import { aplicarTema, obterTemaSalvo, TEMAS } from "../../utils/theme";
+
+function lerUsuarioSalvo() {
+  try {
+    const salvo = localStorage.getItem("log2cia_user");
+    return salvo ? JSON.parse(salvo) : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function AppLayout({ onLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
-
-  const [usuario, setUsuario] = useState(null);
-  const [sidebarAberta, setSidebarAberta] = useState(false);
+  const [usuario, setUsuario] = useState(lerUsuarioSalvo);
   const [instanciaPresenca] = useState(() => novaInstanciaPresenca());
+  const [alterandoModo, setAlterandoModo] = useState(false);
+  const [tema, setTema] = useState(obterTemaSalvo);
 
   const carregarUsuario = () => {
     try {
       const usuarioSalvo = localStorage.getItem("log2cia_user");
-      if (usuarioSalvo) {
-        setUsuario(JSON.parse(usuarioSalvo));
-      }
-    } catch (e) {
-      console.error("Erro ao ler dados do usuário:", e);
+      if (usuarioSalvo) setUsuario(JSON.parse(usuarioSalvo));
+    } catch (error) {
+      console.error("Erro ao ler dados do usuário:", error);
     }
   };
 
   useEffect(() => {
-    carregarUsuario();
-
     window.addEventListener("storage", carregarUsuario);
     window.addEventListener("usuarioAtualizado", carregarUsuario);
-
     return () => {
       window.removeEventListener("storage", carregarUsuario);
       window.removeEventListener("usuarioAtualizado", carregarUsuario);
@@ -38,9 +46,7 @@ export default function AppLayout({ onLogout }) {
   useEffect(() => {
     if (!usuario?.id) return undefined;
     let ativo = true;
-    const heartbeat = () => {
-      if (ativo) void registrarPresenca(instanciaPresenca).catch(() => {});
-    };
+    const heartbeat = () => { if (ativo) void registrarPresenca(instanciaPresenca).catch(() => {}); };
     heartbeat();
     const intervalo = window.setInterval(heartbeat, 60_000);
     const aoRetornar = () => { if (document.visibilityState === "visible") heartbeat(); };
@@ -54,278 +60,80 @@ export default function AppLayout({ onLogout }) {
     };
   }, [usuario?.id, instanciaPresenca]);
 
-  const handleSairDoSistema = async () => {
-    if (window.confirm("Deseja realmente encerrar a sessão?")) {
-      await onLogout();
+  const sair = async () => {
+    if (window.confirm("Deseja realmente encerrar a sessão?")) await onLogout();
+  };
+
+  const handleAlterarModo = async (evento) => {
+    setAlterandoModo(true);
+    try {
+      await alterarModo(evento.target.value);
+      localStorage.setItem("log2cia_mode_change", String(Date.now()));
+      window.location.reload();
+    } catch (error) {
+      window.alert(error.message || "Não foi possível alternar o modo de acesso.");
+      carregarUsuario();
+    } finally {
+      setAlterandoModo(false);
     }
   };
 
-  const getLinkClass = (path) => {
-    const isActive = location.pathname === path;
-    return `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-      isActive
-        ? "bg-blue-600 text-white font-bold shadow"
-        : "text-slate-300 hover:bg-slate-800 hover:text-white"
-    }`;
+  const handleAlterarTema = (novoTema) => {
+    const aplicado = aplicarTema(novoTema);
+    setTema(aplicado);
   };
 
-  const navegarPara = (path) => {
-    navigate(path);
-    setSidebarAberta(false);
-  };
-
-  const userRole = String(usuario?.role || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-  const isMaster = userRole === "master" || usuario?.is_master === true;
-  const isArmeiroOrAdmin = isMaster || ["p4", "armeiro"].includes(userRole);
-  const isOficial = userRole === "oficial";
-  const isBancoHorasGestor = isMaster || userRole === "p1" || isOficial;
-  const podeAcessarPermutas = isMaster || ["policial", "p1", "p1_escalante_servico_ordinario", "oficial"].includes(userRole);
-
-  // Livro da Permanência: o escalante do serviço ordinário recebe as ações Master só neste módulo.
-  const isP1OrAuthorized =
-    isMaster ||
-    ["p1", "permanente", "permanente da guarda", "armeiro", "oficial", "p1_escalante_servico_ordinario"].includes(userRole);
-  const podeConsultarAreas = !["policial", "armeiro"].includes(userRole);
+  const navegar = (caminho) => navigate(caminho);
+  const modosDisponiveis = Array.isArray(usuario?.modos_disponiveis) ? usuario.modos_disponiveis : [];
+  const masterVisivel = podeVerPainelMaster(usuario);
+  const podeNotificacoes = podeVerAlertasDashboard(usuario);
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-gray-100">
-      {/* Barra Superior Mobile */}
-      <div className="md:hidden bg-slate-900 text-white flex items-center justify-between p-4 shadow-md z-30">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white text-xs">
-            🛡️
-          </div>
-          <span className="font-bold text-base tracking-wide">Log2CIA</span>
-        </div>
-        <button
-          onClick={() => setSidebarAberta(!sidebarAberta)}
-          className="p-2 text-slate-300 hover:text-white focus:outline-none"
-        >
-          {sidebarAberta ? "✕ Fechar" : "☰ Menu"}
-        </button>
-      </div>
+    <div className="app-shell min-h-screen bg-[#edf3ff] text-slate-900">
+      <header className="relative z-20 border-b border-sky-400/50 bg-[#06152f] text-white shadow-lg">
+        <div className="mx-auto flex min-h-[70px] max-w-[1800px] flex-wrap items-center justify-between gap-x-5 gap-y-3 px-4 py-3 lg:px-7">
+          <button onClick={() => navegar("/")} className="flex shrink-0 items-center gap-3" aria-label="Ir ao Dashboard">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-700 text-white shadow-[0_0_20px_#1688ff66]"><Shield className="h-6 w-6 fill-blue-500/30" /></span>
+            <span className="text-xl font-extrabold tracking-tight sm:text-2xl">Log2CIA</span>
+          </button>
 
-      {sidebarAberta && (
-        <div
-          onClick={() => setSidebarAberta(false)}
-          className="fixed inset-0 bg-black/50 z-30 md:hidden"
-        />
-      )}
-
-      {/* Sidebar Lateral */}
-      <aside
-        className={`
-        fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-white flex flex-col justify-between p-4 transition-transform duration-300 ease-in-out md:static md:translate-x-0 shrink-0
-        ${sidebarAberta ? "translate-x-0" : "-translate-x-full"}
-      `}
-      >
-        <div className="space-y-6">
-          <div className="hidden md:flex items-center gap-3 px-2 py-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow">
-              🛡️
-            </div>
-            <span className="font-bold text-lg text-white tracking-wide">
-              Log2CIA
-            </span>
-          </div>
-
-          <nav className="space-y-1 mt-4 md:mt-0">
-            <button
-              onClick={() => navegarPara("/")}
-              className={`w-full ${getLinkClass("/")}`}
-            >
-              <span>📊</span> Dashboard
-            </button>
-
-            {/* LIVRO DA PERMANÊNCIA (MÓDULO P1) */}
-            {isP1OrAuthorized && (
-              <button
-                onClick={() => navegarPara("/livro-permanencia")}
-                className={`w-full ${getLinkClass("/livro-permanencia")}`}
-              >
-                <BookOpen className="w-4 h-4 text-blue-400" /> Livro Digital
-              </button>
-            )}
-
-            {podeConsultarAreas && (
-              <button
-                onClick={() => navegarPara("/areas-operacao")}
-                className={`w-full ${getLinkClass("/areas-operacao")}`}
-              >
-                <MapPinned className="w-4 h-4 text-cyan-400" /> Áreas de Operação
-              </button>
-            )}
-
-            <button
-              onClick={() => navegarPara("/drso")}
-              className={`w-full ${getLinkClass("/drso")}`}
-            >
-              <CalendarDays className="w-4 h-4 text-amber-400" /> Escalas DRSO
-            </button>
-
-            <button
-              onClick={() => navegarPara("/banco-horas")}
-              className={`w-full ${getLinkClass("/banco-horas")}`}
-            >
-              <Clock3 className="w-4 h-4 text-emerald-400" /> Banco de Horas
-            </button>
-
-            {podeAcessarPermutas && (
-              <button
-                onClick={() => navegarPara("/permutas")}
-                className={`w-full ${getLinkClass("/permutas")}`}
-              >
-                <ArrowLeftRight className="w-4 h-4 text-cyan-400" /> Permutas de Serviço
-              </button>
-            )}
-
-            {/* ACERVO / INVENTÁRIO - consulta também disponível ao Oficial */}
-            {(isArmeiroOrAdmin || isOficial) && (
-              <button
-                onClick={() => navegarPara("/inventario")}
-                className={`w-full ${getLinkClass("/inventario")}`}
-              >
-                <span>📦</span> Acervo / Inventário
-              </button>
-            )}
-
-            {/* VIATURAS - gestão P4/Master e consulta do Oficial */}
-            {(isMaster || ["p4", "oficial"].includes(userRole)) && (
-              <button
-                onClick={() => navegarPara("/viaturas")}
-                className={`w-full ${getLinkClass("/viaturas")}`}
-              >
-                <Car className="w-4 h-4 text-cyan-400" /> Viaturas
-              </button>
-            )}
-            {(isMaster || ["p4", "oficial", "policial"].includes(userRole)) && (
-              <button
-                onClick={() => navegarPara("/checkin-viaturas")}
-                className={`w-full ${getLinkClass("/checkin-viaturas")}`}
-              >
-                <Car className="w-4 h-4 text-emerald-400" /> Check-in Viaturas
-              </button>
-            )}
-
-            {/* ABA POLICIAIS - consulta também disponível ao Oficial */}
-            {(isArmeiroOrAdmin || isOficial) && (
-              <button
-                onClick={() => navegarPara("/policiais")}
-                className={`w-full ${getLinkClass("/policiais")}`}
-              >
-                <span>👥</span> Policiais
-              </button>
-            )}
-
-            {/* OFÍCIOS - consulta/registro para perfis administrativos autorizados */}
-            {(isMaster || ["p4", "p1", "oficial"].includes(userRole)) && (
-              <button
-                onClick={() => navegarPara("/oficios")}
-                className={`w-full ${getLinkClass("/oficios")}`}
-              >
-                <FileText className="w-4 h-4 text-sky-400" /> Ofícios
-              </button>
-            )}
-
-            {(isMaster || ["p1", "oficial"].includes(userRole)) && (
-              <button
-                onClick={() => navegarPara("/eventos")}
-                className={`w-full ${getLinkClass("/eventos")}`}
-              >
-                <CalendarCheck className="w-4 h-4 text-amber-400" /> Eventos
-              </button>
-            )}
-
-            {/* PAINEL MASTER - APENAS PARA MASTER */}
-            {isMaster && (
-              <button
-                onClick={() => navegarPara("/painel-master")}
-                className={`w-full mt-4 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all border border-amber-500/30 ${
-                  location.pathname === "/painel-master"
-                    ? "bg-amber-500 text-slate-950 shadow"
-                    : "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20"
-                }`}
-              >
-                <span>🛡️</span> Painel Master
-              </button>
-            )}
-            {(isMaster || userRole === "p1") && (
-              <button
-                onClick={() => navegarPara("/gerenciamento-arquivo")}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all border border-slate-700 ${
-                  location.pathname === "/gerenciamento-arquivo"
-                    ? "bg-slate-700 text-white shadow"
-                    : "text-slate-300 bg-slate-800/40 hover:bg-slate-800 hover:text-white"
-                }`}
-              >
-                <Archive className="w-4 h-4 text-blue-400" /> Gerenciar Arquivo
-              </button>
-            )}
-          </nav>
-        </div>
-
-        {/* Rodapé da Sidebar */}
-        <div className="border-t border-slate-800/60 pt-3 text-center">
-          <span className="text-[10px] text-slate-500 font-mono">
-            PMCE • 2ªCIA / 15ºBPM
-          </span>
-        </div>
-      </aside>
-
-      {/* Conteúdo Principal */}
-      <main className="flex-1 p-4 md:p-6 overflow-y-auto space-y-4">
-        {/* Cabeçalho Moderno com Informações do Usuário e Botões de Ação no Topo */}
-        <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-lg border border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600/30 border border-blue-500/30 rounded-xl flex items-center justify-center text-blue-400 font-bold shadow">
-              <Shield className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-white">
-                  {usuario?.nome_completo ||
-                    usuario?.nome ||
-                    "Policial / Efetivo"}
-                </h2>
-                <span className="bg-emerald-600/25 border border-emerald-500/30 text-emerald-400 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                  {usuario?.role || "efetivo"}
-                </span>
+          <div className="hidden h-10 w-px bg-sky-200/50 xl:block" />
+          <div className="flex min-w-0 flex-1 items-center gap-3 xl:min-w-[330px]">
+            <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-400/30 bg-blue-600/25 text-sky-300 sm:flex"><Shield className="h-5 w-5" /></span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <p className="max-w-[420px] truncate text-sm font-extrabold uppercase leading-tight">{usuario?.nome_completo || usuario?.nome || "Policial / Efetivo"}</p>
+                <span className="rounded-full border border-emerald-400/30 bg-emerald-500/20 px-2 py-0.5 text-[10px] font-extrabold uppercase text-emerald-300">{usuario?.role || "efetivo"}</span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5 font-mono">
-                Posto: {usuario?.posto_graduacao || usuario?.posto || "N/A"} |
-                Mat: {usuario?.matricula || "N/A"}
-              </p>
+              <p className="mt-1 text-[11px] text-slate-300">Posto: {usuario?.posto_graduacao || usuario?.posto || "—"}<span className="px-2 text-slate-500">|</span>Mat: {usuario?.matricula || "—"}</p>
             </div>
           </div>
 
-          {/* Botões Modernos no Topo: Alterar Senha e Sair */}
-          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto justify-end">
-            {podeAcessarPermutas && <NotificacoesMenu />}
-            <button
-              onClick={() => navegarPara("/alterar-senha")}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-700 shadow-xs"
-              title="Alterar Senha de Acesso"
-            >
-              <Key className="w-3.5 h-3.5 text-amber-400" />
-              <span>Senha</span>
-            </button>
+          <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
+            {usuario?.modo_acesso && (modosDisponiveis.length > 1 ? (
+              <label className="flex items-center gap-2 rounded-xl border border-slate-600 bg-slate-800/80 px-2.5 py-2 text-xs font-semibold text-slate-200">
+                <span className="hidden sm:inline">Modo</span>
+                <select aria-label="Modo de acesso" value={usuario.modo_acesso} disabled={alterandoModo} onChange={handleAlterarModo} className="max-w-32 bg-transparent text-white outline-none disabled:opacity-60">
+                  {modosDisponiveis.map((modo) => <option key={modo} value={modo} className="text-slate-900">{modo === "administrativo" ? "Administrativo" : "Policial"}</option>)}
+                </select>
+              </label>
+            ) : <span className="rounded-xl border border-slate-600 bg-slate-800/80 px-2.5 py-2 text-xs font-semibold text-slate-300">Modo {usuario.modo_acesso === "administrativo" ? "Administrativo" : "Policial"}</span>)}
 
-            <button
-              onClick={handleSairDoSistema}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl text-xs font-bold transition-all border border-rose-500/20 shadow-xs"
-              title="Encerrar Sessão"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Sair</span>
-            </button>
+            {podeNotificacoes && <NotificacoesMenu />}
+            {masterVisivel && <button onClick={() => navegar("/painel-master")} className="flex items-center gap-2 rounded-xl border border-amber-400/80 bg-amber-500/10 px-3.5 py-2.5 text-xs font-bold text-amber-300 transition hover:bg-amber-400/20"><Shield className="h-4 w-4" /><span>Painel Master</span></button>}
+            <button onClick={() => navegar("/alterar-senha")} className="flex items-center gap-2 rounded-xl border border-slate-600 bg-slate-800/80 px-3.5 py-2.5 text-xs font-bold text-slate-100 transition hover:bg-slate-700"><Key className="h-4 w-4 text-amber-300" /><span>Senha</span></button>
+            <button onClick={sair} className="flex items-center gap-2 rounded-xl border border-rose-500/60 bg-rose-500/10 px-3.5 py-2.5 text-xs font-bold text-rose-300 transition hover:bg-rose-500/20"><LogOut className="h-4 w-4" /><span>Sair</span></button>
+            <div role="group" aria-label="Tema da interface" className="inline-flex items-center rounded-xl border border-sky-400/50 bg-slate-800/80 p-1">
+              <button type="button" onClick={() => handleAlterarTema(TEMAS.CLARO)} aria-pressed={tema === TEMAS.CLARO} aria-label="Usar tema claro" title="Tema claro" className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 ${tema === TEMAS.CLARO ? "bg-white text-blue-900 shadow" : "text-slate-300 hover:bg-slate-700"}`}><Sun className="h-3.5 w-3.5 text-amber-500" /><span className="hidden sm:inline">Claro</span></button>
+              <button type="button" onClick={() => handleAlterarTema(TEMAS.ESCURO)} aria-pressed={tema === TEMAS.ESCURO} aria-label="Usar tema escuro" title="Tema escuro" className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 ${tema === TEMAS.ESCURO ? "bg-slate-950 text-white shadow" : "text-slate-300 hover:bg-slate-700"}`}><Moon className="h-3.5 w-3.5 text-yellow-300" /><span className="hidden sm:inline">Escuro</span></button>
+            </div>
           </div>
         </div>
+      </header>
 
-        <Outlet />
+      <main className="mx-auto max-w-[1800px] space-y-5 px-3 py-4 sm:px-5 lg:px-7 lg:py-6">
+        {location.pathname !== "/" && <ModuleNavigation usuario={usuario} />}
+        <Outlet context={{ usuario }} />
       </main>
     </div>
   );

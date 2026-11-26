@@ -10,7 +10,7 @@ import {
   EyeOff,
 } from "lucide-react";
 
-export default function Login() {
+export default function Login({ avisoSessao = "" }) {
   const [matricula, setMatricula] = useState(
     () => localStorage.getItem("log2cia_matricula") || "",
   );
@@ -73,6 +73,13 @@ export default function Login() {
           <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-xl text-xs flex items-center space-x-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{erro}</span>
+          </div>
+        )}
+
+        {avisoSessao && (
+          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-300 p-3 rounded-xl text-xs flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{avisoSessao}</span>
           </div>
         )}
 

@@ -917,6 +917,9 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "GET") {
+      if (usuario.modo_acesso !== "administrativo") {
+        return respostaErro(res, 403, "A listagem administrativa de viaturas está disponível somente no modo Administrativo. Use o controle de check-in para operações pessoais.");
+      }
       const podeConsultarAreas = !PERFIS_BLOQUEADOS_AREAS.includes(role);
       const { data, error } = await db
         .from("viaturas")

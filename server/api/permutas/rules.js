@@ -26,15 +26,21 @@ export function normalizarRole(usuario) {
 
 export function permissoesPermuta(usuario) {
   const role = normalizarRole(usuario);
+  // Sessões antigas recebem o modo inicial no middleware; o fallback mantém
+  // chamadas unitárias compatíveis sem permitir privilégios a partir do cliente.
+  const modo = usuario?.modo_acesso || (role === "policial" ? "policial" : "administrativo");
   const master = role === "master" || usuario?.is_master === true;
-  const policial = master || PAPEL_POLICIAL.has(role);
+  const modoPolicial = modo === "policial";
+  const modoAdministrativo = modo === "administrativo";
+  const consultaGeral = modoAdministrativo && (master || role === "oficial" || role === "p1" || role === "p1_escalante_servico_ordinario");
+  const policial = modoPolicial && (master || PAPEL_POLICIAL.has(role));
   return {
     criar: policial,
     confirmar: policial,
-    consultar_proprias: policial,
-    consultar_geral: master || role === "oficial" || role === "p1" || role === "p1_escalante_servico_ordinario",
-    decidir: master || PAPEL_DECISOR.has(role),
-    cancelar_deferida: master || PAPEL_DECISOR.has(role),
+    consultar_proprias: policial || consultaGeral,
+    consultar_geral: consultaGeral,
+    decidir: modoAdministrativo && (master || PAPEL_DECISOR.has(role)),
+    cancelar_deferida: modoAdministrativo && (master || PAPEL_DECISOR.has(role)),
   };
 }
 

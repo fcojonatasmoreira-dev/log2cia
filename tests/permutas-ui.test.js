@@ -10,6 +10,10 @@ test("somente P1, escalante P1, Oficial e Master consultam o calendário geral",
   for (const usuario of [{ role: "policial" }, { role: "p4" }, { role: "armeiro" }, null]) {
     assert.equal(podeConsultarCalendario(usuario), false);
   }
+  assert.equal(podeConsultarCalendario({ role: "master", modo_acesso: "policial" }), false);
+  assert.equal(podeDecidirPermuta({ role: "master", modo_acesso: "policial" }, "AGUARDANDO_ANALISE"), false);
+  assert.equal(podeCancelarPermuta({ role: "master", modo_acesso: "administrativo" }, { status: "AGUARDANDO_ANALISE", solicitante_id: "x" }), false);
+  assert.equal(podeCancelarPermuta({ role: "policial", modo_acesso: "policial", id: "x" }, { status: "AGUARDANDO_ANALISE", solicitante_id: "x" }), true);
 });
 
 test("perfis com acesso ao módulo consultam o próprio calendário sem habilitar consulta geral", () => {
@@ -81,7 +85,7 @@ test("somente Oficial e Master podem cancelar permuta deferida", () => {
     assert.equal(podeCancelarPermuta(usuario, { status: "INDEFERIDA" }), false);
   }
   assert.equal(podeCancelarPermuta({ role: "p1" }, { status: "DEFERIDA" }), false);
-  assert.equal(podeCancelarPermuta({ role: "policial", id: "P1" }, { status: "AGUARDANDO_ANALISE", solicitante_id: "P1" }), true);
+  assert.equal(podeCancelarPermuta({ role: "policial", modo_acesso: "policial", id: "P1" }, { status: "AGUARDANDO_ANALISE", solicitante_id: "P1" }), true);
   assert.equal(podeCancelarPermuta({ role: "policial", id: "P2" }, { status: "AGUARDANDO_ANALISE", solicitante_id: "P1" }), false);
   assert.equal(podeCancelarPermuta({ role: "policial", id: "P1" }, { status: "DEFERIDA", solicitante_id: "P1" }), false);
 });

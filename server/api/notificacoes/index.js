@@ -15,6 +15,26 @@ const TIPOS = Object.freeze({
 });
 const UUID_VALIDO = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PERFIS_PERMUTAS = new Set(["policial", "p1", "p1_escalante_servico_ordinario", "oficial", "master"]);
+const TIPOS_PESSOAIS_POLICIAL = [
+  "PERMUTA_RECEBIDA",
+  "BANCO_HORAS_DEFERIDA",
+  "BANCO_HORAS_INDEFERIDA",
+];
+const TIPOS_ADMINISTRATIVOS = [
+  "PERMUTA_AGUARDANDO_ANALISE",
+  "PERMUTA_DEFERIDA",
+  "PERMUTA_INDEFERIDA",
+  "PERMUTA_CANCELADA",
+  "PERMUTA_ESCALA_APLICADA",
+  "PERMUTA_ESCALA_REABERTA",
+  "PERMUTA_ESCALA_REVISAO_CONCLUIDA",
+  "BANCO_HORAS_NOVA",
+];
+const TIPOS_DECISAO_PERMUTA = ["PERMUTA_DEFERIDA", "PERMUTA_INDEFERIDA", "PERMUTA_CANCELADA"];
+const TIPOS_ESCALA_PERMUTA = ["PERMUTA_ESCALA_APLICADA", "PERMUTA_ESCALA_REABERTA", "PERMUTA_ESCALA_REVISAO_CONCLUIDA"];
+const TIPOS_PERMUTA_PROPRIA = [...TIPOS_DECISAO_PERMUTA, ...TIPOS_ESCALA_PERMUTA];
+const CAMPOS_NOTIFICACAO = "id,permuta_id,escala_id,banco_horas_solicitacao_id,tipo,mensagem_disponivel,criado_em,lida_em";
+const TAMANHO_LOTE_NOTIFICACOES = 100;
 
 function podeAcessar(usuario) {
   return usuario?.is_master === true || PERFIS_PERMUTAS.has(String(usuario?.role || "").trim().toLowerCase());
@@ -54,28 +74,110 @@ function apresentar(notificacao, usuario) {
   };
 }
 
+async function buscarPermutasParticipante(db, usuarioId) {
+  const permutas = [];
+  for (let inicio = 0; ; inicio += 1000) {
+    const { data, error } = await db.from("permutas_servico")
+      .select("id,solicitante_id,destinatario_id")
+      .or(`solicitante_id.eq.${usuarioId},destinatario_id.eq.${usuarioId}`)
+      .range(inicio, inicio + 999);
+    if (error) throw error;
+    permutas.push(...(data || []));
+    if (!data || data.length < 1000) return permutas;
+  }
+}
+
 async function listar(db, usuario, res) {
   const role = String(usuario.role || "").trim().toLowerCase();
+  const modoPolicial = usuario.modo_acesso === "policial";
   if (role === "oficial" || role === "master" || usuario.is_master === true) {
     const { error } = await db.rpc("permutas_notificacoes_reconciliar_v1", {
       p_destinatario_id: usuario.id,
     });
     if (error) throw error;
   }
-  const [resultado, contagem] = await Promise.all([
-    db.from("notificacoes_internas")
-      .select("id,permuta_id,escala_id,banco_horas_solicitacao_id,tipo,mensagem_disponivel,criado_em,lida_em")
-      .eq("destinatario_id", usuario.id)
-      .order("criado_em", { ascending: false })
-      .limit(50),
-    db.from("notificacoes_internas")
-      .select("id", { count: "exact", head: true })
-      .eq("destinatario_id", usuario.id)
-      .is("lida_em", null),
-  ]);
-  if (resultado.error) throw resultado.error;
-  if (contagem.error) throw contagem.error;
-  const notificacoesBase = resultado.data || [];
+  let notificacoesBase;
+  let naoLidas;
+  if (modoPolicial) {
+    const permutasDoUsuario = await buscarPermutasParticipante(db, usuario.id);
+    const idsPermutasProprias = [...new Set(permutasDoUsuario.map((item) => item.id))];
+    const carregarGrupo = async (tipos, ids = null) => {
+      const lotes = ids
+        ? Array.from({ length: Math.ceil(ids.length / TAMANHO_LOTE_NOTIFICACOES) }, (_, indice) => ids.slice(indice * TAMANHO_LOTE_NOTIFICACOES, (indice + 1) * TAMANHO_LOTE_NOTIFICACOES))
+        : [null];
+      const linhasGrupo = [];
+      let totalNaoLidas = 0;
+      for (const lote of lotes) {
+        const consulta = (selecao, options, unread = false) => {
+          let builder = db.from("notificacoes_internas").select(selecao, options)
+            .eq("destinatario_id", usuario.id).in("tipo", tipos);
+          if (lote) builder = builder.in("permuta_id", lote);
+          if (unread) builder = builder.is("lida_em", null);
+          return builder;
+        };
+        const [linhas, contagem] = await Promise.all([
+          consulta(CAMPOS_NOTIFICACAO).order("criado_em", { ascending: false }).limit(50),
+          consulta("id", { count: "exact", head: true }, true),
+        ]);
+        if (linhas.error) throw linhas.error;
+        if (contagem.error) throw contagem.error;
+        linhasGrupo.push(...(linhas.data || []));
+        totalNaoLidas += contagem.count || 0;
+      }
+      return { linhas: linhasGrupo, naoLidas: totalNaoLidas };
+    };
+    const [pessoais, decisoes] = await Promise.all([
+      carregarGrupo(TIPOS_PESSOAIS_POLICIAL),
+      idsPermutasProprias.length
+        ? carregarGrupo(TIPOS_PERMUTA_PROPRIA, idsPermutasProprias)
+        : Promise.resolve({ linhas: [], naoLidas: 0 }),
+    ]);
+    const permutaPorId = new Map(permutasDoUsuario.map((item) => [item.id, item]));
+    const idsDecididas = [...new Set(decisoes.linhas
+      .filter((item) => ["PERMUTA_DEFERIDA", "PERMUTA_INDEFERIDA"].includes(item.tipo))
+      .map((item) => item.permuta_id).filter(Boolean))];
+    let decisoesHistorico = [];
+    if (idsDecididas.length) {
+      const { data, error } = await db.from("permutas_servico_historico")
+        .select("permuta_id,tipo_evento,mensagem_policial_1,mensagem_policial_2")
+        .in("permuta_id", idsDecididas).in("tipo_evento", ["DEFERIDA", "INDEFERIDA"]);
+      if (error) throw error;
+      decisoesHistorico = data || [];
+    }
+    const mensagensPoliciais = new Map();
+    for (const evento of decisoesHistorico) {
+      const permuta = permutaPorId.get(evento.permuta_id);
+      const mensagem = permuta?.solicitante_id === usuario.id
+        ? evento.mensagem_policial_1
+        : permuta?.destinatario_id === usuario.id ? evento.mensagem_policial_2 : null;
+      if (mensagem?.trim()) mensagensPoliciais.set(`${evento.permuta_id}:${evento.tipo_evento}`, true);
+    }
+    notificacoesBase = [...pessoais.linhas, ...decisoes.linhas]
+      .map((item) => {
+        if (!["PERMUTA_DEFERIDA", "PERMUTA_INDEFERIDA"].includes(item.tipo)) return item;
+        const evento = item.tipo === "PERMUTA_DEFERIDA" ? "DEFERIDA" : "INDEFERIDA";
+        return { ...item, mensagem_disponivel: mensagensPoliciais.has(`${item.permuta_id}:${evento}`) };
+      })
+      .sort((a, b) => Date.parse(b.criado_em) - Date.parse(a.criado_em))
+      .slice(0, 50);
+    naoLidas = pessoais.naoLidas + decisoes.naoLidas;
+  } else {
+    const [resultado, contagem] = await Promise.all([
+      db.from("notificacoes_internas")
+        .select(CAMPOS_NOTIFICACAO)
+        .eq("destinatario_id", usuario.id).in("tipo", TIPOS_ADMINISTRATIVOS)
+        .order("criado_em", { ascending: false })
+        .limit(50),
+      db.from("notificacoes_internas")
+        .select("id", { count: "exact", head: true })
+        .eq("destinatario_id", usuario.id).in("tipo", TIPOS_ADMINISTRATIVOS)
+        .is("lida_em", null),
+    ]);
+    if (resultado.error) throw resultado.error;
+    if (contagem.error) throw contagem.error;
+    notificacoesBase = resultado.data || [];
+    naoLidas = contagem.count || 0;
+  }
   const idsEscala = [...new Set(notificacoesBase.map((item) => item.escala_id).filter(Boolean))];
   const idsPermuta = [...new Set(notificacoesBase.filter((item) => ["PERMUTA_DEFERIDA", "PERMUTA_CANCELADA"].includes(item.tipo)).map((item) => item.permuta_id).filter(Boolean))];
   const [escalasDiretas, escalasPorPermuta, manifestacoes] = await Promise.all([
@@ -112,11 +214,11 @@ async function listar(db, usuario, res) {
         seguro.descricao += " Há serviço que requer revisão da escala.";
       }
     }
-    if (seguro && item.tipo === "PERMUTA_DEFERIDA") seguro.descricao += " Atualize a escala no Controle de Escala.";
+    if (seguro && item.tipo === "PERMUTA_DEFERIDA" && !modoPolicial) seguro.descricao += " Atualize a escala no Controle de Escala.";
     if (seguro && item.mensagem_disponivel) seguro.descricao += " O Oficial deixou uma mensagem reservada para você.";
     return seguro;
   }).filter(Boolean);
-  return res.status(200).json({ notificacoes, nao_lidas: contagem.count || 0 });
+  return res.status(200).json({ notificacoes, nao_lidas: naoLidas });
 }
 
 async function atualizarLeitura(db, usuario, req, res) {
@@ -128,9 +230,44 @@ async function atualizarLeitura(db, usuario, req, res) {
   if (acao === "marcar_lida" && (typeof id !== "string" || !UUID_VALIDO.test(id))) {
     return respostaErro(res, 400, "Identificador de notificação inválido.");
   }
+  const modoPolicial = usuario.modo_acesso === "policial";
+  const idsPermutasProprias = modoPolicial
+    ? new Set((await buscarPermutasParticipante(db, usuario.id)).map((item) => item.id))
+    : null;
+  if (modoPolicial && acao === "marcar_lida") {
+    const { data, error } = await db.from("notificacoes_internas")
+      .select("id,tipo,permuta_id")
+      .eq("destinatario_id", usuario.id).eq("id", id).maybeSingle();
+    if (error) throw error;
+    const pessoal = TIPOS_PESSOAIS_POLICIAL.includes(data?.tipo);
+    const eventoProprio = TIPOS_PERMUTA_PROPRIA.includes(data?.tipo)
+      && idsPermutasProprias.has(data?.permuta_id);
+    if (!data || (!pessoal && !eventoProprio)) return res.status(200).json({ atualizadas: 0 });
+  }
+
+  if (modoPolicial && acao === "marcar_todas_lidas") {
+    const atualizarGrupo = async (tipos, permutaIds = null) => {
+      let consulta = db.from("notificacoes_internas")
+        .update({ lida_em: new Date().toISOString() })
+        .eq("destinatario_id", usuario.id).in("tipo", tipos).is("lida_em", null);
+      if (permutaIds) consulta = consulta.in("permuta_id", permutaIds);
+      const { data, error } = await consulta.select("id");
+      if (error) throw error;
+      return (data || []).length;
+    };
+    const [pessoais, decisoes] = await Promise.all([
+      atualizarGrupo(TIPOS_PESSOAIS_POLICIAL),
+      idsPermutasProprias.size
+        ? atualizarGrupo(TIPOS_PERMUTA_PROPRIA, [...idsPermutasProprias])
+        : Promise.resolve(0),
+    ]);
+    return res.status(200).json({ atualizadas: pessoais + decisoes });
+  }
+
   let consulta = db.from("notificacoes_internas")
     .update({ lida_em: new Date().toISOString() })
     .eq("destinatario_id", usuario.id)
+    .in("tipo", TIPOS_ADMINISTRATIVOS)
     .is("lida_em", null);
   if (acao === "marcar_lida") consulta = consulta.eq("id", id);
   const { data, error } = await consulta.select("id");

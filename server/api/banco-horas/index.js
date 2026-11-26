@@ -379,6 +379,10 @@ export default async function handler(req, res) {
         return res.status(201).json({ movimentacao: data });
       }
 
+      if (usuario.modo_acesso !== "policial") {
+        return respostaErro(res, 403, "Solicitações pessoais do Banco de Horas estão disponíveis somente no modo Policial.");
+      }
+
       const tipo = texto(body.tipo);
 
       const origemDispensa =

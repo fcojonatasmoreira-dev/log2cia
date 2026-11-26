@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import handler from "../server/api/notificacoes/index.js";
-import { criarSessao } from "../server/api/auth/_session.js";
+import { criarSessao, lerSessao, trocarModoSessao } from "../server/api/auth/_session.js";
 
 const USUARIO_ID = "10000000-0000-4000-8000-000000000001";
 const NOTIFICACAO_ID = "20000000-0000-4000-8000-000000000001";
@@ -11,7 +11,7 @@ function resposta() {
   return { statusCode: 200, status(valor) { this.statusCode = valor; return this; }, setHeader() {}, json(body) { this.body = body; return this; } };
 }
 
-async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = true, notificacao = null, notificacoes = null, erroReconciliacao = null } = {}) {
+async function executar({ metodo = "GET", perfil = "p1", modo = null, body, sessaoValida = true, notificacao = null, notificacoes = null, erroReconciliacao = null } = {}) {
   const anterior = {
     fetch: globalThis.fetch,
     segredo: process.env.SESSION_SECRET,
@@ -29,18 +29,36 @@ async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = tr
     if (url.pathname === "/rest/v1/policiais") {
       return Response.json({ id: USUARIO_ID, role: perfil, auth_version: 0, credencial_provisionada: true, primeiro_acesso: false });
     }
+    if (url.pathname === "/rest/v1/permutas_servico" && url.searchParams.get("select") !== "*") {
+      return Response.json([{ id: PERMUTA_ID, solicitante_id: USUARIO_ID, destinatario_id: "40000000-0000-4000-8000-000000000001" }]);
+    }
     if (url.pathname === "/rest/v1/rpc/permutas_notificacoes_reconciliar_v1") {
       if (erroReconciliacao) return Response.json(erroReconciliacao, { status: 400 });
       return Response.json(1);
     }
     if (url.pathname === "/rest/v1/notificacoes_internas" && method === "HEAD") {
-      return new Response(null, { status: 200, headers: { "content-range": "*/3" } });
+      const filtroTipo = url.searchParams.get("tipo") || "";
+      const tiposPermitidos = filtroTipo.match(/in\.\((.*)\)/)?.[1]?.split(",") || null;
+      const filtroPermuta = url.searchParams.get("permuta_id") || "";
+      const idsPermutas = filtroPermuta.match(/in\.\((.*)\)/)?.[1]?.split(",") || null;
+      const registros = notificacoes || [notificacao || { tipo: "PERMUTA_DEFERIDA", permuta_id: PERMUTA_ID, lida_em: null }];
+      const quantidade = registros.filter((item) => (!tiposPermitidos || tiposPermitidos.includes(item.tipo))
+        && (!idsPermutas || idsPermutas.includes(item.permuta_id))
+        && (!url.searchParams.has("lida_em") || item.lida_em == null)).length;
+      return new Response(null, { status: 200, headers: { "content-range": `*/${quantidade}` } });
     }
     if (url.pathname === "/rest/v1/notificacoes_internas" && method === "GET") {
-      return Response.json(notificacoes || [notificacao || {
+      const filtroTipo = url.searchParams.get("tipo") || "";
+      const permitidos = filtroTipo.match(/in\.\((.*)\)/)?.[1]?.split(",") || [];
+      if (filtroTipo && !permitidos.length && !filtroTipo.includes("PERMUTA_DEFERIDA")) return Response.json([]);
+      const filtroPermuta = url.searchParams.get("permuta_id") || "";
+      const idsPermutas = filtroPermuta.match(/in\.\((.*)\)/)?.[1]?.split(",") || [];
+      const candidatos = notificacoes || [notificacao || {
         id: NOTIFICACAO_ID, destinatario_id: "nao-deve-ser-retornado", permuta_id: PERMUTA_ID,
         tipo: "PERMUTA_DEFERIDA", mensagem_disponivel: true, criado_em: "2026-11-24T12:00:00Z", lida_em: null,
-      }]);
+      }];
+      return Response.json(candidatos.filter((item) => (!permitidos.length || permitidos.includes(item.tipo))
+        && (!idsPermutas.length || idsPermutas.includes(item.permuta_id))));
     }
     if (url.pathname === "/rest/v1/notificacoes_internas" && method === "PATCH") {
       return Response.json([{ id: NOTIFICACAO_ID }]);
@@ -48,6 +66,7 @@ async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = tr
     if (url.pathname === "/rest/v1/permutas_servico_manifestacoes") {
       return Response.json([{ permuta_id: PERMUTA_ID, data_servico: "2026-12-01", turno: "A" }]);
     }
+    if (url.pathname === "/rest/v1/permutas_servico_historico") return Response.json([]);
     if (url.pathname === "/rest/v1/permutas_servico_escala") return Response.json([]);
     return Response.json({ message: `Chamada inesperada ${method} ${url.pathname}` }, { status: 404 });
   };
@@ -55,7 +74,9 @@ async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = tr
     method: metodo,
     query: {},
     body,
-    headers: { cookie: sessaoValida ? `log2cia_session=${criarSessao({ id: USUARIO_ID, auth_version: 0 })}` : "log2cia_session=invalida" },
+    headers: { cookie: sessaoValida ? `log2cia_session=${modo
+      ? trocarModoSessao(lerSessao({ headers: { cookie: `log2cia_session=${criarSessao({ id: USUARIO_ID, role: perfil, auth_version: 0 })}` } }), modo)
+      : criarSessao({ id: USUARIO_ID, role: perfil, auth_version: 0 })}` : "log2cia_session=invalida" },
   };
   const res = resposta();
   try {
@@ -72,7 +93,7 @@ async function executar({ metodo = "GET", perfil = "p1", body, sessaoValida = tr
 test("listagem usa identidade da sessão, contagem exata e descrição sem corpo de mensagem", async () => {
   const resultado = await executar();
   assert.equal(resultado.status, 200);
-  assert.equal(resultado.body.nao_lidas, 3);
+  assert.equal(resultado.body.nao_lidas, 1);
   assert.deepEqual(resultado.body.notificacoes[0], {
     id: NOTIFICACAO_ID,
     permuta_id: PERMUTA_ID,
@@ -105,6 +126,15 @@ test("marcar todas altera somente avisos não lidos do destinatário autenticado
   assert.equal(chamada.url.searchParams.get("destinatario_id"), `eq.${USUARIO_ID}`);
   assert.equal(chamada.url.searchParams.get("lida_em"), "is.null");
   assert.equal("id" in chamada.body, false);
+});
+
+test("marcar todas no modo Policial não altera avisos administrativos ocultos", async () => {
+  const resultado = await executar({ perfil: "p1", modo: "policial", metodo: "PATCH", body: { acao: "marcar_todas_lidas" } });
+  assert.equal(resultado.status, 200);
+  const atualizacoes = resultado.chamadas.filter((item) => item.method === "PATCH");
+  assert.equal(atualizacoes.length, 2);
+  const filtros = atualizacoes.map((item) => item.url.searchParams.get("tipo") || "");
+  assert.ok(filtros.every((filtro) => !filtro.includes("PERMUTA_AGUARDANDO_ANALISE") && !filtro.includes("BANCO_HORAS_NOVA")));
 });
 
 test("não autenticados e perfis fora do módulo não consultam notificações", async () => {
@@ -146,7 +176,7 @@ test("notificação de Banco de Horas contém somente referência e texto genér
     banco_horas_solicitacao_id: "40000000-0000-4000-8000-000000000001",
     tipo: "BANCO_HORAS_INDEFERIDA", mensagem_disponivel: false,
     criado_em: "2026-11-24T12:00:00Z", lida_em: null,
-  } });
+  }, modo: "policial" });
   assert.equal(resultado.status, 200);
   assert.deepEqual(resultado.body.notificacoes[0], {
     id: NOTIFICACAO_ID,
@@ -165,6 +195,48 @@ test("somente P1 e Master recebem destino direto do Controle de Escala", async (
   assert.equal(policial.body.notificacoes[0].abrir_controle_escala, undefined);
   const master = await executar({ perfil: "master" });
   assert.equal(master.body.notificacoes[0].abrir_controle_escala, true);
+});
+
+test("P1 no modo Policial recebe notificações de participante, sem fila administrativa ou destino de escala", async () => {
+  const resultado = await executar({ perfil: "p1", modo: "policial" });
+  assert.equal(resultado.status, 200);
+  assert.equal(resultado.body.notificacoes.length, 1);
+  assert.equal(resultado.body.notificacoes[0].tipo, "Permuta deferida");
+  assert.equal(resultado.body.notificacoes[0].abrir_controle_escala, undefined);
+  assert.equal(resultado.body.notificacoes[0].descricao.includes("mensagem reservada"), false);
+  assert.equal(resultado.body.notificacoes[0].descricao.includes("Atualize a escala no Controle de Escala"), false);
+  assert.equal(resultado.chamadas.some((item) => item.url.pathname === "/rest/v1/rpc/permutas_notificacoes_reconciliar_v1"), false);
+  const filtrosTipo = resultado.chamadas
+    .filter((item) => item.url.pathname === "/rest/v1/notificacoes_internas")
+    .map((item) => item.url.searchParams.get("tipo") || "");
+  assert.ok(filtrosTipo.every((filtro) => !filtro.includes("PERMUTA_AGUARDANDO_ANALISE")));
+});
+
+test("modo Policial vê atualizações de escala somente para permutas próprias", async () => {
+  const outraPermuta = "30000000-0000-4000-8000-000000000099";
+  const resultado = await executar({ perfil: "p1", modo: "policial", notificacoes: [
+    { id: "20000000-0000-4000-8000-000000000021", permuta_id: PERMUTA_ID, tipo: "PERMUTA_ESCALA_APLICADA", criado_em: "2026-11-24T12:00:00Z", lida_em: null },
+    { id: "20000000-0000-4000-8000-000000000022", permuta_id: outraPermuta, tipo: "PERMUTA_ESCALA_APLICADA", criado_em: "2026-11-24T12:01:00Z", lida_em: null },
+  ] });
+  assert.equal(resultado.status, 200);
+  assert.equal(resultado.body.notificacoes.length, 1);
+  assert.equal(resultado.body.notificacoes[0].tipo, "Serviço aplicado à escala");
+  const consulta = resultado.chamadas.find((item) => item.url.pathname === "/rest/v1/notificacoes_internas"
+    && item.method === "GET" && item.url.searchParams.get("tipo")?.includes("PERMUTA_ESCALA_APLICADA"));
+  assert.ok(consulta.url.searchParams.get("tipo").includes("PERMUTA_ESCALA_APLICADA"));
+  assert.ok(consulta.url.searchParams.get("permuta_id").includes(PERMUTA_ID));
+});
+
+test("modo Administrativo filtra listas, contagem e marcação às categorias administrativas", async () => {
+  const listar = await executar({ perfil: "master" });
+  const consultas = listar.chamadas.filter((item) => item.url.pathname === "/rest/v1/notificacoes_internas");
+  assert.ok(consultas.every((item) => (item.url.searchParams.get("tipo") || "").includes("PERMUTA_AGUARDANDO_ANALISE")));
+  assert.ok(consultas.every((item) => !(item.url.searchParams.get("tipo") || "").includes("PERMUTA_RECEBIDA")));
+
+  const marcar = await executar({ perfil: "master", metodo: "PATCH", body: { acao: "marcar_todas_lidas" } });
+  const atualizacao = marcar.chamadas.find((item) => item.method === "PATCH");
+  assert.ok((atualizacao.url.searchParams.get("tipo") || "").includes("BANCO_HORAS_NOVA"));
+  assert.ok(!(atualizacao.url.searchParams.get("tipo") || "").includes("BANCO_HORAS_DEFERIDA"));
 });
 
 test("permutas, Banco de Horas e Controle de Escala aparecem juntos na mesma resposta", async () => {

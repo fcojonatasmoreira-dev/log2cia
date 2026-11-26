@@ -430,7 +430,7 @@ async function executarAcao(db, usuario, body, res) {
     const role = String(usuario.role || "").trim().toLowerCase();
     const master = role === "master" || usuario.is_master === true;
     const p1 = ["p1", "p1_escalante_servico_ordinario"].includes(role);
-    if (!master && !p1) return respostaErro(res, 403, "Somente P1 ou Master pode atualizar o Controle de Escala.");
+    if (usuario.modo_acesso !== "administrativo" || (!master && !p1)) return respostaErro(res, 403, "Somente P1 ou Master no modo Administrativo pode atualizar o Controle de Escala.");
     const escalaId = texto(body.escala_id);
     const operacao = texto(body.operacao);
     if (!UUID_VALIDO.test(escalaId) || !["APLICAR", "REABRIR", "CONCLUIR_REVISAO"].includes(operacao)) return respostaErro(res, 400, "Ação do Controle de Escala inválida.");
@@ -441,7 +441,7 @@ async function executarAcao(db, usuario, body, res) {
     return res.status(200).json({ id: escalaId, situacao: data });
   }
   if (acao === "criar") {
-    if (!permissoes.criar) return respostaErro(res, 403, "Seu perfil não pode criar permutas.");
+    if (!permissoes.criar) return respostaErro(res, 403, "A criação e as confirmações pessoais de permutas estão disponíveis somente no modo Policial.");
     const destinatarioId = texto(body.destinatario_id);
     const tipo = texto(body.tipo);
     const servico = body.servico;
@@ -473,7 +473,7 @@ async function executarAcao(db, usuario, body, res) {
   }
 
   if (acao === "editar") {
-    if (!permissoes.criar) return respostaErro(res, 403, "Seu perfil não pode editar permutas.");
+    if (!permissoes.criar) return respostaErro(res, 403, "A edição de solicitações pessoais está disponível somente no modo Policial.");
     const permutaId = texto(body?.permuta_id);
     const destinatarioId = texto(body?.destinatario_id);
     const versaoEsperada = texto(body?.atualizada_em);
@@ -510,7 +510,7 @@ async function executarAcao(db, usuario, body, res) {
   const permutaId = texto(body?.permuta_id);
   if (!UUID_VALIDO.test(permutaId)) return respostaErro(res, 400, "Identificador da permuta inválido.");
   if (acao === "confirmar") {
-    if (!permissoes.confirmar) return respostaErro(res, 403, "Seu perfil não pode confirmar permutas.");
+    if (!permissoes.confirmar) return respostaErro(res, 403, "A confirmação pessoal está disponível somente no modo Policial.");
     const { data: permuta, error: erroPermuta } = await db.from("permutas_servico")
       .select("id,tipo,solicitante_id,destinatario_id,status").eq("id", permutaId).maybeSingle();
     if (erroPermuta) throw erroPermuta;
@@ -566,7 +566,7 @@ async function executarAcao(db, usuario, body, res) {
       .select("id,solicitante_id,status").eq("id", permutaId).maybeSingle();
     if (erroPermuta) throw erroPermuta;
     if (!permuta) return respostaErro(res, 404, "Permuta não encontrada.");
-    const cancelamentoSolicitante = usuario.id === permuta.solicitante_id
+    const cancelamentoSolicitante = permissoes.criar && usuario.id === permuta.solicitante_id
       && ["AGUARDANDO_CONFIRMACAO", "AGUARDANDO_ANALISE"].includes(permuta.status);
     const cancelamentoAdministrativo = permissoes.cancelar_deferida && permuta.status === "DEFERIDA";
     if (!cancelamentoSolicitante && !cancelamentoAdministrativo) {
@@ -588,7 +588,8 @@ export default async function handler(req, res) {
   try {
     const usuario = await usuarioAutenticado(req, res);
     if (!usuario) return;
-    if (!permissoesPermuta(usuario).criar) return respostaErro(res, 403, "Seu perfil não tem acesso ao módulo de Permutas.");
+    const permissoes = permissoesPermuta(usuario);
+    if (!permissoes.criar && !permissoes.consultar_geral) return respostaErro(res, 403, "Seu perfil não tem acesso ao módulo de Permutas.");
     const db = supabaseAdmin();
     if (req.method === "GET") {
       if (req.query?.controle_escala === "1") return await listarControleEscala(db, usuario, res, req.query);

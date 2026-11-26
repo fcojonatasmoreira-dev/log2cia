@@ -25,3 +25,10 @@ export async function obterSessao() {
 export async function logout() {
   return request('logout', { method: 'POST', body: '{}' });
 }
+
+export async function alterarModo(modo) {
+  return request('change-mode', {
+    method: 'POST',
+    body: JSON.stringify({ modo }),
+  });
+}

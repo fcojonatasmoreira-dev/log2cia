@@ -1,7 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import handler from "../server/api/banco-horas/index.js";
-import { criarSessao } from "../server/api/auth/_session.js";
+import { criarSessao, lerSessao, trocarModoSessao } from "../server/api/auth/_session.js";
+import { podeAcessarNovaInsercaoBancoHoras, telaBancoHoras } from "../src/utils/bancoHorasAccess.js";
+
+test("seleção da tela do Banco de Horas respeita modo e perfil efetivos", () => {
+  const policial = { role: "policial", modo_acesso: "policial", modos_disponiveis: ["policial"] };
+  assert.equal(telaBancoHoras(policial), "pessoal");
+
+  for (const role of ["master", "p1", "p4", "armeiro", "permanente"]) {
+    assert.equal(telaBancoHoras({ role, modo_acesso: "policial", modos_disponiveis: ["administrativo", "policial"] }), "pessoal", `${role} no Modo Policial`);
+  }
+
+  for (const role of ["master", "p1", "oficial"]) {
+    assert.equal(telaBancoHoras({ role, modo_acesso: "administrativo", modos_disponiveis: ["administrativo"] }), "gestao", `${role} no Modo Administrativo`);
+  }
+
+  assert.equal(telaBancoHoras({ role: "oficial", modo_acesso: "policial", modos_disponiveis: ["administrativo"] }), "indisponivel");
+  assert.equal(telaBancoHoras({ role: "p4", modo_acesso: "administrativo", modos_disponiveis: ["administrativo", "policial"] }), "indisponivel");
+  assert.equal(telaBancoHoras({ role: "master" }), "gestao", "mantém sessão legada sem modo explícito");
+  assert.equal(telaBancoHoras({ role: "policial" }), "pessoal", "mantém comportamento do policial comum legado");
+});
+
+test("rota de nova inserção fica restrita à gestão autorizada", () => {
+  assert.equal(podeAcessarNovaInsercaoBancoHoras({ role: "master", modo_acesso: "administrativo" }), true);
+  assert.equal(podeAcessarNovaInsercaoBancoHoras({ role: "p1", modo_acesso: "administrativo" }), true);
+  assert.equal(podeAcessarNovaInsercaoBancoHoras({ role: "master", modo_acesso: "policial" }), false);
+  assert.equal(podeAcessarNovaInsercaoBancoHoras({ role: "oficial", modo_acesso: "administrativo" }), false);
+  assert.equal(podeAcessarNovaInsercaoBancoHoras({ role: "p1" }), true, "mantém compatibilidade da sessão legada");
+});
 
 function resposta() {
   return {
@@ -11,7 +38,7 @@ function resposta() {
   };
 }
 
-async function executar({ role, method, body = {}, query = {}, actorId = "ator-1" }) {
+async function executar({ role, modo = null, method, body = {}, query = {}, actorId = "ator-1" }) {
   const anterior = {
     fetch: globalThis.fetch,
     sessionSecret: process.env.SESSION_SECRET,
@@ -52,12 +79,14 @@ async function executar({ role, method, body = {}, query = {}, actorId = "ator-1
     return Response.json({ message: "Requisição inesperada no teste." }, { status: 404 });
   };
 
+  const tokenBase = criarSessao({ id: actorId, role, auth_version: 0 });
+  const token = modo ? trocarModoSessao(lerSessao({ headers: { cookie: `log2cia_session=${tokenBase}` } }), modo) : tokenBase;
   const req = {
     method,
     query,
     body,
     headers: {
-      cookie: `log2cia_session=${criarSessao({ id: actorId, auth_version: 0 })}`,
+      cookie: `log2cia_session=${token}`,
     },
   };
   const res = resposta();
@@ -77,6 +106,18 @@ async function executar({ role, method, body = {}, query = {}, actorId = "ator-1
     }
   }
 }
+
+test("solicitação pessoal do Banco de Horas exige modo Policial também na API", async () => {
+  const body = { tipo: "dispensa", origem_dispensa: "banco_horas", horas_solicitadas: 4,
+    data_servico: "2026-12-01", turno: "A", justificativa: "Necessidade de serviço" };
+  const administrativo = await executar({ role: "master", method: "POST", body });
+  assert.equal(administrativo.status, 403);
+  assert.equal(administrativo.chamadas.some(({ path }) => path === "/rest/v1/banco_horas_solicitacoes"), false);
+
+  const policial = await executar({ role: "master", modo: "policial", method: "POST", body });
+  assert.equal(policial.status, 201);
+  assert.ok(policial.chamadas.some(({ path }) => path === "/rest/v1/banco_horas_solicitacoes"));
+});
 
 const acoesGestao = [
   {

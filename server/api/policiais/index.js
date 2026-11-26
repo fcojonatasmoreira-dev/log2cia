@@ -62,6 +62,9 @@ export default async function handler(req, res) {
 
     if (req.method === "GET") {
       const uso = String(req.query?.uso || "gestao");
+      if (uso === "permutas" && usuario.modo_acesso !== "policial") {
+        return respostaErro(res, 403, "A seleção de substituto está disponível somente no modo Policial.");
+      }
       if (!autorizarLeituraPoliciais(usuario, uso)) {
         return respostaErro(res, 403, "Você não tem permissão para consultar estes dados do efetivo.");
       }
